@@ -1,0 +1,7 @@
+package com.hieunguyen.ManageContract.repository;
+
+import com.hieunguyen.ManageContract.entity.Contract;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ContractRepository extends JpaRepository<Contract, Long> {
+}

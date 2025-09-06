@@ -1,0 +1,77 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+  datasource:
+    url: jdbc:mysql://localhost:3306/manage_contract
+    username: root
+    password: 123456
+  jpa:
+    hibernate:
+      ddl-auto: update
+    #      A Hieu se lam theo phuong an tao db bang mysql workbench, khong dung bang entity
+    show-sql: true
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: 861555536318-0lfekt4rltkup3n2v5t546rq8b60kmlf.apps.googleusercontent.com
+            client-secret: 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
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope: profile, email
+            user-name-attribute: email
+          facebook:
+            client-id: 2125109354608838
+            client-secret: bb443a00212d6a39562bcab825e5366b
+            scope: email, public_profile
+        provider:
+          facebook:
+            authorization-uri: https://www.facebook.com/v12.0/dialog/oauth
+            token-uri: https://graph.facebook.com/v12.0/oauth/access_token
+            user-info-uri: https://graph.facebook.com/me?fields=id,name,email,picture
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://www.googleapis.com/oauth2/v4/token
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: nguyenhieu06.nd@gmail.com
+    password: jiat xbgu vxzz ayvz
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+api:
+  prefix: api/v1
+
+jwt:
+  secret-key: "sajsjhdhajs u3q9  ioqr 09390jkhfjkasjhilflkjaas"
+  expiration-time: 86400000
+  refresh-expiration-time: 604800000
+
+app:
+  verification:
+    url: http://localhost:8080/api/auth/verify-email
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+
+vnpay:
+  tmn-code: N5CN6513
+  hash-secret: 37O7Z78WPPUEY52IO16Q1PHU02E26434
+  pay-url: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+  return-url: http://localhost:8080/api/payment/vnpay-return
+  ipn-url: http://localhost:8080/api/payment/vnpay-ipn
