@@ -9,4 +9,6 @@ import java.util.Map;
 
 public interface ContractService {
     ContractResponse createContract(CreateContractRequest request, AuthAccount createdBy);
+
+    ContractResponse submitForApproval(Long contractId);
 }

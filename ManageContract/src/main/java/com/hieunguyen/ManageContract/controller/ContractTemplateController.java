@@ -16,37 +16,28 @@ import org.springframework.web.multipart.MultipartFile;
 public class ContractTemplateController {
 
     private final ContractTemplateService templateService;
-    private final AuthAccountRepository accountRepository;
 
     /**
-     * Upload template từ file local hoặc link Google Docs
+     * Upload template từ file local (.docx)
      */
-    @PostMapping("/upload")
-    public ResponseEntity<ResponseData<ContractTemplateResponse>> uploadTemplate(
-            @RequestParam(required = false) MultipartFile file,
-            @RequestParam(required = false) String docLink,
+    @PostMapping("/upload-file")
+    public ResponseData<ContractTemplateResponse> uploadTemplateFile(
+            @RequestParam MultipartFile file,
             @RequestParam Long accountId
     ) throws Exception {
+        ContractTemplateResponse response = templateService.uploadTemplate(file, accountId);
+        return new ResponseData<>(200, "Upload template từ file thành công", response);
+    }
 
-        // Lấy account
-        AuthAccount account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new RuntimeException("Account không tồn tại"));
-
-        ContractTemplateResponse response;
-
-        if (file != null && !file.isEmpty()) {
-            // Upload từ file local
-            response = templateService.uploadTemplate(file, account);
-        } else if (docLink != null && !docLink.isEmpty()) {
-            // Upload từ link Google Docs
-            response = templateService.uploadTemplateFromGoogleDoc(docLink, account);
-        } else {
-            return ResponseEntity.badRequest()
-                    .body(new ResponseData<>(400, "Phải gửi file hoặc link Google Docs"));
-        }
-
-        return ResponseEntity.ok(
-                new ResponseData<>(200, "Upload template thành công", response)
-        );
+    /**
+     * Upload template từ link Google Docs
+     */
+    @PostMapping("/upload-link")
+    public ResponseData<ContractTemplateResponse> uploadTemplateLink(
+            @RequestParam String docLink,
+            @RequestParam Long accountId
+    ) throws Exception {
+        ContractTemplateResponse response = templateService.uploadTemplateFromGoogleDoc(docLink, accountId);
+        return new ResponseData<>(200, "Upload template từ link Google Docs thành công", response);
     }
 }

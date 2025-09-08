@@ -55,7 +55,8 @@
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
-			<optional>true</optional>
+			<version>1.18.32</version>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -104,7 +105,29 @@
 			<version>5.2.5</version>
 		</dependency>
 
-	</dependencies>
+        <!-- Docx4j (full + JAXB RI) -->
+        <dependency>
+            <groupId>org.docx4j</groupId>
+            <artifactId>docx4j-JAXB-ReferenceImpl</artifactId>
+            <version>11.5.0</version>
+        </dependency>
+
+        <!-- Xuất PDF (FO renderer) -->
+        <dependency>
+            <groupId>org.docx4j</groupId>
+            <artifactId>docx4j-export-fo</artifactId>
+            <version>11.5.0</version>
+        </dependency>
+
+        <!-- JAXB runtime (Jakarta, bắt buộc cho Boot 3.x) -->
+        <dependency>
+            <groupId>org.glassfish.jaxb</groupId>
+            <artifactId>jaxb-runtime</artifactId>
+            <version>4.0.5</version>
+        </dependency>
+
+
+    </dependencies>
 
 	<build>
 		<plugins>

@@ -1,18 +1,19 @@
 package com.hieunguyen.ManageContract.service.impl;
 
 import com.hieunguyen.ManageContract.common.constants.VariableType;
+import com.hieunguyen.ManageContract.common.exception.ResourceNotFoundException;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateResponse;
 import com.hieunguyen.ManageContract.entity.AuthAccount;
 import com.hieunguyen.ManageContract.entity.ContractTemplate;
 import com.hieunguyen.ManageContract.entity.TemplateVariable;
 import com.hieunguyen.ManageContract.mapper.ContractTemplateMapper;
+import com.hieunguyen.ManageContract.repository.AuthAccountRepository;
 import com.hieunguyen.ManageContract.repository.ContractTemplateRepository;
 import com.hieunguyen.ManageContract.repository.TemplateVariableRepository;
 import com.hieunguyen.ManageContract.service.ContractTemplateService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -23,10 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,42 +34,48 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
 
     private final ContractTemplateRepository templateRepository;
     private final TemplateVariableRepository variableRepository;
+    private final AuthAccountRepository accountRepository;
 
     @Override
     @Transactional
-    public ContractTemplateResponse uploadTemplate(MultipartFile file, AuthAccount createdBy) throws IOException {
+    public ContractTemplateResponse uploadTemplate(MultipartFile file,  Long accountId) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("File không được để trống");
         }
 
-        // Lưu file lên server
+        AuthAccount createdBy = accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("Account không tồn tại"));
+
         Path targetPath = saveFile(file.getOriginalFilename(), file.getInputStream());
+        ContractTemplate template = processDocxFile(targetPath, createdBy);
 
-        // Xử lý đọc biến từ file và lưu template
-        ContractTemplate template = processTemplateFile(targetPath, createdBy);
-
-        // Trả về DTO
         return ContractTemplateMapper.toResponse(template);
     }
 
     @Override
     @Transactional
-    public ContractTemplateResponse uploadTemplateFromGoogleDoc(String docLink, AuthAccount createdBy) throws IOException {
+    public ContractTemplateResponse uploadTemplateFromGoogleDoc(String docLink, Long accountId) throws IOException {
         if (docLink == null || docLink.isEmpty()) {
             throw new IllegalArgumentException("Link Google Docs không được để trống");
         }
 
+        AuthAccount createdBy = accountRepository.findById(accountId)
+                .orElseThrow(() -> new RuntimeException("Account không tồn tại"));
+
+        // link share → export docx
+        String exportUrl = normalizeGoogleDocsLink(docLink);
+
         String fileName = "template_" + System.currentTimeMillis() + ".docx";
-        try (InputStream in = new URL(docLink).openStream()) {
+        try (InputStream in = new URL(exportUrl).openStream()) {
             Path targetPath = saveFile(fileName, in);
-            ContractTemplate template = processTemplateFile(targetPath, createdBy);
+            ContractTemplate template = processDocxFile(targetPath, createdBy);
             return ContractTemplateMapper.toResponse(template);
         } catch (IOException e) {
-            throw new IOException("Không thể tải file từ link Google Docs", e);
+            throw new IOException("Không thể tải file từ Google Docs. Hãy chắc chắn link share là Public/Anyone with link", e);
         }
     }
 
-    // --- private helper methods ---
+    // --- helper methods ---
 
     private Path saveFile(String fileName, InputStream inputStream) throws IOException {
         Path uploadDir = Paths.get("uploads/templates");
@@ -81,31 +85,57 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         return targetPath;
     }
 
-    private ContractTemplate processTemplateFile(Path filePath, AuthAccount createdBy) throws IOException {
-        // 1. Đọc nội dung DOCX
+    private String normalizeGoogleDocsLink(String docLink) {
+        if (docLink.contains("/export?")) {
+            return docLink;
+        }
+        if (docLink.contains("/edit")) {
+            return docLink.replaceAll("/edit.*", "/export?format=docx");
+        }
+        return docLink.endsWith("/") ? docLink + "export?format=docx" : docLink + "/export?format=docx";
+    }
+
+    /**
+     * Xử lý file DOCX: đọc nội dung, tìm biến ${var}, lưu vào DB
+     */
+    private ContractTemplate processDocxFile(Path filePath, AuthAccount createdBy) throws IOException {
         StringBuilder text = new StringBuilder();
+
         try (XWPFDocument document = new XWPFDocument(Files.newInputStream(filePath))) {
-            for (XWPFParagraph paragraph : document.getParagraphs()) {
-                text.append(paragraph.getText()).append("\n");
-            }
+            // đọc paragraph
+            document.getParagraphs().forEach(p -> text.append(p.getText()).append("\n"));
+
+            // đọc bảng
+            document.getTables().forEach(table ->
+                    table.getRows().forEach(row ->
+                            row.getTableCells().forEach(cell ->
+                                    text.append(cell.getText()).append("\n")
+                            )
+                    )
+            );
         }
 
-        // 2. Lưu template vào DB
+        return saveTemplateAndVariables(filePath, createdBy, text.toString());
+    }
+
+    /**
+     * Lưu template và biến
+     */
+    private ContractTemplate saveTemplateAndVariables(Path filePath, AuthAccount createdBy, String text) {
         ContractTemplate template = new ContractTemplate();
         template.setName(filePath.getFileName().toString());
         template.setFilePath(filePath.toString());
         template.setCreatedBy(createdBy);
         template = templateRepository.save(template);
 
-        // 3. Tìm các biến {{varName}} và lưu vào template_variables
-        Pattern pattern = Pattern.compile("\\{\\{(.*?)\\}\\}");
-        Matcher matcher = pattern.matcher(text.toString());
+        // Regex ${varName}
+        Pattern pattern = Pattern.compile("\\$\\{(.*?)}");
+        Matcher matcher = pattern.matcher(text);
         Set<String> variableNames = new HashSet<>();
         while (matcher.find()) {
             variableNames.add(matcher.group(1).trim());
         }
 
-        // 4. Lưu biến và cập nhật collection trong template
         List<TemplateVariable> variables = new ArrayList<>();
         for (String varName : variableNames) {
             TemplateVariable variable = new TemplateVariable();
@@ -118,7 +148,6 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         }
         template.setVariables(variables);
 
-        // 5. Trả về template có variables đầy đủ
         return template;
     }
 
@@ -128,33 +157,22 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
     private VariableType detectVariableType(String varName) {
         String lower = varName.toLowerCase();
 
-        // Kiểu ngày
         if (lower.contains("date") || lower.contains("ngay") || lower.contains("dob")) {
             return VariableType.DATE;
         }
-
-        // Kiểu số
         if (lower.contains("amount") || lower.contains("price") || lower.contains("total") || lower.contains("so")) {
             return VariableType.NUMBER;
         }
-
-        // Kiểu boolean / true false
         if (lower.startsWith("is") || lower.startsWith("has") || lower.contains("active")) {
             return VariableType.BOOLEAN;
         }
-
-        // Kiểu textarea nếu tên biến chứa text hoặc description
         if (lower.contains("description") || lower.contains("note") || lower.contains("content")) {
             return VariableType.TEXTAREA;
         }
-
-        // Dropdown / List có thể detect từ tên biến (ví dụ gender, status, type)
         if (lower.contains("gender") || lower.contains("status") || lower.contains("type")) {
             return VariableType.DROPDOWN;
         }
 
-        // Mặc định
         return VariableType.STRING;
     }
-
 }

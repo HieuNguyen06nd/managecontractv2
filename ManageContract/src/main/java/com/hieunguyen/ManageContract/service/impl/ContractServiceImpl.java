@@ -11,6 +11,7 @@ import com.hieunguyen.ManageContract.mapper.ContractMapper;
 import com.hieunguyen.ManageContract.repository.ContractRepository;
 import com.hieunguyen.ManageContract.repository.ContractTemplateRepository;
 import com.hieunguyen.ManageContract.repository.ContractVariableValueRepository;
+import com.hieunguyen.ManageContract.service.ContractFileService;
 import com.hieunguyen.ManageContract.service.ContractService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +28,7 @@ public class ContractServiceImpl implements ContractService {
     private final ContractRepository contractRepository;
     private final ContractVariableValueRepository variableValueRepository;
     private final ContractTemplateRepository templateRepository;
+    private final ContractFileService contractFileService;
 
     @Transactional
     @Override
@@ -61,6 +64,28 @@ public class ContractServiceImpl implements ContractService {
         // Dùng mapper để trả ra DTO
         return ContractMapper.toResponse(saved);
     }
+
+    @Transactional
+    @Override
+    public ContractResponse submitForApproval(Long contractId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new RuntimeException("Contract not found"));
+
+        if (contract.getStatus() != ContractStatus.DRAFT) {
+            throw new RuntimeException("Only draft contracts can be submitted");
+        }
+
+        // Generate file Word đã thay biến
+        String filePath = contractFileService.generateContractFile(contract);
+        contract.setFilePath(filePath);
+
+        // Update trạng thái
+        contract.setStatus(ContractStatus.PENDING_APPROVAL);
+        Contract updated = contractRepository.save(contract);
+
+        return ContractMapper.toResponse(updated);
+    }
+
 
 
 }

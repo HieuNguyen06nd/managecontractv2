@@ -25,5 +25,10 @@ public class ContractController {
         ContractResponse response = contractService.createContract(request, user);
         return new ResponseData<>(200,"Tạo hợp đồng thành công",response);
     }
+
+    @PostMapping("/{id}/submit")
+    public ResponseData<ContractResponse> submitForApproval(@PathVariable Long id) {
+        return new ResponseData<>(200, "Tạo file trình ký thành công",contractService.submitForApproval(id));
+    }
 }
 

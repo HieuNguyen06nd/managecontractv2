@@ -8,7 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 
 public interface ContractTemplateService {
-    ContractTemplateResponse uploadTemplate(MultipartFile file, AuthAccount createdBy)throws IOException;
+    ContractTemplateResponse uploadTemplate(MultipartFile file,Long accountId)throws IOException;
 
-    ContractTemplateResponse uploadTemplateFromGoogleDoc(String docLink, AuthAccount createdBy) throws IOException;
+    ContractTemplateResponse uploadTemplateFromGoogleDoc(String docLink, Long accountId) throws IOException;
 }
