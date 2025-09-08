@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.entity;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -21,6 +22,7 @@ public class ContractTemplate {
     private AuthAccount createdBy;
 
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
+    @JsonManagedReference
     private List<TemplateVariable> variables;
 }
 

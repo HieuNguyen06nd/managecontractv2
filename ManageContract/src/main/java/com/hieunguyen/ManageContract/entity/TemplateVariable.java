@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.hieunguyen.ManageContract.common.constants.VariableType;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -26,6 +27,8 @@ public class TemplateVariable {
     @ElementCollection
     private List<String> allowedValues; // cho DROPDOWN / LIST
 
-    @ManyToOne @JoinColumn(name = "template_id")
+    @ManyToOne
+    @JoinColumn(name = "template_id")
+    @JsonBackReference
     private ContractTemplate template;
 }

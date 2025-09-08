@@ -1,11 +1,12 @@
 package com.hieunguyen.ManageContract.controller;
 
+import com.hieunguyen.ManageContract.dto.ResponseData;
+import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
+import com.hieunguyen.ManageContract.dto.contract.CreateContractRequest;
 import com.hieunguyen.ManageContract.entity.AuthAccount;
-import com.hieunguyen.ManageContract.entity.Contract;
-import com.hieunguyen.ManageContract.repository.AuthAccountRepository;
 import com.hieunguyen.ManageContract.service.ContractService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -15,20 +16,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ContractController {
     private final ContractService contractService;
-    private final AuthAccountRepository accountRepository;
 
     @PostMapping("/create")
-    public ResponseEntity<?> createContract(
-            @RequestParam Long templateId,
-            @RequestParam String title,
-            @RequestParam Long accountId,
-            @RequestBody Map<String, String> variableValues) {
+    public ResponseData<ContractResponse> createContract(
+            @RequestBody CreateContractRequest request,
+            @AuthenticationPrincipal AuthAccount user) {
 
-        AuthAccount account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new RuntimeException("Account not found"));
-
-        Contract contract = contractService.createContract(templateId, title, variableValues, account);
-
-        return ResponseEntity.ok(contract);
+        ContractResponse response = contractService.createContract(request, user);
+        return new ResponseData<>(200,"Tạo hợp đồng thành công",response);
     }
 }
+
