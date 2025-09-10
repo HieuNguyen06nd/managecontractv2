@@ -17,9 +17,6 @@ public class ContractTemplateController {
 
     private final ContractTemplateService templateService;
 
-    /**
-     * Upload template từ file local (.docx)
-     */
     @PostMapping("/upload-file")
     public ResponseData<ContractTemplateResponse> uploadTemplateFile(
             @RequestParam MultipartFile file,
@@ -29,9 +26,7 @@ public class ContractTemplateController {
         return new ResponseData<>(200, "Upload template từ file thành công", response);
     }
 
-    /**
-     * Upload template từ link Google Docs
-     */
+
     @PostMapping("/upload-link")
     public ResponseData<ContractTemplateResponse> uploadTemplateLink(
             @RequestParam String docLink,

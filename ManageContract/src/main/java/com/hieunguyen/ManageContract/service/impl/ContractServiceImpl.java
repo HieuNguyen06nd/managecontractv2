@@ -1,16 +1,12 @@
 package com.hieunguyen.ManageContract.service.impl;
 
+import com.hieunguyen.ManageContract.common.constants.ApprovalStatus;
 import com.hieunguyen.ManageContract.common.constants.ContractStatus;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.dto.contract.CreateContractRequest;
-import com.hieunguyen.ManageContract.entity.AuthAccount;
-import com.hieunguyen.ManageContract.entity.Contract;
-import com.hieunguyen.ManageContract.entity.ContractTemplate;
-import com.hieunguyen.ManageContract.entity.ContractVariableValue;
+import com.hieunguyen.ManageContract.entity.*;
 import com.hieunguyen.ManageContract.mapper.ContractMapper;
-import com.hieunguyen.ManageContract.repository.ContractRepository;
-import com.hieunguyen.ManageContract.repository.ContractTemplateRepository;
-import com.hieunguyen.ManageContract.repository.ContractVariableValueRepository;
+import com.hieunguyen.ManageContract.repository.*;
 import com.hieunguyen.ManageContract.service.ContractFileService;
 import com.hieunguyen.ManageContract.service.ContractService;
 import jakarta.transaction.Transactional;
@@ -29,6 +25,8 @@ public class ContractServiceImpl implements ContractService {
     private final ContractVariableValueRepository variableValueRepository;
     private final ContractTemplateRepository templateRepository;
     private final ContractFileService contractFileService;
+    private final ApprovalFlowRepository flowRepository;
+    private final ContractApprovalRepository contractApprovalRepository;
 
     @Transactional
     @Override
@@ -64,28 +62,5 @@ public class ContractServiceImpl implements ContractService {
         // Dùng mapper để trả ra DTO
         return ContractMapper.toResponse(saved);
     }
-
-    @Transactional
-    @Override
-    public ContractResponse submitForApproval(Long contractId) {
-        Contract contract = contractRepository.findById(contractId)
-                .orElseThrow(() -> new RuntimeException("Contract not found"));
-
-        if (contract.getStatus() != ContractStatus.DRAFT) {
-            throw new RuntimeException("Only draft contracts can be submitted");
-        }
-
-        // Generate file Word đã thay biến
-        String filePath = contractFileService.generateContractFile(contract);
-        contract.setFilePath(filePath);
-
-        // Update trạng thái
-        contract.setStatus(ContractStatus.PENDING_APPROVAL);
-        Contract updated = contractRepository.save(contract);
-
-        return ContractMapper.toResponse(updated);
-    }
-
-
 
 }
