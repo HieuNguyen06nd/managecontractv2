@@ -4,6 +4,7 @@ import com.hieunguyen.ManageContract.dto.ResponseData;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.dto.contract.CreateContractRequest;
 import com.hieunguyen.ManageContract.entity.AuthAccount;
+import com.hieunguyen.ManageContract.entity.User;
 import com.hieunguyen.ManageContract.service.ContractService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,7 +21,7 @@ public class ContractController {
     @PostMapping("/create")
     public ResponseData<ContractResponse> createContract(
             @RequestBody CreateContractRequest request,
-            @AuthenticationPrincipal AuthAccount user) {
+            @AuthenticationPrincipal User user) {
 
         ContractResponse response = contractService.createContract(request, user);
         return new ResponseData<>(200,"Tạo hợp đồng thành công",response);

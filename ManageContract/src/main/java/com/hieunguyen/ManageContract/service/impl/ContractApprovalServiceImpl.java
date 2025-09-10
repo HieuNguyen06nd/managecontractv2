@@ -53,7 +53,7 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                         .stepOrder(step.getStepOrder())
                         .required(step.getRequired())
                         .isFinalStep(step.getIsFinalStep())
-                        .role(step.getRole())
+
                         .department(step.getDepartment())
                         .isCurrent(step.getStepOrder() == 1) // step đầu tiên active
                         .status(ApprovalStatus.PENDING)

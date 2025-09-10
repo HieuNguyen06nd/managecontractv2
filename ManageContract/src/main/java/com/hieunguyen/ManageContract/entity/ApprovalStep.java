@@ -17,8 +17,10 @@ public class ApprovalStep {
     @ManyToOne @JoinColumn(name = "flow_id")
     private ApprovalFlow flow;
 
-    @ManyToOne @JoinColumn(name = "role_id")
-    private Role role;
+    // Vị trí (chức vụ) cần ký
+    @ManyToOne
+    @JoinColumn(name = "position_id", nullable = false)
+    private Position position;
 
     @ManyToOne
     @JoinColumn(name = "department_id")

@@ -25,9 +25,9 @@ public class ContractTemplateMapper {
         if (template.getCreatedBy() != null) {
             AuthAccountResponse account = new AuthAccountResponse();
             account.setId(template.getCreatedBy().getId());
-            account.setEmail(template.getCreatedBy().getEmail());
+//            account.setEmail(template.getCreatedBy().getEmail());
             account.setPhone(template.getCreatedBy().getPhone());
-            account.setEmailVerified(template.getCreatedBy().isEmailVerified());
+//            account.setEmailVerified(template.getCreatedBy().isEmailVerified());
             dto.setCreatedBy(account);
         }
 

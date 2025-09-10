@@ -54,7 +54,7 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
         ApprovalStep step = new ApprovalStep();
         step.setStepOrder(request.getStepOrder());
         step.setRequired(request.getRequired());
-        step.setRole(role);
+
         step.setDepartment(department);
         step.setFlow(flow);
         step.setIsFinalStep(request.getIsFinalStep() != null && request.getIsFinalStep());
@@ -89,7 +89,7 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
         dto.setId(step.getId());
         dto.setStepOrder(step.getStepOrder());
         dto.setRequired(step.getRequired());
-        dto.setRoleId(step.getRole().getId());
+
         dto.setDepartmentId(step.getDepartment() != null ? step.getDepartment().getId() : null);
         dto.setIsFinalStep(step.getIsFinalStep());
         return dto;

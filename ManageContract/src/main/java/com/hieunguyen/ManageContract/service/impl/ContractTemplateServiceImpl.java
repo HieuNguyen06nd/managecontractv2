@@ -6,10 +6,12 @@ import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateRespon
 import com.hieunguyen.ManageContract.entity.AuthAccount;
 import com.hieunguyen.ManageContract.entity.ContractTemplate;
 import com.hieunguyen.ManageContract.entity.TemplateVariable;
+import com.hieunguyen.ManageContract.entity.User;
 import com.hieunguyen.ManageContract.mapper.ContractTemplateMapper;
 import com.hieunguyen.ManageContract.repository.AuthAccountRepository;
 import com.hieunguyen.ManageContract.repository.ContractTemplateRepository;
 import com.hieunguyen.ManageContract.repository.TemplateVariableRepository;
+import com.hieunguyen.ManageContract.repository.UserRepository;
 import com.hieunguyen.ManageContract.service.ContractTemplateService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +36,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
 
     private final ContractTemplateRepository templateRepository;
     private final TemplateVariableRepository variableRepository;
-    private final AuthAccountRepository accountRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
@@ -43,7 +45,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
             throw new IllegalArgumentException("File không được để trống");
         }
 
-        AuthAccount createdBy = accountRepository.findById(accountId)
+        User createdBy = userRepository.findById(accountId)
                 .orElseThrow(() -> new ResourceNotFoundException("Account không tồn tại"));
 
         Path targetPath = saveFile(file.getOriginalFilename(), file.getInputStream());
@@ -59,7 +61,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
             throw new IllegalArgumentException("Link Google Docs không được để trống");
         }
 
-        AuthAccount createdBy = accountRepository.findById(accountId)
+        User createdBy = userRepository.findById(accountId)
                 .orElseThrow(() -> new RuntimeException("Account không tồn tại"));
 
         // link share → export docx
@@ -98,7 +100,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
     /**
      * Xử lý file DOCX: đọc nội dung, tìm biến ${var}, lưu vào DB
      */
-    private ContractTemplate processDocxFile(Path filePath, AuthAccount createdBy) throws IOException {
+    private ContractTemplate processDocxFile(Path filePath, User createdBy) throws IOException {
         StringBuilder text = new StringBuilder();
 
         try (XWPFDocument document = new XWPFDocument(Files.newInputStream(filePath))) {
@@ -121,7 +123,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
     /**
      * Lưu template và biến
      */
-    private ContractTemplate saveTemplateAndVariables(Path filePath, AuthAccount createdBy, String text) {
+    private ContractTemplate saveTemplateAndVariables(Path filePath, User createdBy, String text) {
         ContractTemplate template = new ContractTemplate();
         template.setName(filePath.getFileName().toString());
         template.setFilePath(filePath.toString());

@@ -27,6 +27,9 @@ public class TemplateVariable {
     @ElementCollection
     private List<String> allowedValues; // cho DROPDOWN / LIST
 
+    // STT để sắp xếp thứ tự biến trong template
+    private Integer orderIndex;
+
     @ManyToOne
     @JoinColumn(name = "template_id")
     @JsonBackReference

@@ -25,8 +25,9 @@ public class Contract {
     @ManyToOne @JoinColumn(name = "template_id")
     private ContractTemplate template;
 
-    @ManyToOne @JoinColumn(name = "created_by")
-    private AuthAccount createdBy;
+    @ManyToOne
+    @JoinColumn(name = "created_by", nullable = false)
+    private User createdBy;
 
     @OneToMany(mappedBy = "contract")
     private List<ContractVariableValue> variableValues;

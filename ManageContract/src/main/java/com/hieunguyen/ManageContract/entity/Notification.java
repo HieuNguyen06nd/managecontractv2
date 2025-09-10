@@ -29,6 +29,6 @@ public class Notification {
     private ApprovalStep step;   // notify phát sinh ở bước nào (nếu liên quan phê duyệt)
 
     @ManyToOne @JoinColumn(name = "recipient_id")
-    private AuthAccount recipient;
+    private User recipient;
 }
 

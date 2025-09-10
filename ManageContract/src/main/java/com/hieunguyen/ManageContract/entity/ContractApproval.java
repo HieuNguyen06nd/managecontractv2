@@ -57,10 +57,10 @@ public class ContractApproval {
     // Step cuối cùng trong flow
     private Boolean isFinalStep;
 
-    // Role của người approve nếu approver chưa gán
+    // Position của người approve nếu approver chưa gán
     @ManyToOne
-    @JoinColumn(name = "role_id")
-    private Role role;
+    @JoinColumn(name = "position_id")
+    private Position position;
 
     // Department của người approve nếu approver chưa gán
     @ManyToOne

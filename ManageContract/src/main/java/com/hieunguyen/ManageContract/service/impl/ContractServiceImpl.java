@@ -30,7 +30,7 @@ public class ContractServiceImpl implements ContractService {
 
     @Transactional
     @Override
-    public ContractResponse createContract(CreateContractRequest request, AuthAccount createdBy) {
+    public ContractResponse createContract(CreateContractRequest request, User createdBy) {
         ContractTemplate template = templateRepository.findById(request.getTemplateId())
                 .orElseThrow(() -> new RuntimeException("Template not found"));
 

@@ -19,7 +19,7 @@ public class ContractTemplate {
 
     @ManyToOne
     @JoinColumn(name = "created_by")
-    private AuthAccount createdBy;
+    private User createdBy;
 
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
     @JsonManagedReference
