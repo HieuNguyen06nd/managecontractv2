@@ -14,8 +14,7 @@ spring:
     password: 1234567
   jpa:
     hibernate:
-      ddl-auto: create
-    #      A Hieu se lam theo phuong an tao db bang mysql workbench, khong dung bang entity
+      ddl-auto: update
     show-sql: true
   security:
     oauth2:

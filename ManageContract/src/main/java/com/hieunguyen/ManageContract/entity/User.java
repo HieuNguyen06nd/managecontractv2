@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.entity;
 
+import com.nimbusds.openid.connect.sdk.claims.Gender;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,6 +25,8 @@ public class User {
     private String fullName;
     private String phone;
     private String signatureImage;
+
+    private Gender gender;
 
     @ManyToOne @JoinColumn(name = "department_id")
     private Department department;

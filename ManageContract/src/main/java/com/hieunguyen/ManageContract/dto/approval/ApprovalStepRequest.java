@@ -8,5 +8,6 @@ public class ApprovalStepRequest {
     private Boolean required;
     private Long roleId;       // ai sẽ ký
     private Long departmentId; // optional
+    private Long positionId;
     private Boolean isFinalStep;
 }

@@ -59,6 +59,36 @@ public class ContractServiceImpl implements ContractService {
         // Gắn lại list values để mapper convert sang DTO đầy đủ
         saved.setVariableValues(values);
 
+        // Gắn flow (mặc định hoặc override)
+        ApprovalFlow flowToUse;
+        if (template.getAllowOverrideFlow() && request.getFlowId() != null) {
+            flowToUse = flowRepository.findById(request.getFlowId())
+                    .orElseThrow(() -> new RuntimeException("Flow không tồn tại"));
+        } else if (template.getDefaultFlow() != null) {
+            flowToUse = template.getDefaultFlow();
+        } else {
+            flowToUse = null; // không có flow áp dụng
+        }
+
+        if (flowToUse != null) {
+            // Copy steps sang ContractApproval
+            List<ContractApproval> approvals = flowToUse.getSteps().stream()
+                    .map(step -> ContractApproval.builder()
+                            .contract(saved)
+                            .step(step)
+                            .stepOrder(step.getStepOrder())
+                            .required(step.getRequired())
+                            .isFinalStep(step.getIsFinalStep())
+                            .department(step.getDepartment())
+                            .position(step.getPosition())
+                            .isCurrent(step.getStepOrder() == 1)
+                            .status(step.getStepOrder() == 1 ? ApprovalStatus.PENDING : ApprovalStatus.PENDING)
+                            .build())
+                    .toList();
+
+            contractApprovalRepository.saveAll(approvals);
+        }
+
         // Dùng mapper để trả ra DTO
         return ContractMapper.toResponse(saved);
     }

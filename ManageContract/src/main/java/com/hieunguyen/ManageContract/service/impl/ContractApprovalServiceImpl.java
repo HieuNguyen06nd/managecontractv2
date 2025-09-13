@@ -2,6 +2,7 @@ package com.hieunguyen.ManageContract.service.impl;
 
 import com.hieunguyen.ManageContract.common.constants.ApprovalStatus;
 import com.hieunguyen.ManageContract.common.constants.ContractStatus;
+import com.hieunguyen.ManageContract.dto.approval.StepApprovalRequest;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.entity.ApprovalFlow;
 import com.hieunguyen.ManageContract.entity.Contract;
@@ -24,6 +25,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ContractApprovalServiceImpl implements ContractApprovalService {
+
     private final ContractRepository contractRepository;
     private final UserRepository userRepository;
     private final ApprovalFlowRepository flowRepository;
@@ -37,62 +39,68 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
 
         if (contract.getStatus() != ContractStatus.DRAFT) {
-            throw new RuntimeException("Only draft contracts can be submitted");
+            throw new RuntimeException("Only draft contracts can be submitted for approval");
         }
 
+        if (contractApprovalRepository.existsByContractId(contractId)) {
+            throw new RuntimeException("Contract already has an approval flow");
+        }
 
         ApprovalFlow flow = (flowId != null)
                 ? flowRepository.findById(flowId).orElseThrow(() -> new RuntimeException("Flow not found"))
                 : flowRepository.findByTemplateId(contract.getTemplate().getId())
-                .orElseThrow(() -> new RuntimeException("No approval flow defined"));
+                .orElseThrow(() -> new RuntimeException("No approval flow defined for this template"));
 
-        // Copy steps từ flow sang contract_approvals
-        List<ContractApproval> approvals = flow.getSteps().stream().map(step -> ContractApproval.builder()
+        List<ContractApproval> approvals = flow.getSteps().stream()
+                .map(step -> ContractApproval.builder()
                         .contract(contract)
                         .step(step)
                         .stepOrder(step.getStepOrder())
                         .required(step.getRequired())
                         .isFinalStep(step.getIsFinalStep())
-
                         .department(step.getDepartment())
-                        .isCurrent(step.getStepOrder() == 1) // step đầu tiên active
+                        .position(step.getPosition())
+                        .isCurrent(step.getStepOrder() == 1)
                         .status(ApprovalStatus.PENDING)
                         .build())
                 .toList();
 
         contractApprovalRepository.saveAll(approvals);
 
-        // Generate file Word đã thay biến
-        String filePath = contractFileService.generateContractFile(contract);
-        contract.setFilePath(filePath);
-
-        // Update trạng thái
+        contract.setFilePath(contractFileService.generateContractFile(contract));
         contract.setStatus(ContractStatus.PENDING_APPROVAL);
-        Contract updated = contractRepository.save(contract);
 
-        return ContractMapper.toResponse(updated);
+        return ContractMapper.toResponse(contractRepository.save(contract));
     }
-
 
     @Transactional
     @Override
-    public ContractResponse approveStep(Long contractId, Long stepId, Long approverId, boolean approved, String comment) {
-        ContractApproval approval = contractApprovalRepository.findByContractIdAndStepId(contractId, stepId)
-                .orElseThrow(() -> new RuntimeException("Step not found for contract"));
+    public ContractResponse approveStep(Long stepId, StepApprovalRequest request) {
+        return processStep(stepId, request, true);
+    }
+
+    @Transactional
+    @Override
+    public ContractResponse rejectStep(Long stepId, StepApprovalRequest request) {
+        return processStep(stepId, request, false);
+    }
+
+    private ContractResponse processStep(Long stepId, StepApprovalRequest request, boolean approved) {
+        ContractApproval approval = contractApprovalRepository.findById(stepId)
+                .orElseThrow(() -> new RuntimeException("Approval step not found"));
 
         if (!Boolean.TRUE.equals(approval.getIsCurrent())) {
-            throw new RuntimeException("This step is not active");
+            throw new RuntimeException("This step is not active for approval");
         }
 
-        User approver = userRepository.findById(approverId)
+        User approver = userRepository.findById(request.getApproverId())
                 .orElseThrow(() -> new RuntimeException("Approver not found"));
 
-        approval.setStatus(approved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED);
-        approval.setApprovedAt(LocalDateTime.now());
         approval.setApprover(approver);
-        approval.setComment(comment);
+        approval.setApprovedAt(LocalDateTime.now());
+        approval.setComment(request.getComment());
         approval.setIsCurrent(false);
-
+        approval.setStatus(approved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED);
         contractApprovalRepository.save(approval);
 
         Contract contract = approval.getContract();
@@ -103,24 +111,25 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
             return ContractMapper.toResponse(contract);
         }
 
-        // Nếu là step cuối cùng
         if (Boolean.TRUE.equals(approval.getIsFinalStep())) {
             contract.setStatus(ContractStatus.APPROVED);
             contractRepository.save(contract);
-        } else {
-            // Kích hoạt step kế tiếp
-            ContractApproval nextStep = contractApprovalRepository.findByContractIdAndStepOrder(contractId, approval.getStepOrder() + 1)
-                    .orElseThrow(() -> new RuntimeException("Next step not found"));
-            nextStep.setIsCurrent(true);
-            contractApprovalRepository.save(nextStep);
+            return ContractMapper.toResponse(contract);
+        }
 
+        contractApprovalRepository.findByContractIdAndStepOrder(
+                contract.getId(), approval.getStepOrder() + 1
+        ).ifPresentOrElse(next -> {
+            next.setIsCurrent(true);
+            contractApprovalRepository.save(next);
             contract.setStatus(ContractStatus.PENDING_APPROVAL);
             contractRepository.save(contract);
-        }
+        }, () -> {
+            throw new RuntimeException("Next step not found");
+        });
 
         return ContractMapper.toResponse(contract);
     }
-
 
     @Override
     public ContractResponse getApprovalProgress(Long contractId) {

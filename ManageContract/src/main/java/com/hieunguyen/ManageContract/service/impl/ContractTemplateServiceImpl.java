@@ -1,14 +1,12 @@
 package com.hieunguyen.ManageContract.service.impl;
 
-import com.hieunguyen.ManageContract.common.constants.VariableType;
 import com.hieunguyen.ManageContract.common.exception.ResourceNotFoundException;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateResponse;
-import com.hieunguyen.ManageContract.entity.AuthAccount;
+import com.hieunguyen.ManageContract.dto.templateVariable.VariableUpdateRequest;
 import com.hieunguyen.ManageContract.entity.ContractTemplate;
 import com.hieunguyen.ManageContract.entity.TemplateVariable;
 import com.hieunguyen.ManageContract.entity.User;
 import com.hieunguyen.ManageContract.mapper.ContractTemplateMapper;
-import com.hieunguyen.ManageContract.repository.AuthAccountRepository;
 import com.hieunguyen.ManageContract.repository.ContractTemplateRepository;
 import com.hieunguyen.ManageContract.repository.TemplateVariableRepository;
 import com.hieunguyen.ManageContract.repository.UserRepository;
@@ -77,8 +75,22 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         }
     }
 
-    // --- helper methods ---
+    @Transactional
+    @Override
+    public void updateVariableTypes(Long templateId, List<VariableUpdateRequest> requests) {
+        ContractTemplate template = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("Template không tồn tại"));
 
+        for (VariableUpdateRequest req : requests) {
+            TemplateVariable variable = variableRepository.findByTemplateAndVarName(template, req.getVarName())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy biến: " + req.getVarName()));
+
+            variable.setVarType(req.getVarType()); // user chọn từ FE
+            variableRepository.save(variable);
+        }
+    }
+
+    // --- helper methods ---
     private Path saveFile(String fileName, InputStream inputStream) throws IOException {
         Path uploadDir = Paths.get("uploads/templates");
         if (!Files.exists(uploadDir)) Files.createDirectories(uploadDir);
@@ -86,6 +98,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
         return targetPath;
     }
+
 
     private String normalizeGoogleDocsLink(String docLink) {
         if (docLink.contains("/export?")) {
@@ -133,18 +146,24 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         // Regex ${varName}
         Pattern pattern = Pattern.compile("\\$\\{(.*?)}");
         Matcher matcher = pattern.matcher(text);
-        Set<String> variableNames = new HashSet<>();
-        while (matcher.find()) {
-            variableNames.add(matcher.group(1).trim());
-        }
 
         List<TemplateVariable> variables = new ArrayList<>();
-        for (String varName : variableNames) {
+        int order = 1;
+        while (matcher.find()) {
+            String varName = matcher.group(1).trim();
+
+            // tránh trùng tên -> nếu đã có thì bỏ qua
+            boolean exists = variables.stream()
+                    .anyMatch(v -> v.getVarName().equalsIgnoreCase(varName));
+            if (exists) continue;
+
             TemplateVariable variable = new TemplateVariable();
             variable.setVarName(varName);
-            variable.setVarType(detectVariableType(varName));
-            variable.setRequired(false);
+            variable.setVarType(null);       // chưa chọn, FE sẽ cập nhật sau
+            variable.setRequired(false);     // mặc định chưa bắt buộc
+            variable.setOrderIndex(order++); // gán STT theo thứ tự đọc trong file
             variable.setTemplate(template);
+
             variableRepository.save(variable);
             variables.add(variable);
         }
@@ -153,28 +172,4 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         return template;
     }
 
-    /**
-     * Nhận diện kiểu dữ liệu từ tên biến
-     */
-    private VariableType detectVariableType(String varName) {
-        String lower = varName.toLowerCase();
-
-        if (lower.contains("date") || lower.contains("ngay") || lower.contains("dob")) {
-            return VariableType.DATE;
-        }
-        if (lower.contains("amount") || lower.contains("price") || lower.contains("total") || lower.contains("so")) {
-            return VariableType.NUMBER;
-        }
-        if (lower.startsWith("is") || lower.startsWith("has") || lower.contains("active")) {
-            return VariableType.BOOLEAN;
-        }
-        if (lower.contains("description") || lower.contains("note") || lower.contains("content")) {
-            return VariableType.TEXTAREA;
-        }
-        if (lower.contains("gender") || lower.contains("status") || lower.contains("type")) {
-            return VariableType.DROPDOWN;
-        }
-
-        return VariableType.STRING;
-    }
 }

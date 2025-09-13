@@ -12,6 +12,12 @@ public class ContractTemplateResponse {
     private String name;
     private String description;
     private String filePath;
+
     private AuthAccountResponse createdBy;
     private List<TemplateVariableResponse> variables;
+
+    // --- flow info ---
+    private Long defaultFlowId;          // Id của flow mặc định (nếu có)
+    private String defaultFlowName;      // Tên flow mặc định (tùy chọn)
+    private Boolean allowOverrideFlow;   // Có cho phép thay đổi flow không
 }

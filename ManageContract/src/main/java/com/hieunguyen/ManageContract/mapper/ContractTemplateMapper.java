@@ -3,8 +3,10 @@ package com.hieunguyen.ManageContract.mapper;
 import com.hieunguyen.ManageContract.dto.authAccount.AuthAccountResponse;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateResponse;
 import com.hieunguyen.ManageContract.dto.templateVariable.TemplateVariableResponse;
+import com.hieunguyen.ManageContract.entity.AuthAccount;
 import com.hieunguyen.ManageContract.entity.ContractTemplate;
 import com.hieunguyen.ManageContract.entity.TemplateVariable;
+import com.hieunguyen.ManageContract.entity.User;
 
 import java.util.Collections;
 import java.util.List;
@@ -21,14 +23,18 @@ public class ContractTemplateMapper {
         dto.setDescription(template.getDescription());
         dto.setFilePath(template.getFilePath());
 
-        // Map createdBy
+        // Map createdBy từ User
         if (template.getCreatedBy() != null) {
-            AuthAccountResponse account = new AuthAccountResponse();
-            account.setId(template.getCreatedBy().getId());
-//            account.setEmail(template.getCreatedBy().getEmail());
-            account.setPhone(template.getCreatedBy().getPhone());
-//            account.setEmailVerified(template.getCreatedBy().isEmailVerified());
-            dto.setCreatedBy(account);
+            User user = template.getCreatedBy();
+            AuthAccount account = user.getAccount();
+            if (account != null) {
+                AuthAccountResponse dtoAccount = new AuthAccountResponse();
+                dtoAccount.setId(account.getId());
+                dtoAccount.setEmail(account.getEmail());
+                dtoAccount.setPhone(account.getPhone());
+                dtoAccount.setEmailVerified(account.isEmailVerified());
+                dto.setCreatedBy(dtoAccount);
+            }
         }
 
         // Map variables
@@ -51,6 +57,9 @@ public class ContractTemplateMapper {
         dto.setVarType(variable.getVarType() != null ? variable.getVarType().name() : null);
         dto.setRequired(variable.getRequired());
         dto.setDefaultValue(variable.getDefaultValue());
+        dto.setAllowedValues(variable.getAllowedValues()); // nếu muốn trả về list dropdown
+        dto.setOrderIndex(variable.getOrderIndex()); // thứ tự biến
         return dto;
     }
+
 }

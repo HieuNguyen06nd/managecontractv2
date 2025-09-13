@@ -29,6 +29,10 @@ public class Contract {
     @JoinColumn(name = "created_by", nullable = false)
     private User createdBy;
 
+    @ManyToOne
+    @JoinColumn(name = "flow_id")
+    private ApprovalFlow flow;
+
     @OneToMany(mappedBy = "contract")
     private List<ContractVariableValue> variableValues;
 }

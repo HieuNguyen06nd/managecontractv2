@@ -1,14 +1,19 @@
 package com.hieunguyen.ManageContract.service;
 
+import com.hieunguyen.ManageContract.dto.approval.StepApprovalRequest;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 
 public interface ContractApprovalService {
-    // Trình ký hợp đồng (sử dụng flow mặc định hoặc override bằng flowId)
+    // Trình ký hợp đồng
     ContractResponse submitForApproval(Long contractId, Long flowId);
 
-    // Approve / Reject một step
-    ContractResponse approveStep(Long contractId, Long stepId, Long approverId, boolean approved, String comment);
+    // Approve step chỉ cần stepId
+    ContractResponse approveStep(Long stepId, StepApprovalRequest request);
 
-    // Xem tiến trình phê duyệt
+    // Reject step chỉ cần stepId
+    ContractResponse rejectStep(Long stepId, StepApprovalRequest request);
+
+    // Xem tiến trình
     ContractResponse getApprovalProgress(Long contractId);
 }
+

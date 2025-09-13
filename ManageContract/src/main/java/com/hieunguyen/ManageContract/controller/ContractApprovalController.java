@@ -1,43 +1,67 @@
 package com.hieunguyen.ManageContract.controller;
 
 import com.hieunguyen.ManageContract.dto.ResponseData;
+import com.hieunguyen.ManageContract.dto.approval.StepApprovalRequest;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.service.ContractApprovalService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/approvals")
+@RequestMapping("/api/contracts/approvals")
 @RequiredArgsConstructor
 public class ContractApprovalController {
 
-    private final ContractApprovalService approvalService;
+    private final ContractApprovalService contractApprovalService;
 
-    @PostMapping("/submit/{contractId}")
-    public ResponseData<ContractResponse> submitContract(
+    /**
+     * Trình ký hợp đồng (chạy theo flow mặc định hoặc flow override nếu có)
+     */
+    @PostMapping("/{contractId}/submit")
+    public ResponseData<ContractResponse> submitForApproval(
             @PathVariable Long contractId,
-            @RequestParam(required = false) Long flowId) {
-        ContractResponse response = approvalService.submitForApproval(contractId, flowId);
-        return new ResponseData<>(200, "Trình ký hợp đồng thành công", response);
-    }
-
-    @PostMapping("/contracts/{contractId}/steps/{stepId}/approve")
-    public ResponseData<ContractResponse> approveStep(
-            @PathVariable Long contractId,
-            @PathVariable Long stepId,
-            @RequestParam Long approverId,
-            @RequestParam boolean approved,
-            @RequestParam(required = false) String comment
+            @RequestParam(required = false) Long flowId
     ) {
-        ContractResponse response = approvalService.approveStep(contractId, stepId, approverId, approved, comment);
-        String msg = approved ? "Phê duyệt thành công" : "Từ chối hợp đồng thành công";
-        return new ResponseData<>(200, msg, response);
+        ContractResponse response = contractApprovalService.submitForApproval(contractId, flowId);
+        return new ResponseData<>(HttpStatus.OK.value(), "Submit contract for approval successfully", response);
     }
 
-    // Lấy tiến trình phê duyệt
+    /**
+     * Approve step
+     */
+    @PostMapping("/{contractId}/steps/{stepId}/approve")
+    public ResponseData<ContractResponse> approveStep(
+            @PathVariable Long stepId,
+            @RequestBody StepApprovalRequest request
+    ) {
+        ContractResponse response = contractApprovalService.approveStep( stepId, request);
+        return new ResponseData<>(200, "Step approved successfully", response);
+    }
+
+    /**
+     * Reject step
+     */
+    @PostMapping("/{contractId}/steps/{stepId}/reject")
+    public ResponseData<ContractResponse> rejectStep(
+            @PathVariable Long stepId,
+            @RequestBody StepApprovalRequest request
+    ) {
+        ContractResponse response = contractApprovalService.rejectStep( stepId, request);
+        return new ResponseData<>(200, "Step reject successfully", response);
+    }
+
+    /**
+     * Xem tiến trình phê duyệt
+     */
     @GetMapping("/{contractId}/progress")
-    public ResponseData<ContractResponse> getApprovalProgress(@PathVariable Long contractId) {
-        ContractResponse response = approvalService.getApprovalProgress(contractId);
-        return new ResponseData<>(200, "Lấy tiến trình phê duyệt thành công", response);
+    public ResponseEntity<ResponseData<ContractResponse>> getApprovalProgress(
+            @PathVariable Long contractId
+    ) {
+        ContractResponse response = contractApprovalService.getApprovalProgress(contractId);
+        return ResponseEntity.ok(
+                new ResponseData<>(HttpStatus.OK.value(), "Get approval progress successfully", response)
+        );
     }
 }

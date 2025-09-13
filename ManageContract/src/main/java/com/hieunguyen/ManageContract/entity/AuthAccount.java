@@ -20,6 +20,9 @@ public class AuthAccount {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @OneToOne(mappedBy = "account", cascade = CascadeType.ALL)
+    private User user;
+
     @Column(nullable = false)
     private String password;
 

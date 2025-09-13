@@ -24,5 +24,12 @@ public class ContractTemplate {
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
     @JsonManagedReference
     private List<TemplateVariable> variables;
+
+    @ManyToOne
+    @JoinColumn(name = "default_flow_id")
+    private ApprovalFlow defaultFlow;
+
+    private Boolean allowOverrideFlow = true;
+
 }
 

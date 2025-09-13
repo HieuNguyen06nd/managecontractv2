@@ -9,5 +9,6 @@ public class ApprovalStepResponse {
     private Boolean required;
     private Long roleId;
     private Long departmentId;
+    private Long positionId;
     private Boolean isFinalStep;
 }
