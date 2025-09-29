@@ -3,10 +3,12 @@ package com.hieunguyen.ManageContract.service.impl;
 import com.hieunguyen.ManageContract.common.constants.StatusUser;
 import com.hieunguyen.ManageContract.dto.authAccount.AuthResponse;
 import com.hieunguyen.ManageContract.dto.authAccount.RegisterRequest;
+import com.hieunguyen.ManageContract.dto.authAccount.ResetPasswordRequest;
+import com.hieunguyen.ManageContract.dto.permission.PermissionResponse;
 import com.hieunguyen.ManageContract.dto.role.RoleResponse;
 import com.hieunguyen.ManageContract.entity.AuthAccount;
+import com.hieunguyen.ManageContract.entity.Employee;
 import com.hieunguyen.ManageContract.entity.Role;
-import com.hieunguyen.ManageContract.entity.User;
 import com.hieunguyen.ManageContract.entity.UserRole;
 import com.hieunguyen.ManageContract.repository.AuthAccountRepository;
 import com.hieunguyen.ManageContract.repository.RoleRepository;
@@ -76,12 +78,12 @@ public class AuthServiceImpl implements AuthService {
         }
 
         // 5. Tạo User mặc định cho account
-        User user = User.builder()
+        Employee employee = Employee.builder()
                 .account(account)
                 .fullName(request.getFullName() != null ? request.getFullName() : "Chưa cập nhật")
                 .phone(request.getPhone())
                 .build();
-        userRepository.save(user);
+        userRepository.save(employee);
 
         // 6. Gửi email xác minh
         emailService.sendVerificationCode(account.getEmail(), account.getEmailVerificationToken());
@@ -118,7 +120,6 @@ public class AuthServiceImpl implements AuthService {
         emailService.sendOtp(email, otp);
     }
 
-
     @Override
     public AuthResponse login(String identifier, String password, String otp) {
         AuthAccount account = authAccountRepository.findByEmailWithRolesAndPermissions(identifier)
@@ -126,10 +127,12 @@ public class AuthServiceImpl implements AuthService {
 
         boolean isAuthenticated = false;
 
+        // check password
         if (password != null && passwordEncoder.matches(password, account.getPassword())) {
             isAuthenticated = true;
         }
 
+        // check otp
         if (!isAuthenticated && otp != null && otpService.verifyOtp(account.getEmail(), otp)) {
             isAuthenticated = true;
         }
@@ -142,22 +145,44 @@ public class AuthServiceImpl implements AuthService {
             throw new RuntimeException("Email chưa được xác minh.");
         }
 
-        List<RoleResponse> roleKeys = account.getUserRoles().stream()
+        // map role + permissions
+        List<RoleResponse> roleResponses = account.getUserRoles().stream()
                 .map(userRole -> {
                     Role role = userRole.getRole();
-                    return new RoleResponse(role.getRoleKey(), role.getDescription());
+
+                    List<PermissionResponse> permissionResponses = role.getRolePermissions().stream()
+                            .map(rp -> new PermissionResponse(
+                                    rp.getPermission().getId(),
+                                    rp.getPermission().getPermissionKey(),
+                                    rp.getPermission().getDescription(),
+                                    rp.getPermission().getModule()
+                            ))
+                            .toList();
+
+                    return new RoleResponse(
+                            role.getId(),
+                            role.getRoleKey(),
+                            role.getDescription(),
+                            permissionResponses
+                    );
                 })
                 .toList();
+
+        // add claims
         Map<String, Object> claims = new HashMap<>();
-        claims.put("roles", roleKeys);
+        claims.put("roles", roleResponses);
 
         String accessToken = jwtUtil.generateTokenWithClaims(account.getEmail(), claims);
         String refreshToken = jwtUtil.generateRefreshToken(account.getEmail());
 
+        // lưu refreshToken vào Redis
         redisTemplate.opsForValue().set("TOKEN:" + account.getEmail(), refreshToken);
 
-        return new AuthResponse(accessToken, account.getId(), roleKeys);
+        // trả về cả accessToken và refreshToken
+        return new AuthResponse(accessToken, refreshToken, account.getId(), roleResponses);
     }
+
+
 
     @Override
     public String refreshToken(String refreshToken) {
@@ -208,18 +233,12 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public void resetPasswordWithOtp(String email, String otp, String newPassword) {
-        AuthAccount account = authAccountRepository.findByEmail(email)
+    public void resetPasswordWithOtp(ResetPasswordRequest request) {
+        AuthAccount account = authAccountRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("Email không tồn tại"));
 
-        if (!otpService.verifyOtp(email, otp)) {
-            throw new RuntimeException("OTP không hợp lệ hoặc đã hết hạn");
-        }
-
-        account.setPassword(passwordEncoder.encode(newPassword));
+        account.setPassword(passwordEncoder.encode(request.getNewPassword()));
         authAccountRepository.save(account);
-
-        // Xoá OTP sau khi dùng
-        otpService.clearOtp(email);
     }
+
 }

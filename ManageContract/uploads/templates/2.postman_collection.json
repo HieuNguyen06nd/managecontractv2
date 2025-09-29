@@ -1,0 +1,732 @@
+{
+	"info": {
+		"_postman_id": "71f6a867-4333-46c4-87f0-c187e6d06dd0",
+		"name": "manageContract",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "39497155"
+	},
+	"item": [
+		{
+			"name": "auth",
+			"item": [
+				{
+					"name": "login by password",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"emailOrPhone\":\"admin\",\n    \"password\":123456\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/auth/login",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "get me",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlcyI6W3sicm9sZUlkIjoyLCJyb2xlS2V5IjoiU1RBRkYiLCJkZXNjcmlwdGlvbiI6bnVsbCwicGVybWlzc2lvbnMiOltdfV0sInN1YiI6InNlY3RpZW5nYW5oY3VuZ3RvaUBnbWFpbC5jb20iLCJpYXQiOjE3NTgyMDcyNzUsImV4cCI6MTc1ODI5MzY3NX0.EcaEk4dtjDQJjcCVrKvvgebOo70Q2w53wIoK4891-mA",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"emailOrPhone\":\"admin\",\n    \"password\":123456\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/user/me",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"user",
+								"me"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "login by otp",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"emailOrPhone\":\"sectienganhcungtoi@gmail.com\",\n    \"otp\":485758\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/auth/login",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "logout",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"emailOrPhone\":\"sectienganhcungtoi@gmail.com\",\n    \"otp\":485758\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/auth/logout?email=sectienganhcungtoi@gmail.com",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"auth",
+								"logout"
+							],
+							"query": [
+								{
+									"key": "email",
+									"value": "sectienganhcungtoi@gmail.com"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "reset forget-password",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\":\"sectienganhcungtoi@gmail.com\",\n    \"newPassword\":123321,\n    \"otp\":810764\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/auth/forgot-password/reset",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"auth",
+								"forgot-password",
+								"reset"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "register",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"sectienganhcungtoi@gmail.com\",\n  \"phone\": \"0987654321\",\n  \"password\": \"123456\",\n  \"fullName\": \"Nguyen Van A\",\n  \"roles\": [\"STAFF\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/auth/register",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "sent-otp",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "email",
+								"value": "",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "http://localhost:8080/api/auth/send-otp?email=sectienganhcungtoi@gmail.com",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"auth",
+								"send-otp"
+							],
+							"query": [
+								{
+									"key": "email",
+									"value": "sectienganhcungtoi@gmail.com"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "add permission",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "contrac-template",
+			"item": [
+				{
+					"name": "gen variable variable from file",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "accountId",
+									"value": "1",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/templates/preview-file",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"templates",
+								"preview-file"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "gen variable variable from link",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "docLink",
+									"value": "https://docs.google.com/document/d/1AJAtpEHU7emNvfyV7izMWTj-nYj4A5rKaj1Y_1cu5Eg/edit?tab=t.0",
+									"type": "text"
+								},
+								{
+									"key": "accountId",
+									"value": "1",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/templates/preview-link",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"templates",
+								"preview-link"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "gen contract variable from link Copy",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "docLink",
+									"value": "https://docs.google.com/document/d/1AJAtpEHU7emNvfyV7izMWTj-nYj4A5rKaj1Y_1cu5Eg/edit?tab=t.0",
+									"type": "text"
+								},
+								{
+									"key": "accountId",
+									"value": "1",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/templates/preview-link",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"templates",
+								"preview-link"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "updatetemplate",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\":\"Hojp dong 1\",\n    \"description\":\"aasssss\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/templates/1",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"templates",
+								"1"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "flow",
+			"item": [
+				{
+					"name": "create flow",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Luồng ký hợp đồng mua bán\",\n    \"description\": \"Luồng mặc định cho hợp đồng mua bán\",\n    \"templateId\": 1\n  }",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/flows",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"flows"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "add step to flow user",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"stepOrder\": 1,\n    \"required\": true,\n    \"approverType\": \"USER\",\n    \"employeeId\": 1,\n    \"isFinalStep\": false\n  }",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/flows/1/steps",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"flows",
+								"1",
+								"steps"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "add step to flow position -department",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"stepOrder\": 1,\n    \"required\": true,\n    \"approverType\": \"USER\",\n    \"employeeId\": 1,\n    \"isFinalStep\": false\n  }",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8080/api/flows/1/steps",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"flows",
+								"1",
+								"steps"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "view flow",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "http://localhost:8080/api/flows/1",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"api",
+								"flows",
+								"1"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "create contract",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"templateId\": 4,\r\n  \"title\": \"Hợp đồng lao động nhân viên A\",\r\n  \"variables\": [\r\n    { \"varName\": \"employee_name\", \"varValue\": \"Nguyễn Văn A\" },\r\n    { \"varName\": \"company_name\", \"varValue\": \"Công ty TNHH ABC\" },\r\n    { \"varName\": \"start_date\", \"varValue\": \"2025-09-01\" },\r\n    { \"varName\": \"end_date\", \"varValue\": \"2026-09-01\" },\r\n    { \"varName\": \"salary\", \"varValue\": \"20,000,000 VND\" },\r\n    { \"varName\": \"contract_number\", \"varValue\": \"HD001\" }\r\n  ]\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/contracts/create",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"contracts",
+						"create"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "trinh kys+toaj file",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": []
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/approvals/submit/9?flowId=1",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"approvals",
+						"submit",
+						"9"
+					],
+					"query": [
+						{
+							"key": "flowId",
+							"value": "1"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "chap nhan",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/approvals/contracts/10/steps/1/approve?approverId=8&approved=true&comment=Duyệt ok",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"approvals",
+						"contracts",
+						"10",
+						"steps",
+						"1",
+						"approve"
+					],
+					"query": [
+						{
+							"key": "approverId",
+							"value": "8"
+						},
+						{
+							"key": "approved",
+							"value": "true"
+						},
+						{
+							"key": "comment",
+							"value": "Duyệt ok"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "tien trinh",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/approvals/9/progress",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"approvals",
+						"9",
+						"progress"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "tu choi",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/approvals/contracts/10/steps/1/approve?approverId=5&approved=false&comment=Không hợp lệ&steps=1",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"approvals",
+						"contracts",
+						"10",
+						"steps",
+						"1",
+						"approve"
+					],
+					"query": [
+						{
+							"key": "approverId",
+							"value": "5"
+						},
+						{
+							"key": "approved",
+							"value": "false"
+						},
+						{
+							"key": "comment",
+							"value": "Không hợp lệ"
+						},
+						{
+							"key": "steps",
+							"value": "1"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

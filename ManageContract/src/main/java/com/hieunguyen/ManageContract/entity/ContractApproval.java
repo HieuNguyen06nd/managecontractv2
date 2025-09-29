@@ -43,7 +43,7 @@ public class ContractApproval {
     // User được gán approve cụ thể (nullable)
     @ManyToOne
     @JoinColumn(name = "approver_id")
-    private User approver;
+    private Employee approver;
 
     // Step hiện tại đang chờ approve
     private Boolean isCurrent;

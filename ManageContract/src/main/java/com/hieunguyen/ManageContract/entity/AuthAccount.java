@@ -21,7 +21,7 @@ public class AuthAccount {
     private Long id;
 
     @OneToOne(mappedBy = "account", cascade = CascadeType.ALL)
-    private User user;
+    private Employee employee;
 
     @Column(nullable = false)
     private String password;

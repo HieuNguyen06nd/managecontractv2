@@ -42,6 +42,15 @@ public class JwtUtil {
         return generateTokenWithClaims(email, claims);
     }
 
+    public String generateToken(Long accountId, String email, List<String> roleKeys, List<String> permissionKeys) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("accountId", accountId);      // 👈 Thêm userId/accountId
+        claims.put("roles", roleKeys);           // ["ADMIN", "MANAGER"]
+        claims.put("permissions", permissionKeys); // ["SIGN_CONTRACT_DIGITAL"]
+        return generateTokenWithClaims(email, claims);
+    }
+
+
     public String generateTokenWithClaims(String subject, Map<String, Object> extraClaims) {
         return Jwts.builder()
                 .setClaims(extraClaims)

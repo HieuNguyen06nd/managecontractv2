@@ -2,8 +2,6 @@ package com.hieunguyen.ManageContract.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-
-import java.security.Permission;
 import java.util.HashSet;
 import java.util.Set;
 

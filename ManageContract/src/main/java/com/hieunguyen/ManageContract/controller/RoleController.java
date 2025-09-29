@@ -38,7 +38,6 @@ public class RoleController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('role.viewAll')")
     @Operation(summary = "Xem danh sách nhóm quyền người dùng")
     public ResponseData<List<RoleResponse>> getAll() {
         List<RoleResponse> roles = roleService.getAllRoles();
@@ -46,7 +45,6 @@ public class RoleController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('role.view')")
     @Operation(summary = "Xem 1 nhóm quyền người dùng")
     public ResponseData<RoleResponse> getById(@PathVariable Long id) {
         RoleResponse role = roleService.getRoleById(id);

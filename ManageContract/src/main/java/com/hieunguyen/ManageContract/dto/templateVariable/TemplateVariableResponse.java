@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.dto.templateVariable;
 
+import com.hieunguyen.ManageContract.common.constants.VariableType;
 import lombok.Data;
 
 import java.util.List;
@@ -8,7 +9,8 @@ import java.util.List;
 public class TemplateVariableResponse {
     private Long id;
     private String varName;
-    private String varType;
+    private VariableType varType;
+    private String name;
     private Boolean required;
     private String defaultValue;
     private Integer orderIndex;

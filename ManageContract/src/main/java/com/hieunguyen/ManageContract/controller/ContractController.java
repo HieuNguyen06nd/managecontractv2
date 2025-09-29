@@ -3,14 +3,11 @@ package com.hieunguyen.ManageContract.controller;
 import com.hieunguyen.ManageContract.dto.ResponseData;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.dto.contract.CreateContractRequest;
-import com.hieunguyen.ManageContract.entity.AuthAccount;
-import com.hieunguyen.ManageContract.entity.User;
+import com.hieunguyen.ManageContract.entity.Employee;
 import com.hieunguyen.ManageContract.service.ContractService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/contracts")
@@ -20,11 +17,22 @@ public class ContractController {
 
     @PostMapping("/create")
     public ResponseData<ContractResponse> createContract(
-            @RequestBody CreateContractRequest request,
-            @AuthenticationPrincipal User user) {
+            @RequestBody CreateContractRequest request) {
+        ContractResponse response = contractService.createContract(request);
+        return new ResponseData<>(200, "Tạo hợp đồng thành công", response);
+    }
 
-        ContractResponse response = contractService.createContract(request, user);
-        return new ResponseData<>(200,"Tạo hợp đồng thành công",response);
+
+    @GetMapping("/{id}/preview")
+    public ResponseData<String> preview(@PathVariable Long id) {
+        String html = contractService.previewContract(id);
+        return new ResponseData<>(200, "Preview file contract",html);
+    }
+
+    @PostMapping("/preview")
+    public ResponseData<String> previewTemplate(@RequestBody CreateContractRequest request) {
+        String html = contractService.previewTemplate(request);
+        return new ResponseData<>(200, "Preview template", html);
     }
 }
 

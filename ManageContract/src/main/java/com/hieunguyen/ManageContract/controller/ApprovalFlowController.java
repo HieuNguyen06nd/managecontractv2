@@ -1,11 +1,14 @@
 package com.hieunguyen.ManageContract.controller;
 
 import com.hieunguyen.ManageContract.dto.ResponseData;
-import com.hieunguyen.ManageContract.dto.approval.*;
+import com.hieunguyen.ManageContract.dto.approval.ApprovalFlowRequest;
+import com.hieunguyen.ManageContract.dto.approval.ApprovalFlowResponse;
 import com.hieunguyen.ManageContract.service.ApprovalFlowService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/flows")
@@ -14,20 +17,48 @@ public class ApprovalFlowController {
 
     private final ApprovalFlowService approvalFlowService;
 
+    // Tạo flow
     @PostMapping
-    public ResponseData<ApprovalFlowResponse> createFlow(@RequestBody ApprovalFlowRequest request) {
-        return new ResponseData<>(200, "Tạo flow thành công", approvalFlowService.createFlow(request));
+    public ResponseData<ApprovalFlowResponse> createFlow(@Valid @RequestBody ApprovalFlowRequest request) {
+        var res = approvalFlowService.createFlow(request);
+        return new ResponseData<>(200, "Tạo flow thành công", res);
     }
 
-    @PostMapping("/{flowId}/steps")
-    public ResponseData<ApprovalStepResponse> addStep(
+    // Cập nhật flow
+    @PutMapping("/{flowId}")
+    public ResponseData<ApprovalFlowResponse> updateFlow(
             @PathVariable Long flowId,
-            @RequestBody ApprovalStepRequest request) {
-        return new ResponseData<>(200, "Thêm step thành công", approvalFlowService.addStep(flowId, request));
+            @Valid @RequestBody ApprovalFlowRequest request
+    ) {
+        var res = approvalFlowService.updateFlow(flowId, request);
+        return new ResponseData<>(200, "Cập nhật flow thành công", res);
     }
 
+    // Lấy chi tiết flow
     @GetMapping("/{flowId}")
     public ResponseData<ApprovalFlowResponse> getFlow(@PathVariable Long flowId) {
-        return new ResponseData<>(200, "Lấy flow thành công", approvalFlowService.getFlow(flowId));
+        var res = approvalFlowService.getFlow(flowId);
+        return new ResponseData<>(200, "Lấy flow thành công", res);
+    }
+
+    // Liệt kê các flow của 1 template (dùng cho bước 3 để chọn flow)
+    @GetMapping("/by-template/{templateId}")
+    public ResponseData<List<ApprovalFlowResponse>> listFlowsByTemplate(@PathVariable Long templateId) {
+        var res = approvalFlowService.listFlowsByTemplate(templateId);
+        return new ResponseData<>(200, "Lấy danh sách flow theo template thành công", res);
+    }
+
+    // Đặt flow mặc định cho template
+    @PostMapping("/by-template/{templateId}/{flowId}/set-default")
+    public ResponseData<Void> setDefaultFlow(@PathVariable Long templateId, @PathVariable Long flowId) {
+        approvalFlowService.setDefaultFlow(templateId, flowId);
+        return new ResponseData<>(200, "Đặt flow mặc định cho template thành công", null);
+    }
+
+    // (Tuỳ chọn) Xoá flow
+    @DeleteMapping("/{flowId}")
+    public ResponseData<Void> deleteFlow(@PathVariable Long flowId) {
+        approvalFlowService.deleteFlow(flowId);
+        return new ResponseData<>(200, "Xoá flow thành công", null);
     }
 }

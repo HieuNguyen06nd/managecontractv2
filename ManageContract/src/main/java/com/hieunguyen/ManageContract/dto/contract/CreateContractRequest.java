@@ -11,6 +11,7 @@ public class CreateContractRequest {
     private List<VariableValueRequest> variables;
     private Long flowId; // ID flow được chọn (nullable)
     private Boolean allowChangeFlow; // nếu muốn cho phép override flow
+    private Long createdBy;
 
     @Data
     public static class VariableValueRequest {

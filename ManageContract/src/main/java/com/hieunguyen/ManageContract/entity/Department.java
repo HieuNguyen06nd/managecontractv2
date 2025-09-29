@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.entity;
 
+import com.hieunguyen.ManageContract.common.constants.Status;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -31,11 +32,13 @@ public class Department {
     // Leader của phòng ban (một user cụ thể)
     @ManyToOne
     @JoinColumn(name = "leader_id")
-    private User leader;
+    private Employee leader;
 
     // Danh sách nhân viên trong phòng ban
     @OneToMany(mappedBy = "department")
-    private Set<User> users = new HashSet<>();
+    private Set<Employee> employees = new HashSet<>();
+
+    private Status status;
 }
 
 

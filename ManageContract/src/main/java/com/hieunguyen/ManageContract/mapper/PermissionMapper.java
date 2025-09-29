@@ -18,7 +18,7 @@ public class PermissionMapper {
 
     public PermissionResponse toResponse(Permission entity) {
         PermissionResponse response = new PermissionResponse();
-        response.setPermissionId(entity.getId());
+        response.setId(entity.getId());
         response.setPermissionKey(entity.getPermissionKey());
         response.setDescription(entity.getDescription());
         response.setModule(entity.getModule());

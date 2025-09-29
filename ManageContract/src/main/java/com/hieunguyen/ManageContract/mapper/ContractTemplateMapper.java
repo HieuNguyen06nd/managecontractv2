@@ -5,8 +5,8 @@ import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateRespon
 import com.hieunguyen.ManageContract.dto.templateVariable.TemplateVariableResponse;
 import com.hieunguyen.ManageContract.entity.AuthAccount;
 import com.hieunguyen.ManageContract.entity.ContractTemplate;
+import com.hieunguyen.ManageContract.entity.Employee;
 import com.hieunguyen.ManageContract.entity.TemplateVariable;
-import com.hieunguyen.ManageContract.entity.User;
 
 import java.util.Collections;
 import java.util.List;
@@ -25,8 +25,8 @@ public class ContractTemplateMapper {
 
         // Map createdBy từ User
         if (template.getCreatedBy() != null) {
-            User user = template.getCreatedBy();
-            AuthAccount account = user.getAccount();
+            Employee employee = template.getCreatedBy();
+            AuthAccount account = employee.getAccount();
             if (account != null) {
                 AuthAccountResponse dtoAccount = new AuthAccountResponse();
                 dtoAccount.setId(account.getId());
@@ -35,6 +35,13 @@ public class ContractTemplateMapper {
                 dtoAccount.setEmailVerified(account.isEmailVerified());
                 dto.setCreatedBy(dtoAccount);
             }
+        }
+        // category
+        if (template.getCategory() != null) {
+            dto.setCategoryId(template.getCategory().getId());
+            dto.setCategoryCode(template.getCategory().getCode());
+            dto.setCategoryName(template.getCategory().getName());
+            dto.setCategoryStatus(template.getCategory().getStatus());
         }
 
         // Map variables
@@ -54,7 +61,7 @@ public class ContractTemplateMapper {
         TemplateVariableResponse dto = new TemplateVariableResponse();
         dto.setId(variable.getId());
         dto.setVarName(variable.getVarName());
-        dto.setVarType(variable.getVarType() != null ? variable.getVarType().name() : null);
+        dto.setVarType(variable.getVarType());
         dto.setRequired(variable.getRequired());
         dto.setDefaultValue(variable.getDefaultValue());
         dto.setAllowedValues(variable.getAllowedValues()); // nếu muốn trả về list dropdown

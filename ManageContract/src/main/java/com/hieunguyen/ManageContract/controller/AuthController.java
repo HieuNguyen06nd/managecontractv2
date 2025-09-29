@@ -5,11 +5,13 @@ import com.hieunguyen.ManageContract.dto.authAccount.AuthRequest;
 import com.hieunguyen.ManageContract.dto.authAccount.AuthResponse;
 import com.hieunguyen.ManageContract.dto.authAccount.RegisterRequest;
 import com.hieunguyen.ManageContract.dto.authAccount.ResetPasswordRequest;
+import com.hieunguyen.ManageContract.dto.user.UserProfileResponse;
 import com.hieunguyen.ManageContract.service.AuthAccountService;
 import com.hieunguyen.ManageContract.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.apache.tomcat.util.net.openssl.ciphers.Authentication;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -82,7 +84,8 @@ public class AuthController {
     @PostMapping("/forgot-password/reset")
     @Operation(summary = "Reset password")
     public ResponseData<String> resetPassword(@RequestBody ResetPasswordRequest request) {
-        authService.resetPasswordWithOtp(request.getEmail(), request.getOtp(), request.getNewPassword());
+        authService.resetPasswordWithOtp(request);
         return new ResponseData<>(200, "Đặt lại mật khẩu thành công");
     }
+
 }

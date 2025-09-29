@@ -2,6 +2,7 @@ package com.hieunguyen.ManageContract.service;
 
 import com.hieunguyen.ManageContract.dto.approval.StepApprovalRequest;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
+import com.hieunguyen.ManageContract.dto.contractSign.SignStepRequest;
 
 public interface ContractApprovalService {
     // Trình ký hợp đồng
@@ -15,5 +16,8 @@ public interface ContractApprovalService {
 
     // Xem tiến trình
     ContractResponse getApprovalProgress(Long contractId);
+
+    ContractResponse signStep(Long contractId, Long stepId, SignStepRequest request);
+
 }
 

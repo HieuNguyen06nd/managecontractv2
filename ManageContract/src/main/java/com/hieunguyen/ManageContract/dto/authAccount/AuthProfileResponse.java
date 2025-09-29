@@ -1,6 +1,8 @@
 package com.hieunguyen.ManageContract.dto.authAccount;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.hieunguyen.ManageContract.common.constants.StatusUser;
+import com.hieunguyen.ManageContract.dto.role.RoleResponse;
 import com.nimbusds.openid.connect.sdk.claims.Gender;
 import lombok.Builder;
 import lombok.Data;
@@ -19,5 +21,7 @@ public class AuthProfileResponse {
     private String signatureImage;
     private String department;
     private String position;
-    private List<String> roles;
+    private Gender gender;
+    private StatusUser status;
+    private List<RoleResponse> roles;
 }

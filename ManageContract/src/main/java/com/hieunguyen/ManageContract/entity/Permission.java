@@ -1,6 +1,5 @@
 package com.hieunguyen.ManageContract.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 

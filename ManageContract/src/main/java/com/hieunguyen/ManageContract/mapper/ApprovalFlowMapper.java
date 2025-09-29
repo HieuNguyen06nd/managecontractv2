@@ -26,15 +26,18 @@ public class ApprovalFlowMapper {
     }
 
     public static ApprovalStepResponse toStepResponse(ApprovalStep step) {
-        ApprovalStepResponse dto = new ApprovalStepResponse();
-        dto.setId(step.getId());
-        dto.setStepOrder(step.getStepOrder());
-        dto.setRequired(step.getRequired());
-        dto.setIsFinalStep(step.getIsFinalStep());
-
-        dto.setPositionId(step.getPosition() != null ? step.getPosition().getId() : null);
-        dto.setDepartmentId(step.getDepartment() != null ? step.getDepartment().getId() : null);
-
-        return dto;
+        return ApprovalStepResponse.builder()
+                .id(step.getId())
+                .stepOrder(step.getStepOrder())
+                .required(step.getRequired())
+                .approverType(step.getApproverType())
+                .isFinalStep(step.getIsFinalStep())
+                .employeeId(step.getEmployee() != null ? step.getEmployee().getId() : null)
+                .employeeName(step.getEmployee() != null ? step.getEmployee().getFullName() : null)
+                .positionId(step.getPosition() != null ? step.getPosition().getId() : null)
+                .positionName(step.getPosition() != null ? step.getPosition().getName() : null)
+                .departmentId(step.getDepartment() != null ? step.getDepartment().getId() : null)
+                .departmentName(step.getDepartment() != null ? step.getDepartment().getName() : null)
+                .build();
     }
 }

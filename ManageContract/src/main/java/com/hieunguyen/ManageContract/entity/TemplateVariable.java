@@ -24,6 +24,8 @@ public class TemplateVariable {
 
     private String defaultValue;
 
+    private String name; // Ten cua bien FE
+
     @ElementCollection
     private List<String> allowedValues; // cho DROPDOWN / LIST
 

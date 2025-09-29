@@ -63,6 +63,9 @@ jwt:
 app:
   verification:
     url: http://localhost:8080/api/auth/verify-email
+  signature:
+    storage-dir: ./uploads/signatures    # hoặc /var/app/uploads/signatures
+    public-base-url: /static/signatures
 
 logging:
   level:

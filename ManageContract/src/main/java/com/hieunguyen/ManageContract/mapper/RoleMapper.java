@@ -38,7 +38,7 @@ public class RoleMapper {
 
     private PermissionResponse toPermissionResponse(Permission permission) {
         PermissionResponse response = new PermissionResponse();
-        response.setPermissionId(permission.getId());
+        response.setId(permission.getId());
         response.setPermissionKey(permission.getPermissionKey());
         response.setDescription(permission.getDescription());
         response.setModule(permission.getModule());
