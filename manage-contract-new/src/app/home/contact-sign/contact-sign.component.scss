@@ -1,0 +1,338 @@
+
+        :host {
+            --primary: #4361ee;
+            --primary-light: #4895ef;
+            --secondary: #3f37c9;
+            --success: #4cc9f0;
+            --warning: #f72585;
+            --danger: #e63946;
+            --info: #560bad;
+            --light: #f8f9fa;
+            --dark: #1d3557;
+            --text: #2d3436;
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --card-gradient: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            --border-radius: 12px;
+            --box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            color: var(--text);
+            line-height: 1.6;
+        }
+        .main-content {
+            margin-left: 250px;
+            margin-top: 70px;
+            padding: 20px;
+            background-color: #f5f7fa;
+            min-height: calc(100vh - 70px);
+        }
+
+        .container {
+            max-width: 1200px;
+        }
+
+        .navbar {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .page-title {
+            color: rgb(49, 150, 232);
+            font-weight: 700;
+            margin-bottom: 0.01rem;
+        }
+
+        .page-subtitle {
+            color: rgba(94, 132, 170, 0.8);
+            font-size: 1.1rem;
+        }
+
+        .filter-section {
+            background: white;
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--box-shadow);
+        }
+
+        .filter-tags {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-tag {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            background: #f0f2f5;
+            border: 1px solid #e0e0e0;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .filter-tag.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .sort-select {
+            border-radius: 20px;
+            padding: 0.5rem 1rem;
+            border: 1px solid #e0e0e0;
+        }
+
+        .contracts-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .contract-card {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            overflow: hidden;
+            transition: var(--transition);
+            border: 1px solid #f0f0f0;
+        }
+
+        .contract-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .contract-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #f0f0f0;
+            position: relative;
+        }
+
+        .contract-badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 0.8rem;
+        }
+
+        .badge-approval {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ff9800;
+        }
+
+        .badge-signature {
+            background: rgba(33, 150, 243, 0.2);
+            color: #2196f3;
+        }
+
+        .contract-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            color: var(--dark);
+        }
+
+        .contract-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            margin-top: 0.8rem;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+
+        .priority-tag {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: var(--danger);
+            color: white;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .contract-body {
+            padding: 1.5rem;
+        }
+
+        .current-step {
+            margin-bottom: 1rem;
+        }
+
+        .step-label {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-bottom: 0.3rem;
+        }
+
+        .step-value {
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            flex: 1;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-preview {
+            background: rgba(33, 150, 243, 0.1);
+            color: #2196f3;
+            border: 1px solid rgba(33, 150, 243, 0.3);
+        }
+
+        .btn-preview:hover {
+            background: rgba(33, 150, 243, 0.2);
+        }
+
+        .btn-approve {
+            background: var(--primary);
+            color: white;
+            border: 1px solid var(--primary);
+        }
+
+        .btn-approve:hover {
+            background: var(--secondary);
+        }
+
+        .btn-reject {
+            background: rgba(230, 57, 70, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(230, 57, 70, 0.3);
+        }
+
+        .btn-reject:hover {
+            background: rgba(230, 57, 70, 0.2);
+        }
+
+        .btn-sign {
+            background: var(--success);
+            color: white;
+            border: 1px solid var(--success);
+        }
+
+        .btn-sign:hover {
+            background: #3aa8d0;
+        }
+
+        /* Modal styles */
+        .modal-content {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+            border-bottom: 1px solid #f0f0f0;
+            padding: 1.5rem;
+        }
+
+        .modal-footer {
+            border-top: 1px solid #f0f0f0;
+            padding: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .contracts-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+        }
+
+        /* Modal (thuần Angular, không dùng Bootstrap JS) */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1040;
+}
+
+.modal-panel {
+  position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; z-index: 1050;
+}
+
+.modal-card {
+  width: min(560px, 92vw);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.2);
+  overflow: hidden;
+}
+
+.modal-card .modal-header,
+.modal-card .modal-footer { padding: 1rem 1.25rem; border-bottom: 1px solid #f0f0f0; }
+.modal-card .modal-footer { border-top: 1px solid #f0f0f0; border-bottom: none; display:flex; justify-content:flex-end; gap:.5rem; }
+.modal-card .modal-body { padding: 1.25rem; }
+.modal-card .btn-close { background: transparent; border:0; font-size: 1.25rem; }
+
+/* ==== Modal cỡ lớn dùng cho preview ==== */
+.modal-panel--xl {
+  align-items: flex-start; /* modal nằm gần top cho thoáng */
+  padding: 4vh 2vw;
+}
+
+.modal-card--xl {
+  width: min(1200px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.modal-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .6rem 1.25rem;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafbfc;
+}
+
+/* Tinh chỉnh viewer khớp góc bo của card */
+ngx-extended-pdf-viewer ::ng-deep .ng2-pdf-viewer-container,
+ngx-extended-pdf-viewer ::ng-deep .container {
+  border-radius: 0 0 12px 12px;
+}
+
+/* Nút ghost trong header (nếu muốn) */
+/* .btn-close đã có ở dưới, giữ nguyên */
+

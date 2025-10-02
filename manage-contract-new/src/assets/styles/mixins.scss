@@ -1,0 +1,30 @@
+// Mixin for responsive design
+@mixin respond-to($breakpoint) {
+  @if $breakpoint == phone {
+    @media (max-width: 600px) { @content; }
+  }
+  @if $breakpoint == tablet {
+    @media (max-width: 900px) { @content; }
+  }
+  @if $breakpoint == desktop {
+    @media (max-width: 1200px) { @content; }
+  }
+  @if $breakpoint == large {
+    @media (min-width: 1201px) { @content; }
+  }
+}
+
+// Mixin for flexbox
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Mixin for card style
+@mixin card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}

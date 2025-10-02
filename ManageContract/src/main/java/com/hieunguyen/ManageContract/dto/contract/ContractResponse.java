@@ -10,9 +10,15 @@ public class ContractResponse {
     private String contractNumber;
     private String title;
     private String status;
-    private String filePath; // đường dẫn file nếu có
+    private String filePath;
     private String templateName;
     private List<VariableValueResponse> variables;
+
+    private Long currentStepId;
+    private String currentStepName;
+
+    private String currentStepAction;
+    private String currentStepSignaturePlaceholder;
 
     @Data
     public static class VariableValueResponse {

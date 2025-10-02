@@ -1,0 +1,318 @@
+<main class="main-content">
+  <!-- Tabs -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <button class="btn" [ngClass]="{'btn-primary': activeTab==='roles', 'btn-outline-primary': activeTab!=='roles'}"
+              (click)="setTab('roles')">
+        <i class="fas fa-users me-1"></i>Quản lý Role
+      </button>
+      <button class="btn ms-2" [ngClass]="{'btn-primary': activeTab==='permissions', 'btn-outline-primary': activeTab!=='permissions'}"
+              (click)="setTab('permissions')">
+        <i class="fas fa-key me-1"></i>Quản lý Permission
+      </button>
+      <button class="btn ms-2" [ngClass]="{'btn-primary': activeTab==='matrix', 'btn-outline-primary': activeTab!=='matrix'}"
+              (click)="setTab('matrix')">
+        <i class="fas fa-table me-1"></i>Matrix Phân quyền
+      </button>
+    </div>
+  </div>
+
+  <!-- ========== ROLES TAB ========== -->
+  <section *ngIf="activeTab === 'roles'" class="role-permission-section active">
+    <div class="section-header">
+      <h2 class="page-title"><i class="fas fa-users me-2"></i>Quản lý Role</h2>
+      <button class="btn btn-primary" (click)="openRoleModal()">
+        <i class="fas fa-plus"></i> Thêm Role mới
+      </button>
+    </div>
+
+    <div class="search-box">
+      <input type="text" placeholder="Tìm kiếm role..." 
+             [(ngModel)]="roleSearch" (ngModelChange)="applyRoleFilter()">
+      <i class="fas fa-search"></i>
+    </div>
+
+    <div class="card">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Role Key</th>
+            <th>Mô tả</th>
+            <th>Số Permission</th>
+            <th>Thao tác</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let role of filteredRoles; trackBy: trackById">
+            <td>{{ role.id }}</td>
+            <td><strong>{{ role.roleKey }}</strong></td>
+            <td>{{ role.description || '—' }}</td>
+            <td>{{ roleAssignedMap.get(role.id)?.size || 0 }}</td>
+            <td>
+              <button class="btn btn-primary btn-sm me-2" (click)="openRoleModal(role)">
+                <i class="fas fa-edit"></i> Sửa
+              </button>
+              <button class="btn btn-danger btn-sm" (click)="deleteRole(role)">
+                <i class="fas fa-trash"></i> Xóa
+              </button>
+            </td>
+          </tr>
+          <tr *ngIf="filteredRoles.length === 0">
+            <td colspan="5" class="empty-state">
+              <i class="fas fa-users"></i>
+              <p>Chưa có role nào được tạo</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ========== PERMISSIONS TAB ========== -->
+  <section *ngIf="activeTab === 'permissions'" class="role-permission-section active">
+    <div class="section-header">
+      <h2 class="page-title"><i class="fas fa-key me-2"></i>Quản lý Permission</h2>
+      <button class="btn btn-primary" (click)="openPermissionModal()">
+        <i class="fas fa-plus"></i> Thêm Permission mới
+      </button>
+    </div>
+
+    <div class="search-box">
+      <input type="text" placeholder="Tìm kiếm permission..." 
+             [(ngModel)]="permissionSearch" (ngModelChange)="applyPermissionFilter()">
+      <i class="fas fa-search"></i>
+    </div>
+
+    <div class="card">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Permission Key</th>
+            <th>Module</th>
+            <th>Mô tả</th>
+            <th>Thao tác</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let perm of filteredPermissions; trackBy: trackById">
+            <td>{{ perm.id }}</td>
+            <td><strong>{{ perm.permissionKey }}</strong></td>
+            <td>{{ perm.module }}</td>
+            <td>{{ perm.description || '—' }}</td>
+            <td>
+              <button class="btn btn-primary btn-sm me-2" (click)="openPermissionModal(perm)">
+                <i class="fas fa-edit"></i> Sửa
+              </button>
+              <button class="btn btn-danger btn-sm" (click)="deletePermission(perm)">
+                <i class="fas fa-trash"></i> Xóa
+              </button>
+            </td>
+          </tr>
+          <tr *ngIf="filteredPermissions.length === 0">
+            <td colspan="5" class="empty-state">
+              <i class="fas fa-key"></i>
+              <p>Chưa có permission nào được tạo</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ========== MATRIX TAB ========== -->
+<section *ngIf="activeTab === 'matrix'" class="role-permission-section active">
+  <div class="section-header">
+    <h2 class="page-title"><i class="fas fa-table me-2"></i>Matrix Phân quyền</h2>
+    <div class="bulk-actions">
+      <button class="btn btn-primary btn-sm" (click)="selectAllPermissionsForModule()">
+        <i class="fas fa-check-double"></i> Chọn tất cả
+      </button>
+      <button class="btn btn-secondary btn-sm" (click)="deselectAllPermissionsForModule()">
+        <i class="fas fa-times"></i> Bỏ chọn tất cả
+      </button>
+    </div>
+  </div>
+
+  <!-- Module Filter -->
+  <div class="card">
+    <div class="form-group">
+      <label>Lọc theo Module:</label>
+      <select class="form-control" [(ngModel)]="selectedModule" (ngModelChange)="onModuleChange()">
+        <option value="">Tất cả module</option>
+        <option *ngFor="let module of modules; trackBy: trackByModule" [value]="module">{{ module }}</option>
+      </select>
+    </div>
+
+    <!-- Pagination Controls -->
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <span class="text-muted">
+        Hiển thị {{ (matrixRolePage - 1) * matrixRolePageSize + 1 }} - 
+        {{ Math.min(matrixRolePage * matrixRolePageSize, roles.length) }} của {{ roles.length }} role
+      </span>
+      <div class="d-flex align-items-center">
+        <span class="me-2 text-muted">Role mỗi trang:</span>
+        <select class="form-control form-control-sm w-auto" 
+                [(ngModel)]="matrixRolePageSize" 
+                (change)="onMatrixRolePageSizeChange()">
+          <option *ngFor="let size of pageSizeOptions" [value]="size">{{ size }}</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Matrix Table -->
+  <div class="card mt-3">
+    <div class="table-responsive">
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th class="module-header">Module / Permission</th>
+            <th *ngFor="let role of pagedMatrixRoles; trackBy: trackByRole" class="role-header">
+              <div class="fw-bold">{{ role.roleKey }}</div>
+              <div class="small">{{ role.description || '—' }}</div>
+              <div class="small text-muted">ID: {{ role.id }}</div>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Group by Module -->
+          <ng-container *ngFor="let module of modules; trackBy: trackByModule">
+            <ng-container *ngIf="!selectedModule || selectedModule === module">
+              <!-- Module Header Row -->
+              <tr class="module-section">
+                <td class="module-header" [attr.colspan]="pagedMatrixRoles.length + 1">
+                  <strong>{{ module }}</strong>
+                  <span class="badge bg-light text-dark ms-2">
+                    {{ getPermissionsByModule(module).length }} permissions
+                  </span>
+                </td>
+              </tr>
+              
+              <!-- Permission Rows -->
+              <tr *ngFor="let perm of getPermissionsByModule(module); trackBy: trackByPermission" 
+                  class="permission-row">
+                <td class="permission-name">
+                  <div class="fw-semibold">{{ perm.permissionKey }}</div>
+                  <div class="small text-muted">{{ perm.description }}</div>
+                  <div class="small text-muted">ID: {{ perm.id }}</div>
+                  
+                </td>
+                
+                <!-- Ô trong ma trận -->
+                <td *ngFor="let role of pagedMatrixRoles; trackBy: trackByRole" class="checkbox-cell">
+                <input type="checkbox"
+                        [id]="'perm-' + perm.id + '-role-' + role.id"
+                        [ngModel]="isRoleAssigned(role, perm)"
+                        (ngModelChange)="onToggleAssignment(role, perm, $event)"
+                        [ngModelOptions]="{standalone:true}">
+                <!-- <label [attr.for]="'perm-' + perm.id + '-role-' + role.id" class="sr-only">
+                    Gán {{ perm.permissionKey }} cho {{ role.roleKey }}
+                </label> -->
+                </td>
+
+              </tr>
+              
+              <!-- Spacer row -->
+              <tr>
+                <td [attr.colspan]="pagedMatrixRoles.length + 1" style="height: 15px; background: #f8f9fa;"></td>
+              </tr>
+            </ng-container>
+          </ng-container>
+          
+          <tr *ngIf="matrixPermissions.length === 0">
+            <td [attr.colspan]="pagedMatrixRoles.length + 1" class="empty-state">
+              <i class="fas fa-table"></i>
+              <p>Không có permission nào để hiển thị</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="d-flex justify-content-center mt-3" *ngIf="matrixRoleTotalPages > 1">
+      <button class="btn btn-outline-primary btn-sm me-2"
+              (click)="changeMatrixRolePage(matrixRolePage - 1)"
+              [disabled]="matrixRolePage === 1">
+        <i class="fas fa-chevron-left"></i> Trước
+      </button>
+      
+      <button *ngFor="let page of [].constructor(matrixRoleTotalPages); let i = index"
+              class="btn btn-sm me-1"
+              [ngClass]="{'btn-primary': matrixRolePage === i + 1, 'btn-outline-primary': matrixRolePage !== i + 1}"
+              (click)="changeMatrixRolePage(i + 1)">
+        {{ i + 1 }}
+      </button>
+      
+      <button class="btn btn-outline-primary btn-sm ms-2"
+              (click)="changeMatrixRolePage(matrixRolePage + 1)"
+              [disabled]="matrixRolePage === matrixRoleTotalPages">
+        Sau <i class="fas fa-chevron-right"></i>
+      </button>
+    </div>
+  </div>
+</section>
+  <!-- ========== MODALS ========== -->
+  
+  <!-- Role Modal -->
+  <div class="modal fade show d-block" *ngIf="showRoleModal" style="background: rgba(0,0,0,.5);">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">{{ isEditRole ? 'Chỉnh sửa Role' : 'Thêm Role mới' }}</h5>
+          <button type="button" class="btn-close" (click)="closeRoleModal()"></button>
+        </div>
+        <form [formGroup]="roleForm" (ngSubmit)="saveRole()">
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Role Key *</label>
+              <input type="text" class="form-control" formControlName="roleKey" placeholder="VD: ADMIN">
+            </div>
+            <div class="form-group">
+              <label>Mô tả</label>
+              <textarea class="form-control" formControlName="description" rows="3"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="closeRoleModal()">Hủy</button>
+            <button type="submit" class="btn btn-primary" [disabled]="roleForm.invalid">Lưu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permission Modal -->
+  <div class="modal fade show d-block" *ngIf="showPermissionModal" style="background: rgba(0,0,0,.5);">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">{{ isEditPermission ? 'Chỉnh sửa Permission' : 'Thêm Permission mới' }}</h5>
+          <button type="button" class="btn-close" (click)="closePermissionModal()"></button>
+        </div>
+        <form [formGroup]="permissionForm" (ngSubmit)="savePermission()">
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Permission Key *</label>
+              <input type="text" class="form-control" formControlName="permissionKey" placeholder="VD: CREATE_CONTRACT">
+            </div>
+            <div class="form-group">
+              <label>Module *</label>
+              <input type="text" class="form-control" formControlName="module" placeholder="VD: CONTRACT">
+            </div>
+            <div class="form-group">
+              <label>Mô tả</label>
+              <textarea class="form-control" formControlName="description" rows="3"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="closePermissionModal()">Hủy</button>
+            <button type="submit" class="btn btn-primary" [disabled]="permissionForm.invalid">Lưu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</main>

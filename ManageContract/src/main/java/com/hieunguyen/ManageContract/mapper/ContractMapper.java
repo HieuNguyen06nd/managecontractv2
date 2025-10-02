@@ -8,30 +8,30 @@ import java.util.stream.Collectors;
 
 public class ContractMapper {
 
-    public static ContractResponse toResponse(Contract contract) {
-        if (contract == null) {
-            return null;
-        }
-
+    public static ContractResponse toResponse(Contract c) {
+        if (c == null) return null;
         ContractResponse dto = new ContractResponse();
-        dto.setId(contract.getId());
-        dto.setContractNumber(contract.getContractNumber());
-        dto.setTitle(contract.getTitle());
-        dto.setStatus(contract.getStatus().name());
-        dto.setFilePath(contract.getFilePath());
+        dto.setId(c.getId());
+        dto.setContractNumber(c.getContractNumber());
+        dto.setTitle(c.getTitle());
+        dto.setStatus(c.getStatus() != null ? c.getStatus().name() : null);
+        dto.setFilePath(c.getFilePath());
+        dto.setTemplateName(c.getTemplate() != null ? c.getTemplate().getName() : null);
 
-        if (contract.getTemplate() != null) {
-            dto.setTemplateName(contract.getTemplate().getName());
+        if (c.getVariableValues() != null) {
+            dto.setVariables(
+                    c.getVariableValues().stream().map(v -> {
+                        ContractResponse.VariableValueResponse vv = new ContractResponse.VariableValueResponse();
+                        vv.setVarName(v.getVarName());
+                        vv.setVarValue(v.getVarValue());
+                        return vv;
+                    }).toList()
+            );
         }
-
-        if (contract.getVariableValues() != null) {
-            dto.setVariables(contract.getVariableValues().stream()
-                    .map(ContractMapper::mapVariable)
-                    .collect(Collectors.toList()));
-        }
-
+        // currentStep* sẽ được service set tuỳ ngữ cảnh
         return dto;
     }
+
 
     private static ContractResponse.VariableValueResponse mapVariable(ContractVariableValue v) {
         ContractResponse.VariableValueResponse dto = new ContractResponse.VariableValueResponse();

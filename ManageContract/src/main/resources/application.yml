@@ -67,9 +67,6 @@ app:
     storage-dir: ./uploads/signatures    # hoặc /var/app/uploads/signatures
     public-base-url: /static/signatures
 
-logging:
-  level:
-    org.springframework.security: DEBUG
 
 vnpay:
   tmn-code: N5CN6513
@@ -77,3 +74,17 @@ vnpay:
   pay-url: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
   return-url: http://localhost:8080/api/payment/vnpay-return
   ipn-url: http://localhost:8080/api/payment/vnpay-ipn
+
+jodconverter:
+  local:
+    enabled: true
+    office-home: /Applications/LibreOffice.app/Contents/MacOS
+    port-numbers: 2003
+    process-timeout: 120000
+    task-execution-timeout: 120000
+
+logging:
+  level:
+    org.jodconverter: DEBUG
+
+

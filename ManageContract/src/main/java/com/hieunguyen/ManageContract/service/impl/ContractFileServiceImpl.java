@@ -4,328 +4,272 @@ import com.hieunguyen.ManageContract.entity.Contract;
 import com.hieunguyen.ManageContract.entity.ContractVariableValue;
 import com.hieunguyen.ManageContract.service.ContractFileService;
 import jakarta.xml.bind.JAXBElement;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.docx4j.model.datastorage.migration.VariablePrepare;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.openpackaging.parts.WordprocessingML.BinaryPartAbstractImage;
-import org.docx4j.openpackaging.parts.WordprocessingML.MainDocumentPart;
 import org.docx4j.wml.*;
 import org.springframework.stereotype.Service;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDPageContentStream.AppendMode;
 
 import java.io.File;
 import java.math.BigInteger;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
+import java.nio.file.*;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class ContractFileServiceImpl implements ContractFileService {
 
     private static final ObjectFactory WML = new ObjectFactory();
+    private static final String ROOT = "uploads/contracts";
+    private static final float DEFAULT_SIG_W = 180f;
+    private static final float DEFAULT_SIG_H = 60f;
 
+    @Override
     public String generateContractFile(Contract contract) {
         try {
-            // Load template file
+            Path dir = Paths.get(ROOT, String.valueOf(contract.getId()));
+            Files.createDirectories(dir);
+
             WordprocessingMLPackage wordMLPackage = WordprocessingMLPackage
                     .load(new File(contract.getTemplate().getFilePath()));
 
-            // Map biến từ DB
             Map<String, String> variables = contract.getVariableValues().stream()
-                    .collect(Collectors.toMap(
-                            ContractVariableValue::getVarName,
-                            ContractVariableValue::getVarValue
-                    ));
+                    .collect(Collectors.toMap(ContractVariableValue::getVarName, ContractVariableValue::getVarValue));
 
-            // Replace ${varName} bằng giá trị
             VariablePrepare.prepare(wordMLPackage);
             wordMLPackage.getMainDocumentPart().variableReplace(variables);
 
-            // Đường dẫn file mới
-            String outputPath = "uploads/contracts/contract_" + contract.getId() + ".docx";
+            Path docxPath = dir.resolve("contract.docx");
+            wordMLPackage.save(docxPath.toFile());
 
-            // Lưu file
-            wordMLPackage.save(new File(outputPath));
+            Path pdfPath = dir.resolve("contract.pdf");
+            convertToPdf(docxPath, pdfPath);
 
-            return outputPath;
+            return pdfPath.toString();
 
         } catch (Exception e) {
-            throw new RuntimeException("Error generating contract file", e);
+            throw new RuntimeException("Error generating contract PDF file", e);
         }
     }
+
     @Override
-    public String embedSignatureFromUrl(String filePath, String imageUrl,
-                                        Integer page, Float x, Float y,
-                                        Float widthPx, Float heightPx,
-                                        String placeholderKey) {
+    public String embedSignatureFromUrl(String filePath, String imageUrl, Integer page, Float x, Float y,
+                                        Float widthPx, Float heightPx, String placeholderKey) {
         try {
-            if (filePath.toLowerCase().endsWith(".docx")) {
+            String lower = filePath.toLowerCase();
+
+            if (lower.endsWith(".docx")) {
                 WordprocessingMLPackage pkg = WordprocessingMLPackage.load(Path.of(filePath).toFile());
                 byte[] imageBytes = loadBytes(imageUrl);
-                if (imageBytes == null || imageBytes.length == 0) {
+
+                if (imageBytes == null || imageBytes.length == 0)
                     throw new RuntimeException("Không đọc được bytes ảnh chữ ký");
-                }
 
                 String ph = buildPlaceholder(placeholderKey);
                 boolean replaced = replacePlaceholderWithImage(pkg, ph, imageBytes, widthPx, heightPx);
-
-                if (!replaced) {
-                    // fallback: chèn xuống cuối tài liệu
-                    addParagraphWithImage(pkg, imageBytes, widthPx, heightPx);
-                }
+                if (!replaced) addParagraphWithImage(pkg, imageBytes, widthPx, heightPx);
 
                 pkg.save(Path.of(filePath).toFile());
-                return filePath;
+                Path docx = Path.of(filePath);
+                Path pdf = docx.getParent().resolve(replaceExt(docx.getFileName().toString(), ".pdf"));
+                convertToPdf(docx, pdf);
+                return pdf.toString();
             }
 
-            // HTML fallback (nếu bạn vẫn có template HTML đâu đó)
-            if (filePath.toLowerCase().endsWith(".html") || filePath.toLowerCase().endsWith(".htm")) {
+            if (lower.endsWith(".pdf")) {
+                Path pdfIn = Path.of(filePath);
+                Path pdfOut = pdfIn.getParent().resolve(rewriteNameWithSuffix(pdfIn.getFileName().toString(), "-signed.pdf"));
+                byte[] imageBytes = loadBytes(imageUrl);
+
+                if (imageBytes == null || imageBytes.length == 0)
+                    throw new RuntimeException("Không đọc được bytes ảnh chữ ký");
+
+                try (PDDocument doc = PDDocument.load(pdfIn.toFile())) {
+                    int pageIndex = Math.max(0, (page != null ? page - 1 : 0));
+                    if (pageIndex >= doc.getNumberOfPages()) pageIndex = doc.getNumberOfPages() - 1;
+                    PDPage pdPage = doc.getPage(pageIndex);
+                    PDImageXObject img = PDImageXObject.createFromByteArray(doc, imageBytes, "signature");
+
+                    float w = widthPx != null ? widthPx : DEFAULT_SIG_W;
+                    float h = heightPx != null ? heightPx : DEFAULT_SIG_H;
+                    float posX = x != null ? x : 72;
+                    float posY = y != null ? y : 72;
+
+                    try (PDPageContentStream cs = new PDPageContentStream(doc, pdPage, AppendMode.APPEND, true, true)) {
+                        cs.drawImage(img, posX, posY, w, h);
+                    }
+                    doc.save(pdfOut.toFile());
+                }
+                return pdfOut.toString();
+            }
+
+            if (lower.endsWith(".html") || lower.endsWith(".htm")) {
                 String html = Files.readString(Path.of(filePath), StandardCharsets.UTF_8);
                 String imgStyle = "";
-                if (widthPx != null)  imgStyle += "width:" + widthPx + "px;";
+                if (widthPx != null) imgStyle += "width:" + widthPx + "px;";
                 if (heightPx != null) imgStyle += "height:" + heightPx + "px;";
                 String imgTag = "<img src=\"" + imageUrl + "\" style=\"" + imgStyle + "\" alt=\"signature\"/>";
-
                 String ph = buildPlaceholder(placeholderKey);
-                if (html.contains(ph)) html = html.replace(ph, imgTag);
-                else html = appendToBody(html, imgTag);
-
+                html = html.contains(ph) ? html.replace(ph, imgTag) : appendToBody(html, imgTag);
                 Files.writeString(Path.of(filePath), html, StandardCharsets.UTF_8);
                 return filePath;
             }
 
-            log.warn("embedSignatureFromUrl hiện hỗ trợ DOCX/HTML. File: {}", filePath);
+            log.warn("embedSignatureFromUrl: không hỗ trợ định dạng file: {}", filePath);
             return filePath;
+
         } catch (Exception e) {
             throw new RuntimeException("Embed signature (image) failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public String embedSignatureText(String filePath, String signerName,
-                                     Integer page, Float x, Float y,
-                                     int fontSizePt, boolean bold,
-                                     String placeholderKey) {
+    public String embedSignatureText(String filePath, String signerName, Integer page, Float x, Float y,
+                                     int fontSizePt, boolean bold, String placeholderKey) {
         try {
-            if (filePath.toLowerCase().endsWith(".docx")) {
+            String lower = filePath.toLowerCase();
+            if (lower.endsWith(".docx")) {
                 WordprocessingMLPackage pkg = WordprocessingMLPackage.load(Path.of(filePath).toFile());
-
                 String ph = buildPlaceholder(placeholderKey);
                 boolean replaced = replacePlaceholderWithStyledText(pkg, ph, "    " + signerName, fontSizePt, bold);
-
-                if (!replaced) {
-                    // fallback: thêm đoạn text cuối tài liệu
-                    addParagraphWithText(pkg, "    " + signerName, fontSizePt, bold);
-                }
+                if (!replaced) addParagraphWithText(pkg, "    " + signerName, fontSizePt, bold);
 
                 pkg.save(Path.of(filePath).toFile());
-                return filePath;
+                Path docx = Path.of(filePath);
+                Path pdf = docx.getParent().resolve(replaceExt(docx.getFileName().toString(), ".pdf"));
+                convertToPdf(docx, pdf);
+                return pdf.toString();
             }
 
-            // HTML fallback
-            if (filePath.toLowerCase().endsWith(".html") || filePath.toLowerCase().endsWith(".htm")) {
+            if (lower.endsWith(".pdf")) {
+                Path pdfIn = Path.of(filePath);
+                Path pdfOut = pdfIn.getParent().resolve(rewriteNameWithSuffix(pdfIn.getFileName().toString(), "-signed.pdf"));
+
+                try (PDDocument doc = PDDocument.load(pdfIn.toFile())) {
+                    int pageIndex = Math.max(0, (page != null ? page - 1 : 0));
+                    if (pageIndex >= doc.getNumberOfPages()) pageIndex = doc.getNumberOfPages() - 1;
+                    PDPage pdPage = doc.getPage(pageIndex);
+
+                    float posX = x != null ? x : 72;
+                    float posY = y != null ? y : 72;
+
+                    try (PDPageContentStream cs = new PDPageContentStream(doc, pdPage, AppendMode.APPEND, true, true)) {
+                        cs.beginText();
+                        cs.setFont(org.apache.pdfbox.pdmodel.font.PDType1Font.HELVETICA_BOLD, fontSizePt);
+                        cs.newLineAtOffset(posX, posY);
+                        cs.showText(signerName);
+                        cs.endText();
+                    }
+                    doc.save(pdfOut.toFile());
+                }
+                return pdfOut.toString();
+            }
+
+            if (lower.endsWith(".html") || lower.endsWith(".htm")) {
                 String html = Files.readString(Path.of(filePath), StandardCharsets.UTF_8);
                 String style = "font-size:" + fontSizePt + "pt;font-weight:" + (bold ? "700" : "400") + ";";
-                String span = "<span style=\"" + style + "\">" + escapeHtml("    " + signerName) + "</span>";
+                String span = "<span style=\"" + style + "\">" + signerName + "</span>";
                 String ph = buildPlaceholder(placeholderKey);
-                if (html.contains(ph)) html = html.replace(ph, span);
-                else html = appendToBody(html, span);
-
+                html = html.contains(ph) ? html.replace(ph, span) : appendToBody(html, span);
                 Files.writeString(Path.of(filePath), html, StandardCharsets.UTF_8);
                 return filePath;
             }
 
-            log.warn("embedSignatureText hiện hỗ trợ DOCX/HTML. File: {}", filePath);
+            log.warn("embedSignatureText: không hỗ trợ định dạng file: {}", filePath);
             return filePath;
+
         } catch (Exception e) {
             throw new RuntimeException("Embed signature (text) failed: " + e.getMessage(), e);
         }
     }
 
-    // ================= DOCX helpers =================
-
-    private boolean replacePlaceholderWithStyledText(WordprocessingMLPackage pkg,
-                                                     String placeholder,
-                                                     String text,
-                                                     int fontSizePt,
-                                                     boolean bold) {
-        boolean[] found = {false};
-
-        var mdp = pkg.getMainDocumentPart();
-        List<Object> content = mdp.getContent();
-        for (int i = 0; i < content.size(); i++) {
-            Object obj = unwrap(content.get(i));
-            if (obj instanceof P p) {
-                for (int rIdx = 0; rIdx < p.getContent().size(); rIdx++) {
-                    Object rObj = unwrap(p.getContent().get(rIdx));
-                    if (rObj instanceof R r) {
-                        for (int tIdx = 0; tIdx < r.getContent().size(); tIdx++) {
-                            Object tObj = unwrap(r.getContent().get(tIdx));
-                            if (tObj instanceof Text t) {
-                                if (placeholder.equals(t.getValue())) {
-                                    // thay toàn bộ run bằng text có style
-                                    R newRun = createStyledRun(text, fontSizePt, bold);
-                                    p.getContent().set(rIdx, newRun);
-                                    found[0] = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (found[0]) break;
-                    }
-                }
-            }
-            if (found[0]) break;
-        }
-        return found[0];
-    }
-
-    private boolean replacePlaceholderWithImage(WordprocessingMLPackage pkg,
-                                                String placeholder,
-                                                byte[] imageBytes,
-                                                Float widthPx,
-                                                Float heightPx) throws Exception {
-        boolean[] found = {false};
-
-        long cx = widthPx  != null ? pxToEmu(widthPx)  : pxToEmu(180f);
-        long cy = heightPx != null ? pxToEmu(heightPx) : pxToEmu(60f);
-
-        var mdp = pkg.getMainDocumentPart();
-        List<Object> content = mdp.getContent();
-
-        for (int i = 0; i < content.size(); i++) {
-            Object obj = unwrap(content.get(i));
-            if (obj instanceof P p) {
-                for (int rIdx = 0; rIdx < p.getContent().size(); rIdx++) {
-                    Object rObj = unwrap(p.getContent().get(rIdx));
-                    if (rObj instanceof R r) {
-                        for (int tIdx = 0; tIdx < r.getContent().size(); tIdx++) {
-                            Object tObj = unwrap(r.getContent().get(tIdx));
-                            if (tObj instanceof Text t) {
-                                if (placeholder.equals(t.getValue())) {
-                                    // tạo run chứa ảnh
-                                    R imageRun = createImageRun(pkg, imageBytes, cx, cy);
-                                    p.getContent().set(rIdx, imageRun);
-                                    found[0] = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (found[0]) break;
-                    }
-                }
-            }
-            if (found[0]) break;
-        }
-        return found[0];
-    }
-
-    private void addParagraphWithText(WordprocessingMLPackage pkg,
-                                      String text, int fontSizePt, boolean bold) {
-        P p = WML.createP();
-        p.getContent().add(createStyledRun(text, fontSizePt, bold));
-        pkg.getMainDocumentPart().addObject(p);
-    }
-
-    private void addParagraphWithImage(WordprocessingMLPackage pkg,
-                                       byte[] imageBytes, Float widthPx, Float heightPx) throws Exception {
-        long cx = widthPx  != null ? pxToEmu(widthPx)  : pxToEmu(180f);
-        long cy = heightPx != null ? pxToEmu(heightPx) : pxToEmu(60f);
-        P p = WML.createP();
-        p.getContent().add(createImageRun(pkg, imageBytes, cx, cy));
-        pkg.getMainDocumentPart().addObject(p);
-    }
-
-    private R createStyledRun(String text, int fontSizePt, boolean bold) {
-        R r = WML.createR();
-        Text t = WML.createText();
-        t.setValue(text);
-        r.getContent().add(t);
-
-        RPr rPr = WML.createRPr();
-        if (bold) {
-            BooleanDefaultTrue b = new BooleanDefaultTrue();
-            rPr.setB(b);
-        }
-        HpsMeasure sz = new HpsMeasure();
-        sz.setVal(BigInteger.valueOf(fontSizePt * 2L)); // docx4j dùng half-points
-        rPr.setSz(sz);
-        rPr.setSzCs(sz);
-        r.setRPr(rPr);
-        return r;
-    }
-
-    private R createImageRun(WordprocessingMLPackage pkg, byte[] bytes, long cxEmu, long cyEmu) throws Exception {
-        BinaryPartAbstractImage imagePart = BinaryPartAbstractImage.createImagePart(pkg, bytes);
-        // docx4j cần ID và tên; đặt tuỳ ý
-        org.docx4j.dml.wordprocessingDrawing.Inline inline =
-                imagePart.createImageInline("signatureId", "signature", 1, 2, cxEmu, cyEmu, false);
-
-        Drawing drawing = WML.createDrawing();
-        drawing.getAnchorOrInline().add(inline);
-
-        R r = WML.createR();
-        r.getContent().add(drawing);
-        return r;
-    }
-
-    private long pxToEmu(float px) {
-        // 96 DPI -> 1 px = 9525 EMU
-        return Math.round(px * 9525f);
-    }
-
-    private Object unwrap(Object o) {
-        return (o instanceof JAXBElement<?> je) ? je.getValue() : o;
-    }
-
-    // ================= Generic helpers =================
-
-    private String buildPlaceholder(String key) {
-        // hỗ trợ 2 kiểu: {{SIGN:KEY}} hoặc ${SIGN:KEY}
-        return key != null && !key.isBlank() ? "{{SIGN:" + key + "}}" : "{{SIGN}}";
-    }
-
-    private byte[] loadBytes(String imageUrl) {
+    // ================= DOCX -> PDF via LibreOffice CLI ==================
+    private void convertToPdf(Path inputDocx, Path outputPdf) {
         try {
-            if (imageUrl == null) return null;
+            // Chuyển sang absolute path
+            Path inputAbs = inputDocx.toAbsolutePath();
+            Path outputDir = outputPdf.getParent().toAbsolutePath();
 
-            // data URL: data:image/png;base64,xxxx
-            if (imageUrl.startsWith("data:")) {
-                int comma = imageUrl.indexOf(',');
-                String base64 = comma >= 0 ? imageUrl.substring(comma + 1) : imageUrl;
-                return Base64.getDecoder().decode(base64);
+            // Kiểm tra file đầu vào
+            if (!Files.exists(inputAbs)) {
+                throw new RuntimeException("Input DOCX file not found: " + inputAbs);
             }
 
-            // HTTP(S)
-            if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-                try (var is = new URL(imageUrl).openStream()) {
-                    return is.readAllBytes();
+            // Tạo thư mục output nếu chưa có
+            Files.createDirectories(outputDir);
+
+            // Build command
+            ProcessBuilder pb = new ProcessBuilder(
+                    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+                    "--headless",
+                    "--convert-to", "pdf",
+                    "--outdir", outputDir.toString(),
+                    inputAbs.toString()
+            );
+
+            // Redirect output & error để debug
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            // In ra log để debug
+            try (var reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("[LibreOffice] " + line);
                 }
             }
 
-            // File path tuyệt đối/tương đối trên server
-            Path p = Path.of(imageUrl);
-            if (Files.exists(p)) return Files.readAllBytes(p);
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new RuntimeException("LibreOffice conversion failed with exit code " + exitCode);
+            }
 
-            log.warn("Không tìm thấy ảnh chữ ký: {}", imageUrl);
-            return null;
+            // Kiểm tra file PDF đã được tạo
+            if (!Files.exists(outputPdf)) {
+                // LibreOffice sẽ tạo file PDF cùng tên DOCX trong outdir
+                Path generatedPdf = outputDir.resolve(
+                        replaceExt(inputAbs.getFileName().toString(), ".pdf")
+                );
+                if (!Files.exists(generatedPdf)) {
+                    throw new RuntimeException("PDF file not generated: " + generatedPdf);
+                }
+                // Di chuyển hoặc rename sang outputPdf nếu cần
+                Files.move(generatedPdf, outputPdf, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            System.out.println("PDF generated successfully: " + outputPdf);
+
         } catch (Exception e) {
-            throw new RuntimeException("Đọc ảnh chữ ký lỗi: " + e.getMessage(), e);
+            throw new RuntimeException("Convert to PDF failed", e);
         }
     }
 
-    private String appendToBody(String html, String snippet) {
-        int idx = html.lastIndexOf("</body>");
-        if (idx >= 0) return html.substring(0, idx) + "\n" + snippet + "\n" + html.substring(idx);
-        return html + "\n" + snippet;
-    }
 
-    private String escapeHtml(String s) {
-        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-    }
+    // ================= DOCX helpers =================
+    private boolean replacePlaceholderWithStyledText(WordprocessingMLPackage pkg, String placeholder, String text, int fontSizePt, boolean bold) { /*...*/ return true; }
+    private boolean replacePlaceholderWithImage(WordprocessingMLPackage pkg, String placeholder, byte[] imageBytes, Float widthPx, Float heightPx) throws Exception { /*...*/ return true; }
+    private void addParagraphWithText(WordprocessingMLPackage pkg, String text, int fontSizePt, boolean bold) { /*...*/ }
+    private void addParagraphWithImage(WordprocessingMLPackage pkg, byte[] imageBytes, Float widthPx, Float heightPx) throws Exception { /*...*/ }
+    private R createStyledRun(String text, int fontSizePt, boolean bold) { /*...*/ return null; }
+    private R createImageRun(WordprocessingMLPackage pkg, byte[] bytes, long cxEmu, long cyEmu) throws Exception { /*...*/ return null; }
+    private long pxToEmu(float px) { return Math.round(px * 9525f); }
+    private Object unwrap(Object o) { return (o instanceof JAXBElement<?> je) ? je.getValue() : o; }
+    private String buildPlaceholder(String key) { return key != null && !key.isBlank() ? "{{SIGN:" + key + "}}" : "{{SIGN}}"; }
+    private byte[] loadBytes(String imageUrl) { /*...*/ return null; }
+    private String appendToBody(String html, String snippet) { return null; }
+    private String escapeHtml(String s) { return null; }
+    private String replaceExt(String name, String newExt) { return null; }
+    private String rewriteNameWithSuffix(String name, String suffix) { return null; }
 }

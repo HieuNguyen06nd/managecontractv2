@@ -1,0 +1,169 @@
+<main class="main-content">
+  <h1 class="page-title">
+    <i class="fas fa-upload"></i>
+    Tải lên hợp đồng
+  </h1>
+
+  <!-- Step indicator -->
+  <div class="steps">
+    <div class="step" [class.active]="currentStep === 1" [class.completed]="currentStep > 1">
+      <div class="step-number">1</div>
+      <div class="step-text">Tải lên hợp đồng</div>
+    </div>
+    <div class="step" [class.active]="currentStep === 2" [class.completed]="currentStep > 2">
+      <div class="step-number">2</div>
+      <div class="step-text">Xác định biến</div>
+    </div>
+    <div class="step" [class.active]="currentStep === 3">
+      <div class="step-number">3</div>
+      <div class="step-text">Hoàn thành</div>
+    </div>
+  </div>
+
+  <!-- Bước 1: Upload -->
+  <div *ngIf="currentStep === 1" class="upload-container">
+    <div class="tabs">
+      <div class="tab" [class.active]="activeTab === 'file'" (click)="setActiveTab('file')">
+        Tải lên từ file
+      </div>
+      <div class="tab" [class.active]="activeTab === 'link'" (click)="setActiveTab('link')">
+        Tải lên từ Google Docs
+      </div>
+    </div>
+
+    <div class="tab-content">
+      <!-- File Upload -->
+      <div class="tab-pane" [class.active]="activeTab === 'file'">
+        <div class="form-group">
+          <label class="form-label">Chọn file hợp đồng (.docx)</label>
+          <div class="file-drop-area"
+               (dragover)="onDragOver($event)"
+               (drop)="onFileDropped($event)"
+               (click)="triggerFileInput()">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <div class="file-drop-text">Kéo thả file vào đây hoặc click để chọn file</div>
+            <input type="file"
+                   #fileInput
+                   (change)="onFileSelected($event)"
+                   class="file-input"
+                   accept=".docx"
+                   hidden>
+            <div class="file-name">{{ selectedFile ? selectedFile.name : 'Chưa có file nào được chọn' }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Link Upload -->
+      <div class="tab-pane" [class.active]="activeTab === 'link'">
+        <div class="form-group">
+          <label class="form-label">Link Google Docs</label>
+          <input type="url" class="form-control" [(ngModel)]="docLink"
+                 placeholder="https://docs.google.com/document/d/...">
+        </div>
+      </div>
+
+      <button class="btn btn-primary"
+              (click)="previewTemplate()"
+              [disabled]="isLoading">
+        <i class="fas fa-upload"></i>
+        <span>{{ isLoading ? 'Đang xử lý...' : 'Tải lên và trích xuất biến' }}</span>
+      </button>
+
+      <div class="progress-container" *ngIf="isLoading">
+        <div class="progress-bar">
+          <div class="progress" [style.width.%]="progress"></div>
+        </div>
+        <div class="progress-text">Đang xử lý: {{ progress }}%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bước 2: Chọn biến -->
+<div *ngIf="currentStep === 2" class="variables-container">
+  <div class="variables-header">
+    <h2>Các biến đã trích xuất</h2>
+    <p>Đặt tên và chọn kiểu dữ liệu cho từng biến, sau đó tạo template</p>
+  </div>
+
+  <div class="variables-body">
+      <div class="form-group">
+        <label class="form-label">Tên Template</label>
+        <input type="text"
+              class="form-control"
+              [(ngModel)]="templateName"
+              placeholder="Tên hợp đồng" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Mô tả</label>
+        <textarea class="form-control"
+                  [(ngModel)]="templateDescription"
+                  rows="2"></textarea>
+      </div>
+
+    <table class="variables-table" *ngIf="extractedVariables.length > 0">
+      <thead>
+        <tr>
+          <th width="30%">Tên trường</th>
+          <th width="40%">Tên biến</th>
+          <th width="30%">Kiểu dữ liệu</th>
+          <th width="10%">Bắt buộc</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let variable of extractedVariables; let i = index">
+          <!-- Cho phép sửa tên biến -->
+          <td>
+            <input type="text" 
+                   class="form-control" 
+                   [(ngModel)]="variable.name" 
+                   placeholder="Nhập tên trường" 
+                   [required]="true" />
+          </td>
+          <td>
+            <input type="text" class="form-control" [value]="variable.varName" readonly />
+          </td>
+          <td>
+            <select class="form-control" [(ngModel)]="variable.varType">
+              <option value="STRING">Văn bản ngắn</option>
+              <option value="NUMBER">Số</option>
+              <option value="DATE">Ngày tháng</option>
+              <option value="BOOLEAN">True/False</option>
+              <option value="TEXTAREA">Văn bản dài</option>
+              <option value="LIST">Danh sách</option>
+              <option value="DROPDOWN">Dropdown</option>
+            </select>
+          </td>
+          <td>
+            <input type="checkbox" [(ngModel)]="variable.required" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="buttons">
+      <!-- Nếu chưa có template thì tạo mới -->
+      <button class="btn btn-primary"
+              (click)="onCreateOrUpdateTemplate()"
+              [disabled]="isLoading">
+        <i class="fas" [ngClass]="finalizedTemplate ? 'fa-save' : 'fa-plus'"></i>
+        <span>
+          {{ finalizedTemplate ? 'Cập nhật kiểu biến' : 'Tạo template và lưu' }}
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+  <!-- Bước 3: Hoàn thành -->
+  <div *ngIf="currentStep === 3" class="completed-container">
+    <h2> Hoàn thành</h2>
+    <p>Hợp đồng đã được lưu thành công.</p>
+  </div>
+
+  <!-- Alerts -->
+  <div *ngIf="successMessage" class="alert alert-success">{{ successMessage }}</div>
+  <div *ngIf="errorMessage" class="alert alert-error">{{ errorMessage }}</div>
+</main>

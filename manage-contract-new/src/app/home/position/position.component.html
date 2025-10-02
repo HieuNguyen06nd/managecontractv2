@@ -1,0 +1,179 @@
+<main class="main-content">
+  <h1 class="page-title">
+    <i class="fas fa-briefcase"></i>
+    Quản lý vị trí
+  </h1>
+
+  <div class="position-container">
+    <!-- Thanh tìm kiếm + bộ lọc -->
+    <div class="header-actions">
+      <div class="search-box">
+        <i class="fas fa-search search-icon"></i>
+        <input type="text"
+               class="search-input"
+               placeholder="Tìm kiếm vị trí..."
+               [(ngModel)]="searchTerm"
+               (input)="onFilterChange()">
+      </div>
+
+      <div class="filter-section">
+        <!-- Department filter (lọc mềm trên departmentName/department/description) -->
+        <select class="filter-select"
+                [(ngModel)]="departmentFilter"
+                (change)="onFilterChange()">
+          <option value="">Tất cả phòng ban</option>
+          <option value="nhân sự">Phòng Nhân sự</option>
+          <option value="kế toán">Phòng Kế toán</option>
+          <option value="kinh doanh">Phòng Kinh doanh</option>
+          <option value="kỹ thuật">Phòng Kỹ thuật</option>
+        </select>
+
+        <!-- Status filter: dùng code enum để so sánh chính xác -->
+        <select class="filter-select"
+                [(ngModel)]="statusFilter"
+                (change)="onFilterChange()">
+          <option value="">Tất cả trạng thái</option>
+          <option value="ACTIVE">Đang hoạt động</option>
+          <option value="INACTIVE">Ngừng hoạt động</option>
+          <option value="LOCKED">Bị khóa</option>
+        </select>
+
+        <button class="btn btn-primary" (click)="openAddModal()">
+          <i class="fas fa-plus"></i> Thêm vị trí
+        </button>
+      </div>
+    </div>
+
+    <!-- Bảng danh sách -->
+    <table class="data-table">
+      <thead>
+      <tr>
+        <th>Mã vị trí</th>
+        <th>Tên vị trí</th>
+        <th>Mô tả</th>
+        <th>Trạng thái</th>
+        <th>Thao tác</th>
+      </tr>
+      </thead>
+      <tbody>
+      <!-- DÙNG getter paginatedPositions để cắt trang -->
+      <tr *ngFor="let pos of paginatedPositions; trackBy: trackByPositionId">
+        <td>{{ pos.id }}</td>
+        <td>{{ pos.name }}</td>
+        <td>{{ pos.description }}</td>
+        <td>
+          <span class="status-badge"
+                [ngClass]="{
+                  'status-active': pos.status === 'ACTIVE',
+                  'status-inactive': pos.status === 'INACTIVE',
+                  'status-locked': pos.status === 'LOCKED'
+                }">
+            {{ pos.status === 'ACTIVE' ? 'Hoạt động'
+               : pos.status === 'INACTIVE' ? 'Ngừng hoạt động'
+               : 'Bị khóa' }}
+          </span>
+        </td>
+        <td>
+          <button class="btn btn-primary btn-sm me-2" (click)="openEditModal(pos)">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button class="btn btn-danger btn-sm" (click)="openDeleteModal(pos)">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+      </tbody>
+    </table>
+
+    <!-- Pagination -->
+    <div class="pagination d-flex justify-content-center mt-3" *ngIf="totalPages > 1">
+      <button class="btn btn-outline-primary btn-sm me-2"
+              (click)="changePage(currentPage - 1)"
+              [disabled]="currentPage === 1">Trước</button>
+
+      <ng-container *ngFor="let _ of [].constructor(totalPages); let i = index">
+        <button class="btn btn-sm me-1"
+                [ngClass]="{'btn-primary': currentPage === (i+1), 'btn-outline-primary': currentPage !== (i+1)}"
+                (click)="changePage(i+1)">
+          {{ i+1 }}
+        </button>
+      </ng-container>
+
+      <button class="btn btn-outline-primary btn-sm ms-2"
+              (click)="changePage(currentPage + 1)"
+              [disabled]="currentPage === totalPages">Sau</button>
+    </div>
+  </div>
+
+  <!-- Modal Add -->
+  <div class="modal fade show d-block" *ngIf="showAddModal">
+    <div class="modal-dialog">
+      <div class="modal-content p-3">
+        <h3>Thêm vị trí</h3>
+        <div class="mb-2">
+          <label>Tên vị trí <span class="text-danger">*</span></label>
+          <input [(ngModel)]="formData.name" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label>Mô tả</label>
+          <textarea [(ngModel)]="formData.description" class="form-control"></textarea>
+        </div>
+        <div class="mb-2">
+          <label>Trạng thái</label>
+          <select [(ngModel)]="formData.status" class="form-control">
+            <option value="ACTIVE">Đang hoạt động</option>
+            <option value="INACTIVE">Ngừng hoạt động</option>
+            <option value="LOCKED">Bị khóa</option>
+          </select>
+        </div>
+        <div class="modal-actions d-flex justify-content-end">
+          <button class="btn btn-secondary me-2" (click)="closeModals()">Hủy</button>
+          <button class="btn btn-primary" (click)="addPosition()">Lưu</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Edit -->
+  <div class="modal fade show d-block" *ngIf="showEditModal">
+    <div class="modal-dialog">
+      <div class="modal-content p-3">
+        <h3>Sửa vị trí</h3>
+        <div class="mb-2">
+          <label>Tên vị trí <span class="text-danger">*</span></label>
+          <input [(ngModel)]="formData.name" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label>Mô tả</label>
+          <textarea [(ngModel)]="formData.description" class="form-control"></textarea>
+        </div>
+        <div class="mb-2">
+          <label>Trạng thái</label>
+          <select [(ngModel)]="formData.status" class="form-control">
+            <option value="ACTIVE">Đang hoạt động</option>
+            <option value="INACTIVE">Ngừng hoạt động</option>
+            <option value="LOCKED">Bị khóa</option>
+          </select>
+        </div>
+        <div class="modal-actions d-flex justify-content-end">
+          <button class="btn btn-secondary me-2" (click)="closeModals()">Hủy</button>
+          <button class="btn btn-primary" (click)="updatePosition()">Cập nhật</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Delete -->
+  <div class="modal fade show d-block" *ngIf="showDeleteModal">
+    <div class="modal-dialog">
+      <div class="modal-content p-3">
+        <h3>Xác nhận xóa</h3>
+        <p>Bạn có chắc chắn muốn xóa vị trí <b>{{ selectedPosition?.name }}</b> không?</p>
+        <div class="modal-actions d-flex justify-content-end">
+          <button class="btn btn-secondary me-2" (click)="closeModals()">Hủy</button>
+          <button class="btn btn-danger" (click)="deletePosition()">Xóa</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>

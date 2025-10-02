@@ -67,10 +67,6 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
         ApprovalFlow flow = flowRepository.findById(flowId)
                 .orElseThrow(() -> new RuntimeException("Flow not found"));
 
-        if (!Objects.equals(flow.getTemplate().getId(), request.getTemplateId())) {
-            throw new IllegalArgumentException("TemplateId không khớp với flow");
-        }
-
         flow.setName(request.getName());
         flow.setDescription(request.getDescription());
 
@@ -165,46 +161,28 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
             if (s.getApproverType() == null)
                 throw new IllegalArgumentException("approverType bắt buộc");
 
-            // ---- action bắt buộc ----
             if (s.getAction() == null)
                 throw new IllegalArgumentException("action bắt buộc (APPROVE_ONLY | SIGN_ONLY | SIGN_THEN_APPROVE)");
 
             boolean requiresSign = (s.getAction() == ApprovalAction.SIGN_ONLY
                     || s.getAction() == ApprovalAction.SIGN_THEN_APPROVE);
 
-            // ---- Validate theo approverType ----
             if (s.getApproverType() == ApproverType.USER) {
                 if (s.getEmployeeId() == null)
                     throw new IllegalArgumentException("employeeId bắt buộc khi approverType=USER");
-
-                // Nếu là bước KÝ, bắt buộc user phải có ảnh chữ ký
-                if (requiresSign) {
-                    Employee emp = userRepository.findById(s.getEmployeeId())
-                            .orElseThrow(() -> new RuntimeException("Employee not found: " + s.getEmployeeId()));
-
-                    String sig = emp.getSignatureImage();
-                    if (sig == null || sig.isBlank()) {
-                        throw new IllegalArgumentException(
-                                "Nhân viên '" + emp.getFullName()
-                                        + "' chưa có ảnh chữ ký – không thể gán vào bước yêu cầu KÝ");
-                    }
-                }
             } else if (s.getApproverType() == ApproverType.POSITION) {
                 if (s.getPositionId() == null || s.getDepartmentId() == null)
                     throw new IllegalArgumentException("positionId và departmentId bắt buộc khi approverType=POSITION");
-
-                // (Tuỳ chọn) Nếu muốn siết chặt hơn: kiểm tra ít nhất có 1 nhân sự ở pos+dept có chữ ký
-                // nếu requiresSign == true. Có thể bổ sung sau khi bạn có repository phù hợp.
             } else {
                 throw new IllegalArgumentException("approverType không hỗ trợ: " + s.getApproverType());
             }
 
-            // ---- placeholderKey bắt buộc cho bước KÝ & không được trùng ----
+            // Placeholder bắt buộc khi là bước ký + không trùng
             if (requiresSign) {
-                if (s.getPlaceholderKey() == null || s.getPlaceholderKey().isBlank())
-                    throw new IllegalArgumentException("placeholderKey bắt buộc cho bước ký");
-                if (!seenPlaceholders.add(s.getPlaceholderKey()))
-                    throw new IllegalArgumentException("placeholderKey bị trùng: " + s.getPlaceholderKey());
+                if (s.getSignaturePlaceholder() == null || s.getSignaturePlaceholder().isBlank())
+                    throw new IllegalArgumentException("signaturePlaceholder bắt buộc cho bước ký");
+                if (!seenPlaceholders.add(s.getSignaturePlaceholder()))
+                    throw new IllegalArgumentException("signaturePlaceholder bị trùng: " + s.getSignaturePlaceholder());
             }
 
             expected++;
@@ -219,8 +197,6 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
         return new ArrayList<>(sorted);
     }
 
-
-    // Map DTO -> Entity step (USER / POSITION)
     private ApprovalStep mapToApprovalStepEntity(ApprovalStepRequest req, ApprovalFlow flow) {
         ApprovalStep step = new ApprovalStep();
         step.setFlow(flow);
@@ -229,8 +205,7 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
         step.setIsFinalStep(Boolean.TRUE.equals(req.getIsFinalStep()));
         step.setApproverType(req.getApproverType());
         step.setAction(req.getAction());
-        step.setSignaturePlaceholder(req.getPlaceholderKey());
-
+        step.setSignaturePlaceholder(req.getSignaturePlaceholder()); // <-- CHUẨN
 
         if (req.getApproverType() == ApproverType.USER) {
             Employee emp = userRepository.findById(req.getEmployeeId())
@@ -238,7 +213,7 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
             step.setEmployee(emp);
             step.setDepartment(null);
             step.setPosition(null);
-        } else { // POSITION
+        } else {
             Position pos = positionRepository.findById(req.getPositionId())
                     .orElseThrow(() -> new RuntimeException("Position not found"));
             Department dep = departmentRepository.findById(req.getDepartmentId())
@@ -250,4 +225,5 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
 
         return step;
     }
+
 }

@@ -1,0 +1,142 @@
+<div class="login-container">
+  <div class="row g-0">
+    <!-- Left side with info -->
+    <div class="col-md-5 login-left">
+      <div class="app-logo">
+        <i class="fas fa-file-contract"></i>
+        <h2>HỆ THỐNG HỢP ĐỒNG</h2>
+        <p>Quản lý và ký kết hợp đồng điện tử</p>
+      </div>
+
+      <div class="system-features">
+        <div class="feature-item">
+          <div class="feature-icon">
+            <i class="fas fa-cloud-upload-alt"></i>
+          </div>
+          <div>
+            <h5>Tạo hợp đồng từ mẫu</h5>
+            <p>Tải lên và sử dụng các mẫu hợp đồng có sẵn</p>
+          </div>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-icon">
+            <i class="fas fa-signature"></i>
+          </div>
+          <div>
+            <h5>Trình ký điện tử</h5>
+            <p>Phê duyệt và ký hợp đồng trực tuyến</p>
+          </div>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-icon">
+            <i class="fas fa-tasks"></i>
+          </div>
+          <div>
+            <h5>Theo dõi tiến trình</h5>
+            <p>Giám sát trạng thái hợp đồng trong thời gian thực</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right side with login form -->
+    <div class="col-md-7 login-right">
+      <h3 class="mb-4">Đăng nhập hệ thống</h3>
+
+      <div class="login-tabs">
+        <div
+          class="login-tab"
+          [class.active]="loginMode === 'password'"
+          (click)="switchMode('password')"
+        >
+          Đăng nhập bằng mật khẩu
+        </div>
+        <div
+          class="login-tab"
+          [class.active]="loginMode === 'otp'"
+          (click)="switchMode('otp')"
+        >
+          Đăng nhập bằng OTP
+        </div>
+      </div>
+
+      <!-- Password Login Form -->
+      <div *ngIf="loginMode === 'password'">
+        <div class="form-group">
+          <label for="emailOrPhone" class="form-label">Email hoặc số điện thoại</label>
+          <input
+            type="text"
+            class="form-control"
+            [(ngModel)]="emailOrPhone"
+            placeholder="Nhập email hoặc số điện thoại"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="password" class="form-label">Mật khẩu</label>
+          <input
+            type="password"
+            class="form-control"
+            [(ngModel)]="password"
+            placeholder="Nhập mật khẩu"
+          />
+        </div>
+
+        <div class="forgot-password">
+          <a routerLink="/forgot-password">Quên mật khẩu?</a>
+        </div>
+
+        <button class="btn btn-login" (click)="loginWithPassword()">
+          <i class="fas fa-sign-in-alt"></i> Đăng nhập
+        </button>
+      </div>
+
+      <!-- OTP Login Form -->
+      <!-- OTP Login Form -->
+<div *ngIf="loginMode === 'otp'">
+  <div class="form-group">
+    <label for="otp-email" class="form-label">Email hoặc số điện thoại</label>
+    <input
+      type="text"
+      class="form-control"
+      [(ngModel)]="otpEmail"
+      placeholder="Nhập email hoặc số điện thoại"
+    />
+  </div>
+
+    <!-- Giai đoạn nhập OTP chỉ hiển thị khi đã gửi thành công -->
+    <div *ngIf="otpSent">
+        <div class="form-group">
+        <label for="otp-code" class="form-label">Mã OTP</label>
+        <input
+            type="text"
+            class="form-control"
+            [(ngModel)]="otpCode"
+            placeholder="Nhập mã OTP"
+        />
+        </div>
+
+        <div class="otp-actions d-flex justify-content-between">
+        <a href="#" class="resend-otp" (click)="sendOtp()">Gửi lại mã OTP</a>
+        <a href="#" class="resend-otp" (click)="switchMode('password')"
+            >Đăng nhập bằng mật khẩu</a
+        >
+        </div>
+
+        <button class="btn btn-login" (click)="loginWithOtp()">
+        <i class="fas fa-key"></i> Đăng nhập bằng OTP
+        </button>
+    </div>
+
+    <!-- Nút gửi OTP chỉ hiển thị trước khi OTP được gửi -->
+    <div *ngIf="!otpSent">
+        <button class="btn btn-login" (click)="sendOtp()">
+        <i class="fas fa-paper-plane"></i> Gửi OTP
+        </button>
+    </div>
+    </div>
+
+  </div>
+</div>

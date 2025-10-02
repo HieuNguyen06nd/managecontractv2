@@ -14,5 +14,5 @@ public class ApprovalStepRequest {
     private Long employeeId;
     private Boolean isFinalStep;
     private ApprovalAction action;     // REQUIRED
-    private String placeholderKey;
+    private String signaturePlaceholder;
 }

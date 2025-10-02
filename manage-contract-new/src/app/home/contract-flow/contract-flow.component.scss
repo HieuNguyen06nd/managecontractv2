@@ -1,0 +1,220 @@
+:host {
+  --primary: #4361ee;
+  --secondary: #3f37c9;
+  --success: #4cc9f0;
+  --info: #4895ef;
+  --warning: #f72585;
+  --danger: #e63946;
+  --light: #f8f9fa;
+  --dark: #212529;
+  --border-radius: 12px;
+  --box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --transition: all 0.3s ease;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  color: var(--dark);
+  line-height: 1.6;
+}        
+  .main-content {
+      margin-left: 250px;
+      margin-top: 70px;
+      padding: 20px;
+      background-color: #f5f7fa;
+      min-height: calc(100vh - 70px);
+  }
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  box-shadow: var(--box-shadow);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.creation-flow {
+  display: flex;
+  justify-content: space-between;
+  margin: 2rem 0;
+  position: relative;
+}
+
+.creation-flow::before {
+  content: '';
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--light);
+  z-index: 1;
+}
+
+.flow-step {
+  text-align: center;
+  position: relative;
+  z-index: 2;
+  flex: 1;
+}
+
+.step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--light);
+  color: var(--dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 10px;
+  font-weight: bold;
+  transition: var(--transition);
+}
+
+.flow-step.active .step-number {
+  background: var(--primary);
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.flow-step.completed .step-number {
+  background: var(--success);
+  color: #fff;
+}
+
+.approval-step-card {
+  background: #fff;
+  border: 2px solid var(--primary);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  position: relative;
+}
+
+.step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.step-order {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  margin-right: 1rem;
+}
+
+.template-card {
+  border-radius: 15px;
+  transition: var(--transition);
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.template-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--box-shadow);
+}
+
+.template-card.selected {
+  border-color: var(--primary);
+  background: rgba(67, 97, 238, 0.05);
+}
+
+.organization-tree {
+  background: #f8f9fa;
+  border-radius: 10px;
+  padding: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.org-node {
+  padding: 0.5rem;
+  margin: 0.25rem 0;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: var(--transition); /* ✅ đã thêm dấu ) */
+  border-left: 3px solid transparent;
+}
+
+.org-node:hover {
+  background: #e9ecef;
+}
+
+.org-node.selected {
+  background: var(--primary);
+  color: #fff;
+  border-left-color: var(--secondary);
+}
+
+.org-node.department {
+  margin-left: 1rem;
+  border-left-color: var(--info);
+}
+
+.org-node.position {
+  margin-left: 2rem;
+  border-left-color: var(--success);
+}
+
+.org-node.employee {
+  margin-left: 3rem;
+  border-left-color: var(--warning);
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--secondary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.5rem;
+  font-weight: bold;
+}
+
+.final-step-badge {
+  background: var(--success);
+  color: #fff;
+  padding: 0.25rem 0.75rem;
+  border-radius: 15px;
+  font-size: 0.75rem;
+}
+
+.creation-step {
+  display: block;
+}
+
+.creation-step.d-none {
+  display: none;
+}
+
+.approver-type-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.badge-user { background: var(--info); color: #fff; }
+.badge-position { background: var(--success); color: #fff; }

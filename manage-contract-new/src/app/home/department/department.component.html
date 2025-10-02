@@ -1,0 +1,224 @@
+<main class="main-content">
+  <h1 class="page-title">
+      <i class="fas fa-building"></i>
+      Quản lý phòng ban
+  </h1>
+  
+  <div class="department-container">
+      <div class="header-actions">
+          <div class="search-box">
+              <i class="fas fa-search search-icon"></i>
+              <input type="text" class="search-input" placeholder="Tìm kiếm phòng ban..." (input)="onSearch($event)">
+          </div>
+          
+          <div class="filter-section">
+              <select class="filter-select" [(ngModel)]="statusFilter" (change)="onFilterChange()">
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="active">Đang hoạt động</option>
+                  <option value="inactive">Ngừng hoạt động</option>
+              </select>
+              
+              <button class="btn btn-primary" (click)="openAddDepartmentModal()">
+                  <i class="fas fa-plus"></i> Thêm phòng ban
+              </button>
+          </div>
+      </div>
+      
+      <table class="data-table">
+          <thead>
+              <tr>
+                  <th>Mã phòng ban</th>
+                  <th>Tên phòng ban</th>
+                  <th>Mô tả</th>
+                  <th>Trưởng phòng</th>
+                  <th>Số nhân viên</th>
+                  <th>Trạng thái</th>
+                  <th>Thao tác</th>
+              </tr>
+          </thead>
+          <tbody id="departmentTableBody">
+              <tr *ngFor="let dept of filteredDepartments">
+                  <td>{{ dept.id }}</td>
+                  <td>
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                          <div class="department-icon">
+                              <i class="fas fa-users"></i>
+                          </div>
+                          <div>{{ dept.name }}</div>
+                      </div>
+                  </td>
+                  <td>{{ dept.description }}</td>
+                  <td>{{ dept.manager?.name || 'Chưa phân bổ' }}</td>
+                  <td>{{ dept.employeeCount }}</td>
+                  <td>
+                      <span class="status-badge" 
+                          [ngClass]="{
+                              'status-active': dept.status === 'active',
+                              'status-inactive': dept.status === 'inactive'
+                          }">
+                          {{ dept.status === 'active' ? 'Hoạt động' : 'Ngừng hoạt động' }}
+                      </span>
+                  </td>
+                  <td class="action-buttons">
+                      <button class="btn btn-primary btn-sm" (click)="openEditDepartmentModal(dept)">
+                          <i class="fas fa-edit"></i>
+                      </button>
+                      <button class="btn btn-danger btn-sm" (click)="confirmDeleteDepartment(dept)">
+                          <i class="fas fa-trash"></i>
+                      </button>
+                  </td>
+              </tr>
+          </tbody>
+      </table>
+      
+    <div class="pagination" *ngIf="totalItems > 0">
+    <!-- First / Prev -->
+    <button class="pagination-btn"
+            [disabled]="currentPage === 1"
+            (click)="goToPage(1)">&laquo;</button>
+    <button class="pagination-btn"
+            [disabled]="currentPage === 1"
+            (click)="prevPage()">&lsaquo;</button>
+
+    <!-- Page numbers -->
+    <button class="pagination-btn"
+            *ngFor="let p of pageList"
+            [class.active]="p === currentPage"
+            (click)="goToPage(p)">
+        {{ p }}
+    </button>
+
+    <!-- Next / Last -->
+    <button class="pagination-btn"
+            [disabled]="currentPage === totalPages"
+            (click)="nextPage()">&rsaquo;</button>
+    <button class="pagination-btn"
+            [disabled]="currentPage === totalPages"
+            (click)="goToPage(totalPages)">&raquo;</button>
+
+    <!-- Info + page size -->
+    <span class="pagination-info ms-2">
+        Trang {{ currentPage }} / {{ totalPages }} • {{ totalItems }} mục
+    </span>
+    <select class="page-size ms-2" [(ngModel)]="pageSize" (change)="onPageSizeChange()">
+        <option [ngValue]="5">5</option>
+        <option [ngValue]="10">10</option>
+        <option [ngValue]="20">20</option>
+        <option [ngValue]="50">50</option>
+    </select>
+    </div>
+
+  </div>
+  
+  <div id="add-department-modal" class="modal" [style.display]="isAddModalOpen ? 'flex' : 'none'">
+      <div class="modal-content">
+          <div class="modal-header">
+              <h3 class="modal-title">Thêm phòng ban mới</h3>
+              <span class="close" (click)="closeModal('add')">&times;</span>
+          </div>
+          <form [formGroup]="addForm" (ngSubmit)="addDepartment()">
+              <div class="modal-body">
+                  <div class="form-group">
+                      <label class="form-label">Mã phòng ban <span style="color: red;">*</span></label>
+                      <input type="text" class="form-control" formControlName="id" placeholder="Nhập mã phòng ban">
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">Tên phòng ban <span style="color: red;">*</span></label>
+                      <input type="text" class="form-control" formControlName="name" placeholder="Nhập tên phòng ban">
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">Mô tả</label>
+                      <textarea class="form-textarea" formControlName="description" placeholder="Nhập mô tả phòng ban"></textarea>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">Trưởng phòng</label>
+                      <select class="form-select" formControlName="managerId">
+                          <option value="">-- Chọn trưởng phòng --</option>
+                          <option *ngFor="let employee of employees" [value]="employee.id">{{ employee.name }}</option>
+                      </select>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">Trạng thái</label>
+                      <select class="form-select" formControlName="status">
+                          <option value="active">Hoạt động</option>
+                          <option value="inactive">Ngừng hoạt động</option>
+                      </select>
+                  </div>
+              </div>
+              <div class="modal-footer">
+                  <button class="btn btn-secondary" type="button" (click)="closeModal('add')">Hủy</button>
+                  <button class="btn btn-primary" type="submit" [disabled]="addForm.invalid">Thêm phòng ban</button>
+              </div>
+          </form>
+      </div>
+  </div>
+  
+  <div id="edit-department-modal" class="modal" [style.display]="isEditModalOpen ? 'flex' : 'none'">
+      <div class="modal-content">
+          <div class="modal-header">
+              <h3 class="modal-title">Chỉnh sửa phòng ban</h3>
+              <span class="close" (click)="closeModal('edit')">&times;</span>
+          </div>
+          <form [formGroup]="editForm" (ngSubmit)="updateDepartment()">
+              <div class="modal-body">
+                  <div class="form-group">
+                      <label class="form-label">Mã phòng ban <span style="color: red;">*</span></label>
+                      <input type="text" class="form-control" formControlName="id" readonly>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">Tên phòng ban <span style="color: red;">*</span></label>
+                      <input type="text" class="form-control" formControlName="name">
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">Mô tả</label>
+                      <textarea class="form-textarea" formControlName="description"></textarea>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">Trưởng phòng</label>
+                      <select class="form-select" formControlName="managerId">
+                          <option value="">-- Chọn trưởng phòng --</option>
+                          <option *ngFor="let employee of employees" [value]="employee.id">{{ employee.name }}</option>
+                      </select>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">Trạng thái</label>
+                      <select class="form-select" formControlName="status">
+                          <option value="active">Hoạt động</option>
+                          <option value="inactive">Ngừng hoạt động</option>
+                      </select>
+                  </div>
+              </div>
+              <div class="modal-footer">
+                  <button class="btn btn-secondary" type="button" (click)="closeModal('edit')">Hủy</button>
+                  <button class="btn btn-primary" type="submit" [disabled]="editForm.invalid">Cập nhật</button>
+              </div>
+          </form>
+      </div>
+  </div>
+  
+  <div id="delete-confirm-modal" class="modal" [style.display]="isDeleteModalOpen ? 'flex' : 'none'">
+      <div class="modal-content">
+          <div class="modal-header">
+              <h3 class="modal-title">Xác nhận xóa</h3>
+              <span class="close" (click)="closeModal('delete')">&times;</span>
+          </div>
+          <div class="modal-body">
+              <p>Bạn có chắc chắn muốn xóa phòng ban <strong>{{ deleteDepartmentName }}</strong>?</p>
+              <p class="alert-error">
+                  <i class="fas fa-exclamation-triangle"></i> Cảnh báo: Thao tác này không thể hoàn tác.
+              </p>
+          </div>
+          <div class="modal-footer">
+              <button class="btn btn-secondary" (click)="closeModal('delete')">Hủy</button>
+              <button class="btn btn-danger" (click)="deleteDepartment()">Xóa</button>
+          </div>
+      </div>
+  </div>
+  
+  <div class="alert alert-success" [style.display]="successMessage ? 'flex' : 'none'">
+      <i class="fas fa-check-circle"></i> <span>{{ successMessage }}</span>
+  </div>
+  <div class="alert alert-error" [style.display]="errorMessage ? 'flex' : 'none'">
+      <i class="fas fa-exclamation-circle"></i> <span>{{ errorMessage }}</span>
+  </div>
+</main>

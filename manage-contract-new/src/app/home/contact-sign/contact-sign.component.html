@@ -1,0 +1,328 @@
+<main class="main-content container py-4">
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="page-title mb-1">Hợp đồng chờ Phê duyệt</h1>
+      <p class="page-subtitle m-0">Quản lý và xử lý các hợp đồng đang chờ phê duyệt của bạn</p>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+      <input class="form-control" style="min-width:260px" placeholder="Tìm theo tiêu đề/số HĐ/mẫu..." [(ngModel)]="searchTerm">
+      <select class="form-select" style="min-width:180px" [(ngModel)]="sortBy">
+        <option [ngValue]="''">Sắp xếp: Mặc định</option>
+        <option [ngValue]="'newest'">Sắp xếp: Mới nhất</option>
+        <option [ngValue]="'oldest'">Sắp xếp: Cũ nhất</option>
+        <option [ngValue]="'name'">Sắp xếp: Theo tên</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Filter tabs -->
+  <div class="filter-section mb-3">
+    <div class="d-flex flex-wrap gap-2">
+      <button class="filter-tag" [class.active]="filterTab==='all'" (click)="onTabChange('all')">Tất cả</button>
+      <button class="filter-tag" [class.active]="filterTab==='PENDING_APPROVAL'" (click)="onTabChange('PENDING_APPROVAL')">Chờ duyệt</button>
+      <button class="filter-tag" [class.active]="filterTab==='APPROVED'" (click)="onTabChange('APPROVED')">Đã duyệt</button>
+      <button class="filter-tag" [class.active]="filterTab==='REJECTED'" (click)="onTabChange('REJECTED')">Từ chối</button>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <span class="text-muted">Loại</span>
+        <select class="form-select" style="min-width:180px" [(ngModel)]="typeFilter">
+          <option [ngValue]="''">Tất cả</option>
+          <option [ngValue]="'labor'">Hợp đồng lao động</option>
+          <option [ngValue]="'sale'">Hợp đồng mua bán</option>
+          <option [ngValue]="'rental'">Hợp đồng thuê</option>
+          <option [ngValue]="'service'">Hợp đồng dịch vụ</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading / Error -->
+  <div *ngIf="loading" class="alert alert-info d-flex align-items-center gap-2">
+    <i class="fas fa-spinner fa-spin"></i> Đang tải danh sách...
+  </div>
+  <div *ngIf="!loading && errorMsg" class="alert alert-danger">{{ errorMsg }}</div>
+
+  <!-- Empty -->
+  <div *ngIf="!loading && !errorMsg && visibleContracts.length === 0" class="alert alert-secondary">
+    Không có hợp đồng nào phù hợp.
+  </div>
+
+  <!-- Contracts -->
+  <div class="contracts-container" *ngIf="!loading && !errorMsg">
+    <div class="contract-card" *ngFor="let c of visibleContracts; trackBy: trackById">
+      <div class="contract-header">
+        <span class="contract-badge" [ngClass]="badgeClass(c.status)">
+          {{ ((c.status || 'PENDING_APPROVAL').split('_').join(' ')) | uppercase }}
+        </span>
+        <div class="priority-tag" *ngIf="c.priority==='HIGH'">KHẨN CẤP</div>
+        <h3 class="contract-title">{{ c.title || c.contractNumber }}</h3>
+
+        <div class="contract-meta">
+          <div class="meta-item">
+            <i class="fas fa-hashtag"></i>
+            <span>{{ c.contractNumber }}</span>
+          </div>
+          <div class="meta-item" *ngIf="c.templateName">
+            <i class="fas fa-file-alt"></i>
+            <span>{{ c.templateName }}</span>
+          </div>
+          <div class="meta-item" *ngIf="c.createdAt">
+            <i class="fas fa-calendar"></i>
+            <span>{{ formatDate(c.createdAt) }}</span>
+          </div>
+          <div class="meta-item" *ngIf="c.currentStepAction">
+            <i class="fas fa-stamp"></i>
+            <span>
+              Hành động: 
+              <b>
+                {{
+                  c.currentStepAction === 'APPROVE_ONLY' ? 'PHÊ DUYỆT'
+                  : c.currentStepAction === 'SIGN_ONLY' ? 'KÝ'
+                  : 'KÝ rồi PHÊ DUYỆT'
+                }}
+              </b>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="contract-body">
+        <div class="current-step" *ngIf="c.currentStepName">
+          <div class="step-label">Bước hiện tại:</div>
+          <div class="step-value">{{ c.currentStepName }}</div>
+        </div>
+
+        <div class="action-buttons">
+          <button class="btn btn-preview" (click)="openPreview(c)">
+            <i class="fas fa-eye me-1"></i> Xem trước
+          </button>
+
+          <!-- Ký nếu là SIGN_ONLY | SIGN_THEN_APPROVE -->
+          <button class="btn btn-sign" *ngIf="canSign(c)" (click)="openSign(c)">
+            <i class="fas fa-signature me-1"></i>
+            {{ c.currentStepAction==='SIGN_ONLY' ? 'Ký (hoàn tất bước)' : 'Ký' }}
+          </button>
+
+          <!-- Phê duyệt nếu là APPROVE_ONLY | SIGN_THEN_APPROVE -->
+          <button class="btn btn-approve"
+                  *ngIf="canApproveVisible(c)"
+                  [disabled]="approveDisabled(c)"
+                  (click)="openApprove(c)">
+            <i class="fas fa-check me-1"></i> Phê duyệt
+          </button>
+
+          <button class="btn btn-reject" *ngIf="canReject(c)" (click)="openReject(c)">
+            <i class="fas fa-times me-1"></i> Từ chối
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Approve Modal -->
+  <div class="modal-backdrop" *ngIf="approvalOpen"></div>
+  <div class="modal-panel" *ngIf="approvalOpen">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h5 class="modal-title text-success">
+          <i class="fas fa-check-circle me-2"></i> Phê duyệt Hợp đồng
+        </h5>
+        <button class="btn-close" (click)="closeModals()"></button>
+      </div>
+      <div class="modal-body">
+        <p *ngIf="current">
+          Xác nhận phê duyệt hợp đồng: <strong>{{ current.title || current.contractNumber }}</strong>
+        </p>
+        <div class="alert alert-warning" *ngIf="current?.currentStepAction==='SIGN_THEN_APPROVE' && !current?.currentStepSigned">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          Bước này yêu cầu <b>ký trước</b> khi phê duyệt.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeModals()">Hủy</button>
+        <button class="btn btn-success" [disabled]="!current" (click)="approve(current!)">Xác nhận Phê duyệt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reject Modal -->
+  <div class="modal-backdrop" *ngIf="rejectionOpen"></div>
+  <div class="modal-panel" *ngIf="rejectionOpen">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger">
+          <i class="fas fa-times-circle me-2"></i> Từ chối Phê duyệt
+        </h5>
+        <button class="btn-close" (click)="closeModals()"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning" *ngIf="current">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          Bạn đang từ chối hợp đồng: <strong>{{ current.title || current.contractNumber }}</strong>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Lý do từ chối *</label>
+          <select class="form-select" [(ngModel)]="rejectReasonCode" required>
+            <option value="">Chọn lý do từ chối</option>
+            <option value="missing_info">Thiếu thông tin cần thiết</option>
+            <option value="incorrect_info">Thông tin không chính xác</option>
+            <option value="policy_violation">Vi phạm chính sách công ty</option>
+            <option value="format_error">Sai định dạng / mẫu</option>
+            <option value="budget_issue">Vấn đề ngân sách</option>
+            <option value="other">Lý do khác</option>
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label fw-semibold">Mô tả chi tiết *</label>
+          <textarea class="form-control" rows="4" [(ngModel)]="rejectComment" placeholder="Mô tả cụ thể lý do từ chối..." required></textarea>
+        </div>
+
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" id="allowResubmission" [(ngModel)]="allowResubmission">
+          <label class="form-check-label" for="allowResubmission">Cho phép gửi lại sau khi chỉnh sửa</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeModals()">Hủy</button>
+        <button class="btn btn-danger" [disabled]="!current" (click)="reject(current!)">Xác nhận Từ chối</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview Modal -->
+  <div class="modal-backdrop" *ngIf="previewOpen" (click)="closeModals()"></div>
+  <div class="modal-panel modal-panel--xl" *ngIf="previewOpen" (click)="closeModals()">
+    <div class="modal-card modal-card--xl" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h5 class="modal-title d-flex align-items-center gap-2 m-0">
+          <i class="fas fa-eye"></i>
+          Xem trước: {{ current?.title || current?.contractNumber || 'Hợp đồng' }}
+        </h5>
+        <button class="btn-close" (click)="closeModals()" aria-label="Đóng"></button>
+      </div>
+
+      <div class="modal-toolbar">
+        <div class="left d-flex align-items-center gap-2">
+          <span class="contract-badge" [ngClass]="badgeClass(current?.status)">
+            {{ ((current?.status || 'PENDING_APPROVAL').split('_').join(' ')) | uppercase }}
+          </span>
+          <span class="text-muted" *ngIf="current?.contractNumber">#{{ current?.contractNumber }}</span>
+        </div>
+        <div class="right d-flex align-items-center gap-2">
+          <!-- Ký ngay trong preview (mở popup ký) nếu step cần ký -->
+          <button class="btn btn-sign" *ngIf="current && canSign(current)" (click)="openSign(current)">
+            <i class="fas fa-signature me-1"></i> Ký
+          </button>
+
+          <a class="btn btn-preview" *ngIf="current?.filePath"
+             [href]="(current?.filePath?.startsWith('/')) ? current?.filePath : '/' + current?.filePath"
+             target="_blank" rel="noopener">
+            <i class="fas fa-download me-1"></i> Tải xuống
+          </a>
+          <button class="btn btn-approve" (click)="closeModals()">Đóng</button>
+        </div>
+      </div>
+
+      <div class="modal-body p-0">
+        <ngx-extended-pdf-viewer
+          *ngIf="pdfSrc"
+          [src]="pdfSrc"
+          useBrowserLocale="true"
+          [height]="'calc(80vh - 100px)'"
+          [textLayer]="true"
+          [showSidebarButton]="true"
+          [showPresentationModeButton]="true"
+          [showOpenFileButton]="false"
+          [showPrintButton]="true"
+          [showDownloadButton]="true"
+          [handTool]="false"
+          [zoom]="'page-width'"
+          [filenameForDownload]="current?.contractNumber || 'contract.pdf'">
+        </ngx-extended-pdf-viewer>
+
+        <div *ngIf="!pdfSrc" class="text-muted p-3">Đang tải file xem trước...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sign Modal (vẽ tay / ảnh / placeholder hoặc toạ độ) -->
+  <div class="modal-backdrop" *ngIf="signOpen" (click)="closeSign()"></div>
+  <div class="modal-panel" *ngIf="signOpen" (click)="closeSign()">
+    <div class="modal-card modal-card--xl" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h5 class="modal-title m-0 d-flex align-items-center gap-2">
+          <i class="fas fa-pen-nib"></i> Ký hợp đồng
+        </h5>
+        <button class="btn-close" (click)="closeSign()"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="btn-group" role="group">
+              <button class="btn btn-outline-primary" [class.active]="signMode==='draw'" (click)="signMode='draw'">Vẽ chữ ký</button>
+              <button class="btn btn-outline-primary" [class.active]="signMode==='image'" (click)="signMode='image'">Tải ảnh chữ ký</button>
+            </div>
+          </div>
+
+          <div class="col-12" *ngIf="signMode==='draw'">
+            <div class="sig-canvas-wrap"><canvas id="sig-canvas"></canvas></div>
+            <div class="d-flex gap-2 mt-2">
+              <button class="btn btn-secondary" (click)="clearCanvas()"><i class="fas fa-eraser me-1"></i> Xoá</button>
+            </div>
+          </div>
+
+          <div class="col-12" *ngIf="signMode==='image'">
+            <input
+              type="file"
+              class="form-control"
+              accept="image/png,image/jpeg"
+              (change)="onUploadImage($event)"
+            />
+            <div class="mt-2" *ngIf="uploadedImageBase64">
+              <img [src]="uploadedImageBase64" alt="signature preview" style="max-height:120px">
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="useCoord" [(ngModel)]="coordUse">
+              <label class="form-check-label" for="useCoord">Đặt theo toạ độ (thay vì placeholder)</label>
+            </div>
+          </div>
+
+          <div class="col-md-6" *ngIf="!coordUse">
+            <label class="form-label">Placeholder (ví dụ: SIGN)</label>
+            <input class="form-control" [(ngModel)]="signPlaceholder" placeholder="SIGN">
+            <div class="form-text">BE sẽ chèn ảnh vào {{'{{SIGN}}'}} hoặc {{'{{SIGN:KEY}}'}} nếu bạn đặt key.</div>
+          </div>
+
+          <div class="col-12" *ngIf="coordUse">
+            <div class="row g-2">
+              <div class="col-2"><label class="form-label">Trang</label><input type="number" class="form-control" [(ngModel)]="coord.page" min="1"></div>
+              <div class="col-2"><label class="form-label">X (pt)</label><input type="number" class="form-control" [(ngModel)]="coord.x"></div>
+              <div class="col-2"><label class="form-label">Y (pt)</label><input type="number" class="form-control" [(ngModel)]="coord.y"></div>
+              <div class="col-3"><label class="form-label">Rộng (px)</label><input type="number" class="form-control" [(ngModel)]="coord.w"></div>
+              <div class="col-3"><label class="form-label">Cao (px)</label><input type="number" class="form-control" [(ngModel)]="coord.h"></div>
+            </div>
+            <div class="form-text mt-1">Gốc (0,0) ở <b>góc trái-dưới</b> trang PDF; 72pt ≈ 1 inch.</div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Ghi chú (tuỳ chọn)</label>
+            <input class="form-control" [(ngModel)]="signComment" placeholder="Ví dụ: Đã ký & kiểm tra nội dung">
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeSign()">Hủy</button>
+        <button class="btn btn-success" (click)="confirmSign()">
+          <i class="fas fa-check me-1"></i> Xác nhận Ký
+        </button>
+      </div>
+    </div>
+  </div>
+</main>

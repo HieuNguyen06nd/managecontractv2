@@ -1,0 +1,90 @@
+/* You can add global styles to this file, and also import other style files */
+// Import variables and mixins
+@use './assets/styles/variables' as *;
+@use './assets/styles/mixins' as *;
+@use 'sass:color';
+@import 'ngx-toastr/toastr'; 
+
+
+// Global styles
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f5f7fa;
+  color: #333;
+  line-height: 1.6;
+}
+
+// Import Font Awesome
+
+// Common classes
+.card {
+  @include card;
+}
+
+.btn {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &-primary {
+    background: $primary-color;
+    color: white;
+
+    &:hover {
+        background: color.adjust($primary-color, $lightness: -10%);
+    }
+  }
+
+  &-success {
+    background: $success-color;
+    color: white;
+
+    &:hover {
+      background: color.adjust($success-color, $lightness: -10%);
+    }
+  }
+
+  // Add more button styles as needed
+
+  .toast-success {
+  background: linear-gradient(135deg, #28a745, #20c997) !important;
+  color: #fff !important;
+  font-weight: 500;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.toast-error {
+  background: linear-gradient(135deg, #e53935, #ff4081) !important;
+  color: #fff !important;
+  font-weight: 500;
+  border-radius: 10px !important;
+}
+
+.toast-warning {
+  background: linear-gradient(135deg, #ff9800, #ffc107) !important;
+  color: #fff !important;
+  font-weight: 500;
+  border-radius: 10px !important;
+}
+
+.toast-info {
+  background: linear-gradient(135deg, #2196f3, #42a5f5) !important;
+  color: #fff !important;
+  font-weight: 500;
+  border-radius: 10px !important;
+}
+
+}

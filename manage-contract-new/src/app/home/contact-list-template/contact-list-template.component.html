@@ -1,0 +1,170 @@
+<main class="main-content">
+  <h1 class="page-title">
+    <i class="fas fa-file-contract"></i>
+    Danh sách hợp đồng mẫu
+  </h1>
+
+  <div class="template-container">
+    <!-- Header actions -->
+    <div class="header-actions">
+      <div class="search-box">
+        <i class="fas fa-search search-icon"></i>
+        <input
+          type="text"
+          class="search-input"
+          placeholder="Tìm kiếm hợp đồng mẫu..."
+          [(ngModel)]="searchTerm" />
+      </div>
+
+      <div class="filter-section">
+        <!-- Lọc theo CATEGORY CODE viết HOA -->
+        <select class="filter-select" [(ngModel)]="categoryFilter">
+          <option value="">Tất cả danh mục</option>
+          <option value="LABOR">Hợp đồng lao động</option>
+          <option value="BUSINESS">Hợp đồng kinh doanh</option>
+          <option value="SERVICE">Hợp đồng dịch vụ</option>
+          <option value="RENTAL">Hợp đồng thuê</option>
+          <option value="LEGAL">Pháp lý</option>
+        </select>
+
+        <select class="filter-select" [(ngModel)]="statusFilter">
+          <option value="">Tất cả trạng thái</option>
+          <option value="active">Đang hoạt động</option>
+          <option value="inactive">Ngừng hoạt động</option>
+        </select>
+
+        <select class="filter-select" [ngModel]="pageSize" (ngModelChange)="onChangePageSize($event)">
+          <option *ngFor="let opt of pageSizeOptions" [value]="opt">{{ opt }}/trang</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Loading / Error -->
+    <div *ngIf="loading" class="py-4 text-center text-muted">Đang tải…</div>
+    <div *ngIf="!loading && error" class="alert alert-danger">{{ error }}</div>
+
+    <!-- Grid -->
+    <div class="templates-grid" *ngIf="!loading && !error">
+      <div class="template-card" *ngFor="let t of pagedTemplates">
+        <div class="template-header">
+          <div class="template-icon">
+            <i class="fas" [ngClass]="{
+              'fa-user-tie': ((t.categoryCode || '').toUpperCase() === 'LABOR'),
+              'fa-handshake': (['BUSINESS','PARTNERSHIP'].includes((t.categoryCode || '').toUpperCase())),
+              'fa-concierge-bell': ((t.categoryCode || '').toUpperCase() === 'SERVICE'),
+              'fa-home': ((t.categoryCode || '').toUpperCase() === 'RENTAL'),
+              'fa-shield-alt': ((t.categoryCode || '').toUpperCase() === 'LEGAL')
+            }"></i>
+          </div>
+          <div class="template-title">{{ t.name }}</div>
+        </div>
+
+        <div class="template-body">
+          <div class="template-description">
+            {{ t.description || '—' }}
+          </div>
+          <div class="template-details">
+            <div class="template-detail">
+              <span class="detail-label">Danh mục</span>
+              <!-- Ưu tiên categoryName, fallback theo code -->
+              <span class="detail-value">{{ getTemplateCategoryLabel(t) }}</span>
+            </div>
+            <div class="template-detail">
+              <span class="detail-label">Số biến</span>
+              <span class="detail-value">{{ t.variables?.length || 0 }} biến</span>
+            </div>
+            <div class="template-detail">
+              <span class="detail-label">Ngày tạo</span>
+              <span class="detail-value">—</span>
+            </div>
+            <div class="template-detail">
+              <span class="detail-label">Lần sử dụng</span>
+              <span class="detail-value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="template-footer">
+          <span class="template-status" [ngClass]="getStatusClass(t)">{{ getStatusLabel(t) }}</span>
+          <div class="template-actions">
+            <button class="btn btn-primary btn-sm" (click)="openDetail(t)">
+              <i class="fas fa-eye"></i> Xem
+            </button>
+            <button class="btn btn-secondary btn-sm" type="button">
+              <i class="fas fa-copy"></i> Sao chép
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Không có dữ liệu -->
+      <div *ngIf="!pagedTemplates.length" class="py-4 text-center text-muted">
+        Không có mẫu nào phù hợp.
+      </div>
+    </div>
+
+    <!-- Footer actions -->
+    <div class="view-more" *ngIf="!loading && !error && totalTemplates > pageSize && currentPage < totalPages">
+      <button class="btn btn-primary" (click)="nextPage()">
+        <i class="fas fa-plus"></i> Xem thêm mẫu hợp đồng
+      </button>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" *ngIf="!loading && !error && totalTemplates > 0">
+      <button class="pagination-btn" [disabled]="currentPage === 1" (click)="prevPage()">&laquo;</button>
+
+      <button class="pagination-btn"
+              *ngFor="let p of pages"
+              [class.active]="p === currentPage"
+              (click)="goToPage(p)">{{ p }}</button>
+
+      <button class="pagination-btn" [disabled]="currentPage === totalPages" (click)="nextPage()">&raquo;</button>
+    </div>
+
+    <!-- Range info -->
+    <div class="text-muted small mt-2" *ngIf="!loading && !error && totalTemplates > 0">
+      Hiển thị {{ displayFrom }} – {{ displayTo }} / {{ totalTemplates }}
+    </div>
+  </div>
+
+  <!-- Modal xem chi tiết -->
+  <div class="modal" *ngIf="showDetailModal" (click)="closeDetail()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3 class="modal-title">{{ selectedTemplate?.name }}</h3>
+        <span class="close" (click)="closeDetail()">&times;</span>
+      </div>
+
+      <div class="modal-body">
+        <div class="template-preview">
+          <div class="preview-header">
+            <h4>Xem trước hợp đồng</h4>
+          </div>
+          <!-- Có thể bind preview HTML nếu API có -->
+          <div class="preview-content text-muted">
+            (Chưa có nội dung xem trước — cần call API preview.)
+          </div>
+        </div>
+
+        <div class="variables-list" *ngIf="selectedTemplate">
+          <div class="variables-title">Biến số trong hợp đồng</div>
+
+          <div class="variable-item" *ngFor="let v of selectedTemplate.variables; let i = index">
+            <span class="variable-name">{{ v.varName || ('var_' + i) }}</span>
+            <span class="variable-type">{{ getVariableTypeLabel(v) }}</span>
+          </div>
+
+          <div *ngIf="!selectedTemplate.variables?.length" class="text-muted small">
+            Không có biến.
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeDetail()">Đóng</button>
+        <button class="btn btn-primary" type="button">Sử dụng mẫu này</button>
+      </div>
+    </div>
+  </div>
+</main>

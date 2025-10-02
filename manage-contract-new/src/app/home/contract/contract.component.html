@@ -1,0 +1,432 @@
+<main class="main-content">
+    <div class=" py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="alert alert-success" *ngIf="successMessage">{{ successMessage }}</div>
+            <div class="alert alert-danger" *ngIf="errorMessage">{{ errorMessage }}</div>
+            
+            <div class="glass-card p-4 mb-4">
+                <h4 class="text-center text-gradient mb-4">
+                    <i class="fas fa-magic me-2"></i>Tạo Hợp đồng Mới
+                </h4>
+                
+                <div class="creation-flow">
+                    <div class="flow-step" [class.active]="currentStep === 1" [class.completed]="currentStep > 1" data-step="1">
+                        <div class="step-number">1</div>
+                        <div class="step-title">Chọn Template</div>
+                    </div>
+                    <div class="flow-step" [class.active]="currentStep === 2" [class.completed]="currentStep > 2" data-step="2">
+                        <div class="step-number">2</div>
+                        <div class="step-title">Nhập Thông tin</div>
+                    </div>
+                    <div class="flow-step" [class.active]="currentStep === 3" [class.completed]="currentStep > 3" data-step="3">
+                        <div class="step-number">3</div>
+                        <div class="step-title">Cấu hình Luồng ký</div>
+                    </div>
+                    <div class="flow-step" [class.active]="currentStep === 4" [class.completed]="currentStep > 4" data-step="4">
+                        <div class="step-number">4</div>
+                        <div class="step-title">Xem trước & Tạo</div>
+                    </div>
+                </div>
+            </div>
+
+            <form [formGroup]="contractForm">
+                <!-- STEP 1 -->
+                <div id="step1" class="creation-step" *ngIf="currentStep === 1">
+                    <div class="glass-card p-4 mb-4">
+                        <h4 class="text-gradient mb-4">
+                            <i class="fas fa-layer-group me-2"></i>Bước 1: Chọn Template
+                        </h4>
+
+                        <div class="row mb-4">
+                            <div class="col-md-8">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                    <input type="text" class="form-control" placeholder="Tìm kiếm template...">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <!-- Chọn số mục / trang -->
+                                <select class="form-select" [value]="pageSize" (change)="onChangePageSize($any($event.target).value)">
+                                    <option *ngFor="let opt of pageSizeOptions" [value]="opt">{{ opt }}/trang</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row" id="templatesContainer">
+                            <!-- DÙNG pagedTemplates để hiển thị theo trang -->
+                            <div class="col-md-6 mb-3" *ngFor="let template of pagedTemplates">
+                                <div 
+                                    class="template-card card" 
+                                    [class.selected]="template.id === selectedTemplate?.id"
+                                    (click)="selectTemplate(template)">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                                <span class="badge bg-primary">
+                                                {{ getCategoryLabelFromTemplate(template) }}
+                                                </span>
+                                            <i class="fas fa-check-circle text-success" [class.d-none]="template.id !== selectedTemplate?.id"></i>
+                                        </div>
+                                        <h5 class="card-title">{{ template.name }}</h5>
+                                        <p class="card-text text-muted small">{{ template.description }}</p>
+                                        <div class="d-flex justify-content-between text-muted small">
+                                            <span><i class="fas fa-tags me-1"></i> {{ template.variables?.length }} biến</span>
+                                            <span><i class="fas fa-signature me-1"></i> —</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pagination -->
+                        <div class="d-flex justify-content-between align-items-center mt-2" *ngIf="totalTemplates > 0">
+                            <div class="text-muted small">
+                                Hiển thị
+                                {{ (currentPage - 1) * pageSize + 1 }}
+                                –
+                                {{ Math.min(currentPage * pageSize, totalTemplates) }}
+                                / {{ totalTemplates }}
+                            </div>
+
+                            <nav aria-label="Templates pagination">
+                                <ul class="pagination pagination-sm mb-0">
+                                    <li class="page-item" [class.disabled]="currentPage === 1">
+                                        <button class="page-link" type="button" (click)="prevPage()" aria-label="Previous">«</button>
+                                    </li>
+
+                                    <li class="page-item" *ngFor="let p of pages" [class.active]="currentPage === p">
+                                        <button class="page-link" type="button" (click)="goToPage(p)">{{ p }}</button>
+                                    </li>
+
+                                    <li class="page-item" [class.disabled]="currentPage === totalPages">
+                                        <button class="page-link" type="button" (click)="nextPage()" aria-label="Next">»</button>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+
+                    <div class="text-end">
+                        <button class="btn btn-primary" (click)="goToStep(2)" [disabled]="!selectedTemplate">
+                            Tiếp theo <i class="fas fa-arrow-right ms-2"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- STEP 2 -->
+                <div id="step2" class="creation-step" *ngIf="currentStep === 2">
+                    <div class="glass-card p-4 mb-4">
+                        <h4 class="text-gradient mb-4">
+                            <i class="fas fa-edit me-2"></i>Bước 2: Thông tin Hợp đồng
+                        </h4>
+
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label required-field">Tên hợp đồng</label>
+                                    <input type="text"
+                                            class="form-control"
+                                            formControlName="contractName"
+                                            [ngClass]="{'is-invalid': contractForm.get('contractName')?.invalid && contractForm.get('contractName')?.touched}">
+                                    <div *ngIf="contractForm.get('contractName')?.invalid && contractForm.get('contractName')?.touched"
+                                        class="text-danger small mt-1">
+                                        Tên hợp đồng là bắt buộc.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">Số hợp đồng</label>
+                                    <input type="text" class="form-control" formControlName="contractNumber" [disabled]="true">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group mb-4">
+                            <label class="form-label">Mô tả hợp đồng</label>
+                            <textarea class="form-control" formControlName="contractDescription" rows="3" placeholder="Mô tả ngắn về hợp đồng..."></textarea>
+                        </div>
+
+                        <h5 class="mb-3">Nhập giá trị cho các biến</h5>
+
+                        <div id="variablesContainer" formArrayName="variables">
+                            <div class="variable-section" *ngFor="let variableGroup of variablesFormArray.controls; let i = index" [formGroupName]="i">
+                                <ng-container *ngIf="variablesFormArray.at(i).get('name') as nameControl">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label class="form-label">
+                                                    {{ variablesFormArray.at(i).get('label')?.value }}
+                                                    <span class="text-danger" *ngIf="variablesFormArray.at(i).get('value')?.errors?.['required']">*</span>
+                                                </label>
+                                                <input 
+                                                    [type]="getInputType(variablesFormArray.at(i).get('type')?.value || 'TEXT')"
+                                                    class="form-control variable-input"
+                                                    [ngClass]="{'is-invalid': variablesFormArray.at(i).get('value')?.invalid && variablesFormArray.at(i).get('value')?.touched}"
+                                                    formControlName="value"
+                                                    [placeholder]="'Nhập ' + (variablesFormArray.at(i).get('label')?.value || '').toLowerCase()">
+                                                <div *ngIf="variablesFormArray.at(i).get('value')?.invalid && variablesFormArray.at(i).get('value')?.touched"
+                                                    class="text-danger small mt-1">
+                                                    Trường này là bắt buộc.
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <small class="text-muted">
+                                                <i class="fas fa-info-circle me-1"></i>
+                                                Kiểu dữ liệu: {{ getTypeLabel(variablesFormArray.at(i).get('type')?.value || 'TEXT') }}
+                                                <span *ngIf="variablesFormArray.at(i).get('value')?.errors?.['required']"> | Bắt buộc</span>
+                                                <span *ngIf="!variablesFormArray.at(i).get('value')?.errors?.['required']"> | Không bắt buộc</span>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </ng-container>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <button class="btn btn-outline-secondary" (click)="goToStep(1)">
+                            <i class="fas fa-arrow-left me-2"></i> Quay lại
+                        </button>
+                        <button class="btn btn-primary" (click)="goToStep(3)" [disabled]="contractForm.get('variables')?.invalid || contractForm.get('contractName')?.invalid">
+                            Tiếp theo <i class="fas fa-arrow-right ms-2"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- STEP 3 -->
+                <div id="step3" class="creation-step" *ngIf="currentStep === 3">
+                    <div formGroupName="signatureConfig" class="glass-card p-4 mb-4">
+                        <h4 class="text-gradient mb-4">
+                            <i class="fas fa-signature me-2"></i>Bước 3: Cấu hình Luồng ký
+                        </h4>
+
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Bạn có thể sử dụng luồng ký mặc định (nếu hệ thống có) hoặc tự tạo luồng ký mới.
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-4">
+                                    <label class="form-label required-field">Chọn luồng ký</label>
+                                    <select class="form-select"
+                                            formControlName="flowOption"
+                                            [ngClass]="{'is-invalid': contractForm.get('signatureConfig.flowOption')?.invalid && contractForm.get('signatureConfig.flowOption')?.touched}">
+                                        <option value="">-- Chọn luồng ký --</option>
+                                        <option value="default">Luồng ký mặc định của template</option>
+                                        <option value="new">Tạo luồng ký mới</option>
+                                        <option value="existing">Chọn từ luồng ký có sẵn</option>
+                                    </select>
+                                    <div *ngIf="contractForm.get('signatureConfig.flowOption')?.invalid && contractForm.get('signatureConfig.flowOption')?.touched"
+                                        class="text-danger small mt-1">
+                                        Vui lòng chọn luồng ký.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-4">
+                                    <label class="form-label">Thời hạn ký</label>
+                                    <input type="date" class="form-control" formControlName="deadline">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="defaultFlow" class="signature-flow"
+                            *ngIf="contractForm.get('signatureConfig.flowOption')?.value === 'default'">
+                            <div class="alert alert-secondary">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Hiện chưa có dữ liệu chi tiết luồng ký mặc định từ API.
+                            </div>
+                        </div>
+
+                        <div id="newFlow" class="signature-flow" *ngIf="contractForm.get('signatureConfig.flowOption')?.value === 'new'">
+                            <h6 class="mb-3">Tạo luồng ký mới</h6>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label required-field">Tên luồng ký</label>
+                                    <input type="text"
+                                            class="form-control"
+                                            formControlName="flowName"
+                                            placeholder="VD: Luồng ký hợp đồng lao động"
+                                            [ngClass]="{
+                                            'is-invalid':
+                                                contractForm.get('signatureConfig.flowName')?.invalid &&
+                                                contractForm.get('signatureConfig.flowName')?.touched
+                                            }">
+                                    <div *ngIf="contractForm.get('signatureConfig.flowName')?.invalid && contractForm.get('signatureConfig.flowName')?.touched"
+                                        class="text-danger small mt-1">
+                                        Tên luồng ký là bắt buộc (tối thiểu 3 ký tự).
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Mô tả</label>
+                                    <input type="text" class="form-control" formControlName="flowDescription" placeholder="Mô tả ngắn">
+                                </div>
+                            </div>
+                            
+                            <div id="signersContainer" formArrayName="newSigners">
+                                <div class="signer-step" *ngFor="let signerGroup of newSignersFormArray.controls; let i = index" [formGroupName]="i">
+                                    <div class="signer-avatar">{{ i + 1 }}</div>
+                                    
+                                    <div class="signer-info row">
+                                        <div class="col-md-5">
+                                            <label class="form-label small text-muted">Loại người ký</label>
+                                            <div class="radio-group-sm">
+                                                <label class="me-3">
+                                                    <input type="radio" formControlName="approverType" [value]="'USER'"> Người dùng
+                                                </label>
+                                                <label>
+                                                    <input type="radio" formControlName="approverType" [value]="'POSITION'"> Vị trí
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <ng-container *ngIf="signerGroup.get('approverType') as typeControl">
+                                            <!-- USER -->
+                                            <div class="col-md-5" *ngIf="typeControl.value === 'USER'">
+                                                <label class="form-label small text-muted">Người ký cụ thể</label>
+                                                <select class="form-select form-control-sm"
+                                                        formControlName="employeeId"
+                                                        [ngClass]="{'is-invalid': signerGroup.get('employeeId')?.invalid && signerGroup.get('employeeId')?.touched}">
+                                                    <option [ngValue]="null">-- Chọn người dùng --</option>
+                                                    <option *ngFor="let e of employees" [value]="e.id">
+                                                        {{ e.fullName }} <ng-container *ngIf="e.department">({{ e.department }})</ng-container>
+                                                    </option>
+                                                </select>
+                                                <div *ngIf="signerGroup.get('employeeId')?.invalid && signerGroup.get('employeeId')?.touched"
+                                                    class="text-danger small mt-1">
+                                                    Vui lòng chọn người ký.
+                                                </div>
+                                            </div>
+
+                                            <!-- POSITION -->
+                                            <div class="col-md-3" *ngIf="typeControl.value === 'POSITION'">
+                                                <label class="form-label small text-muted">Chức vụ</label>
+                                                <select class="form-select form-control-sm"
+                                                        formControlName="positionId"
+                                                        [ngClass]="{'is-invalid': signerGroup.get('positionId')?.invalid && signerGroup.get('positionId')?.touched}">
+                                                    <option [ngValue]="null">-- Chọn chức vụ --</option>
+                                                    <option *ngFor="let p of positions" [value]="p.id">{{ p.name }}</option>
+                                                </select>
+                                                <div *ngIf="signerGroup.get('positionId')?.invalid && signerGroup.get('positionId')?.touched"
+                                                    class="text-danger small mt-1">
+                                                    Vui lòng chọn chức vụ.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3" *ngIf="typeControl.value === 'POSITION'">
+                                                <label class="form-label small text-muted">Phòng ban</label>
+                                                <select class="form-select form-control-sm"
+                                                        formControlName="departmentId"
+                                                        [ngClass]="{'is-invalid': signerGroup.get('departmentId')?.invalid && signerGroup.get('departmentId')?.touched}">
+                                                    <option [ngValue]="null">-- Chọn phòng ban --</option>
+                                                    <option *ngFor="let d of departments" [value]="d.id">{{ d.name }}</option>
+                                                </select>
+                                                <div *ngIf="signerGroup.get('departmentId')?.invalid && signerGroup.get('departmentId')?.touched"
+                                                    class="text-danger small mt-1">
+                                                    Vui lòng chọn phòng ban.
+                                                </div>
+                                            </div>
+                                        </ng-container>
+                                        <div class="col-md-12 mt-2">
+                                            <!-- Phương thức bước + Placeholder ký -->
+                                            <div class="col-md-4">
+                                            <label class="form-label small text-muted">Phương thức bước</label>
+                                            <select class="form-select form-select-sm" formControlName="action">
+                                                <option [ngValue]="'APPROVE_ONLY'">Phê duyệt (APPROVE_ONLY)</option>
+                                                <option [ngValue]="'SIGN_ONLY'">Chỉ ký (SIGN_ONLY)</option>
+                                                <option [ngValue]="'SIGN_THEN_APPROVE'">Ký rồi phê duyệt (SIGN_THEN_APPROVE)</option>
+                                            </select>
+                                            </div>
+
+                                            <div class="col-md-4" *ngIf="signerGroup.get('action')?.value !== 'APPROVE_ONLY'">
+                                            <label class="form-label small text-muted">
+                                                Placeholder ký <span class="text-danger">*</span>
+                                            </label>
+                                            <input class="form-control form-control-sm"
+                                                    placeholder="VD: SIGN hoặc SIGN:CEO"
+                                                    formControlName="signaturePlaceholder">
+                                            <small class="text-muted">
+                                                Sẽ thay vào {{'{{SIGN}}'}} / {{'{{SIGN:KEY}}'}} trong template DOCX/HTML.
+                                            </small>
+                                            </div>
+
+                                            <div class="col-md-2">
+                                            <label class="form-label small text-muted d-block">Bước cuối</label>
+                                            <input type="checkbox" formControlName="isFinalStep">
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="signer-actions">
+                                        <button class="btn btn-sm btn-outline-danger" type="button" (click)="removeSigner(i)">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button class="btn btn-outline-primary btn-sm mt-2" type="button" (click)="addSigner()">
+                                <i class="fas fa-plus me-1"></i> Thêm bước ký
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <button class="btn btn-outline-secondary" (click)="goToStep(2)">
+                            <i class="fas fa-arrow-left me-2"></i> Quay lại
+                        </button>
+                        <button class="btn btn-primary"
+                                (click)="goToStep(4)"
+                                [disabled]="
+                                    contractForm.get('signatureConfig')?.invalid ||
+                                    (contractForm.get('signatureConfig.flowOption')?.value === 'new' &&
+                                    (newSignersFormArray.length === 0 || newSignersFormArray.invalid))
+                                ">
+                            Tiếp theo <i class="fas fa-arrow-right ms-2"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- STEP 4 -->
+                <div id="step4" class="creation-step" *ngIf="currentStep === 4">
+                    <div class="glass-card p-4 mb-4">
+                        <h4 class="text-gradient mb-4">
+                            <i class="fas fa-eye me-2"></i>Bước 4: Xem trước & Tạo
+                        </h4>
+
+                        <div class="mb-3">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" (click)="previewTemplate()">
+                                <i class="fas fa-rotate me-1"></i> Làm mới xem trước
+                            </button>
+                        </div>
+
+                        <!-- Nội dung preview (HTML từ server) -->
+                        <div class="border rounded p-3 bg-white" [innerHTML]="previewHtml"></div>
+                    </div>
+                        <div class="d-flex justify-content-between">
+                        <button class="btn btn-outline-secondary" (click)="goToStep(3)">
+                            <i class="fas fa-arrow-left me-2"></i> Quay lại
+                        </button>
+                        <div>
+                            <button class="btn btn-outline-primary me-2" type="button"
+                                    (click)="createContract(false)" [disabled]="isSaving">
+                            <span *ngIf="!isSaving"><i class="fas fa-save me-2"></i> Lưu nháp</span>
+                            <span *ngIf="isSaving"><i class="fas fa-spinner fa-spin me-2"></i> Đang lưu...</span>
+                            </button>
+                            <button class="btn btn-success" type="button"
+                                    (click)="createContract(true)" [disabled]="isSaving">
+                            <span *ngIf="!isSaving"><i class="fas fa-check me-2"></i> Tạo & trình ký</span>
+                            <span *ngIf="isSaving"><i class="fas fa-spinner fa-spin me-2"></i> Đang xử lý...</span>
+                            </button>
+                        </div>
+                        </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    </div>
+</main>
