@@ -4,6 +4,7 @@ import com.hieunguyen.ManageContract.common.constants.ContractStatus;
 import com.hieunguyen.ManageContract.dto.ResponseData;
 import com.hieunguyen.ManageContract.dto.approval.StepApprovalRequest;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
+import com.hieunguyen.ManageContract.dto.contractSign.SignStepRequest;
 import com.hieunguyen.ManageContract.service.ContractApprovalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -72,4 +73,27 @@ public class ContractApprovalController {
         List<ContractResponse> response = contractApprovalService.getMyPendingContracts();
         return new ResponseData<>(200, "Get pending contracts successfully", response);
     }
+
+    @GetMapping("/{contractId}/preview")
+    public ResponseData<ContractResponse> preview(
+            @PathVariable Long contractId,
+            @RequestParam(required = false) Long flowId
+    ) {
+        return new ResponseData<>(200, "Lấy step thành công",
+                contractApprovalService.getApprovalProgressOrPreview(contractId, flowId)
+        );
+    }
+
+    @PostMapping("/{contractId}/steps/{stepId}/sign")
+    public ResponseData<ContractResponse> signStep(
+            @PathVariable("contractId") Long contractId,
+            @PathVariable("stepId") Long stepId,
+            @RequestBody SignStepRequest request
+    ) {
+        // Tùy bạn có dùng contractId trong service hay không
+        ContractResponse response = contractApprovalService.signStep(contractId, stepId, request);
+        return new ResponseData<>(200, "Sign step successfully", response);
+    }
+
+
 }

@@ -13,6 +13,7 @@ import { ContractComponent } from './contract/contract.component';
 import { ContractFlowComponent } from './contract-flow/contract-flow.component';
 import { RolePermissionComponent } from './role-permission/role-permission.component';
 import { ProfileComponent } from './profile/profile.component';
+import { ContractListComponent } from './contract-list/contract-list.component';
 
 export const HOME_ROUTES: Routes = [
   {
@@ -80,6 +81,12 @@ export const HOME_ROUTES: Routes = [
       { 
         path: 'profile',
         component: ProfileComponent,
+        canActivate: [PermissionGuard],
+        data: { role: 'ADMIN' }
+      },
+            { 
+        path: 'contract/list',
+        component: ContractListComponent,
         canActivate: [PermissionGuard],
         data: { role: 'ADMIN' }
       },

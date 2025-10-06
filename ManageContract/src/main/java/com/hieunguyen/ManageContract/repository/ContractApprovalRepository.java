@@ -34,4 +34,7 @@ public interface ContractApprovalRepository extends JpaRepository<ContractApprov
 
     Optional<ContractApproval> findByContractIdAndIsCurrentTrue(Long contractId);
 
+    List<ContractApproval> findAllByContractIdOrderByStepOrderAsc(Long contractId);
+
+
 }

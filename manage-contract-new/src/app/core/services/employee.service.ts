@@ -62,11 +62,27 @@ export enum StatusUser {
     LOCKED = 'LOCKED',
     PENDING= 'PENDING'
 }
+
+export interface AdminCreateUserRequest {
+  email: string;
+  fullName?: string;
+  phone?: string;
+  roleKeys?: string[];          
+  departmentId?: number | null;
+  positionId?: number | null;
+}
 @Injectable({ providedIn: 'root' })
 export class EmployeeService {
   private baseUrl = `${environment.apiUrl}/auth`;
 
   constructor(private http: HttpClient) {}
+
+  createByAdmin(payload: AdminCreateUserRequest) {
+  return this.http.post<ResponseData<string>>(
+    `${this.baseUrl}/users`,
+    payload
+  );
+}
 
   /**
    * Lấy danh sách toàn bộ nhân viên

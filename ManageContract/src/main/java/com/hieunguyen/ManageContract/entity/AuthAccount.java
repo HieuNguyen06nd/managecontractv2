@@ -54,6 +54,9 @@ public class AuthAccount {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    private Boolean mustChangePassword;
+    private LocalDateTime passwordIssuedAt;
+
 
     @OneToMany(mappedBy = "account", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<UserRole> userRoles = new HashSet<>();

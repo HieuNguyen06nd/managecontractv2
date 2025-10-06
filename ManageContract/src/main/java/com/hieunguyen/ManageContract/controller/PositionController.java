@@ -62,4 +62,9 @@ public class PositionController {
         return new ResponseData<>(200, "Danh sách position", positionService.getAllPositions(pageable));
     }
 
+    @GetMapping("/by-department/{departmentId}")
+    public ResponseData<List<PositionResponse>> getPositionsByDepartment(@PathVariable Long departmentId) {
+        List<PositionResponse> positions = positionService.getPositionsByDepartment(departmentId);
+        return new ResponseData<>(200, "Position Deparment: ",positions);
+    }
 }

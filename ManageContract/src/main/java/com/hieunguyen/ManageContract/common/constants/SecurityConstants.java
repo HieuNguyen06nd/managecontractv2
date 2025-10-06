@@ -14,6 +14,7 @@ public class SecurityConstants {
             "/v3/api-docs/**",         // OpenAPI JSON docs
             "/swagger-resources/**",   // Tài nguyên Swagger
             "/webjars/**",             // Thư viện webjars
-            "/favicon.ico"             // Biểu tượng
+            "/favicon.ico",             // Biểu tượng
+            "/internal/files/**"
     };
 }

@@ -14,4 +14,7 @@ public class Position {
     private String name;
     private String description;
     private Status status;
+    @ManyToOne
+    @JoinColumn(name = "department_id")
+    private Department department;
 }

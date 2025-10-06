@@ -10,4 +10,6 @@ public class ApprovalFlowResponse {
     private String description;
     private Long templateId;
     private List<ApprovalStepResponse> steps;
+
+    private Boolean isDefault;
 }

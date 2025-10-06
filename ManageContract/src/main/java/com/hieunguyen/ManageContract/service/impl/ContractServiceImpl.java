@@ -142,6 +142,19 @@ public class ContractServiceImpl implements ContractService {
     }
 
 
+    @Override
+    public List<ContractResponse> getMyContracts(ContractStatus status) {
+        String email = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication().getName();
+
+        List<Contract> list = (status == null)
+                ? contractRepository.findByCreatedBy_Account_Email(email)
+                : contractRepository.findByCreatedBy_Account_EmailAndStatus(email, status);
+
+        return list.stream().map(ContractMapper::toResponse).toList();
+    }
+
+
     /** Thay biến trong DOCX: hỗ trợ cú pháp ${var} và {{var}} */
     private void replaceDocxVariables(WordprocessingMLPackage pkg, List<ContractVariableValue> values) {
         Map<String, String> map = new HashMap<>();

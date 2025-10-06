@@ -140,4 +140,16 @@ public class JwtUtil {
     public Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
     }
+
+    public String generateTokenWithClaims(String subject, Map<String,Object> claims, int ttlSeconds) {
+        Date now = new Date();
+        Date exp = new Date(now.getTime() + ttlSeconds * 1000L);
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(subject)
+                .setIssuedAt(now)
+                .setExpiration(exp)
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
 }

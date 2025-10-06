@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -20,12 +21,12 @@ import java.util.stream.Collectors;
 public class DepartmentServiceImpl implements DepartmentService {
 
     private final DepartmentRepository departmentRepository;
-    private final UserRepository employeeRepository; // Giả sử bạn có EmployeeRepository
+    private final UserRepository employeeRepository;
 
     @Override
     public List<DepartmentResponse> getAllDepartments() {
         return departmentRepository.findAllWithParentAndLeader().stream()
-                .map(this::mapToDepartmentResponse)
+                .map(this::mapDeptToUIWithEmployeeCount)  // Tính số lượng nhân viên qua query
                 .collect(Collectors.toList());
     }
 
@@ -101,11 +102,13 @@ public class DepartmentServiceImpl implements DepartmentService {
         departmentRepository.deleteById(id);
     }
 
+    // Phương thức ánh xạ thông tin phòng ban từ entity -> DTO, không tính số lượng nhân viên
     private DepartmentResponse mapToDepartmentResponse(Department department) {
         String parentName = department.getParent() != null ? department.getParent().getName() : null;
         String leaderName = department.getLeader() != null ? department.getLeader().getFullName() : null;
 
-        int employeeCount = department.getEmployees() != null ? department.getEmployees().size() : 0;
+        // Sử dụng query để đếm số lượng nhân viên từ cơ sở dữ liệu
+        Long employeeCount = employeeRepository.countEmployeesByDepartmentId(department.getId());
 
         return DepartmentResponse.builder()
                 .id(department.getId())
@@ -115,7 +118,28 @@ public class DepartmentServiceImpl implements DepartmentService {
                 .parentName(parentName)
                 .leaderId(department.getLeader() != null ? department.getLeader().getId() : null)
                 .leaderName(leaderName)
-                .employeeCount(employeeCount)
+                .employeeCount(employeeCount.intValue())  // Sử dụng giá trị long từ query
+                .status(department.getStatus())
+                .build();
+    }
+
+    // Phương thức ánh xạ phòng ban từ entity -> DTO, tính số lượng nhân viên
+    private DepartmentResponse mapDeptToUIWithEmployeeCount(Department department) {
+        String parentName = department.getParent() != null ? department.getParent().getName() : null;
+        String leaderName = department.getLeader() != null ? department.getLeader().getFullName() : null;
+
+        // Đếm số lượng nhân viên từ cơ sở dữ liệu qua query
+        Long employeeCount = employeeRepository.countEmployeesByDepartmentId(department.getId());
+
+        return DepartmentResponse.builder()
+                .id(department.getId())
+                .name(department.getName())
+                .level(department.getLevel())
+                .parentId(department.getParent() != null ? department.getParent().getId() : null)
+                .parentName(parentName)
+                .leaderId(department.getLeader() != null ? department.getLeader().getId() : null)
+                .leaderName(leaderName)
+                .employeeCount(employeeCount.intValue())  // Sử dụng giá trị long từ query
                 .status(department.getStatus())
                 .build();
     }

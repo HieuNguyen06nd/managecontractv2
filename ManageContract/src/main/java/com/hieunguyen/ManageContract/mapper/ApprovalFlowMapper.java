@@ -38,6 +38,8 @@ public class ApprovalFlowMapper {
                 .positionName(step.getPosition() != null ? step.getPosition().getName() : null)
                 .departmentId(step.getDepartment() != null ? step.getDepartment().getId() : null)
                 .departmentName(step.getDepartment() != null ? step.getDepartment().getName() : null)
+                .action(step.getAction())
+                .signaturePlaceholder(step.getSignaturePlaceholder())
                 .build();
     }
 }

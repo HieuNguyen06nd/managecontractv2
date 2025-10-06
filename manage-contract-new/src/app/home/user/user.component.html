@@ -1,45 +1,45 @@
+<!-- src/app/home/user/user.component.html -->
 <main class="main-content">
   <h1 class="page-title">
     <i class="fas fa-users"></i>
     Quản lý người dùng
   </h1>
-  
+
   <div class="user-management-container">
     <div class="header-actions">
       <div class="search-box">
         <i class="fas fa-search search-icon"></i>
-        <input 
-          type="text" 
-          class="search-input" 
+        <input
+          type="text"
+          class="search-input"
           placeholder="Tìm kiếm người dùng..."
           (input)="onSearch($event)">
       </div>
-      
+
       <div class="filter-section">
-        <select 
-          class="filter-select"
-          [(ngModel)]="filterStatusTerm"
-          (change)="onFilterChange()">
+        <!-- Status filter theo key của BE -->
+        <select class="filter-select" [(ngModel)]="filterStatusTerm" (change)="onFilterChange()">
           <option value="">Tất cả trạng thái</option>
-          <option value="active">Đang hoạt động</option>
-          <option value="inactive">Ngừng hoạt động</option>
-          <option value="pending">Chờ kích hoạt</option>
+          <option value="ACTIVE">Đang hoạt động</option>
+          <option value="INACTIVE">Ngừng hoạt động</option>
+          <option value="PENDING">Chờ kích hoạt</option>
+          <option value="LOCKED">Bị khóa</option>
         </select>
-        
-        <select 
-          class="filter-select"
-          [(ngModel)]="filterRoleTerm"
-          (change)="onFilterChange()">
+
+        <!-- Role filter theo roleKey -->
+        <select class="filter-select" [(ngModel)]="filterRoleTerm" (change)="onFilterChange()">
           <option value="">Tất cả vai trò</option>
-          <option *ngFor="let role of roles" [value]="role">{{ role }}</option>
+          <option *ngFor="let r of roles" [value]="r.roleKey">
+            {{ r.description }} ({{ r.roleKey }})
+          </option>
         </select>
-        
+
         <button class="btn btn-primary" (click)="openAddUserModal()">
           <i class="fas fa-plus"></i> Thêm người dùng
         </button>
       </div>
     </div>
-    
+
     <table class="data-table">
       <thead>
         <tr>
@@ -48,6 +48,7 @@
           <th>Số điện thoại</th>
           <th>Vai trò</th>
           <th>Phòng ban</th>
+          <th>Chức danh</th>
           <th>Trạng thái</th>
           <th>Thao tác</th>
         </tr>
@@ -56,25 +57,25 @@
         <tr *ngFor="let user of filteredUsers">
           <td>
             <div style="display: flex; align-items: center; gap: 10px;">
-              <div class="user-avatar">{{ user.fullName | slice:0:2 | uppercase }}</div>
+              <div class="user-avatar">{{ (user.fullName || '') | slice:0:2 | uppercase }}</div>
               <div>{{ user.fullName }}</div>
             </div>
           </td>
           <td>{{ user.email }}</td>
           <td>{{ user.phone }}</td>
           <td>
-            <span *ngIf="user.roles.length > 0">{{ user.roles[0].description }}</span>
-            <span *ngIf="user.roles.length === 0">N/A</span>
+            {{ roleLabels(user.roles) }}
           </td>
-          <td>{{ user.department }}</td>
-          <td><span 
-            class="status-badge"
-            [ngClass]="{
-                'status-active': user.status === 'ACTIVE',
-                'status-inactive': user.status === 'INACTIVE',
-                'status-pending': user.status === 'PENDING',
-                'status-locked': user.status === 'LOCKED'
-            }">{{ user.status }}</span>
+          <td>{{ displayDept(user) }}</td>
+          <td>{{ displayPos(user) }}</td>
+          <td>
+            <span class="status-badge"
+                  [ngClass]="{
+                    'status-active': user.status === 'ACTIVE',
+                    'status-inactive': user.status === 'INACTIVE',
+                    'status-pending': user.status === 'PENDING',
+                    'status-locked': user.status === 'LOCKED'
+                  }">{{ user.status }}</span>
           </td>
           <td class="action-buttons">
             <button class="btn btn-primary btn-sm" (click)="openEditUserModal(user)">
@@ -90,52 +91,66 @@
         </tr>
       </tbody>
     </table>
-    
-    <div class="pagination">
-        </div>
+
+    <div class="pagination"></div>
   </div>
-  
+
+  <!-- Modal: Thêm user -->
   <div class="modal" *ngIf="isAddModalOpen">
     <div class="modal-content">
       <div class="modal-header">
         <h3 class="modal-title">Thêm người dùng mới</h3>
         <span class="close" (click)="closeModal()">&times;</span>
       </div>
+
       <form [formGroup]="addForm" (ngSubmit)="addUser()">
         <div class="modal-body">
           <div class="form-group">
             <label class="form-label">Họ và tên <span style="color: red;">*</span></label>
             <input type="text" class="form-control" formControlName="fullName" placeholder="Nhập họ và tên" required>
           </div>
+
           <div class="form-group">
             <label class="form-label">Email <span style="color: red;">*</span></label>
             <input type="email" class="form-control" formControlName="email" placeholder="Nhập email" required>
           </div>
+
           <div class="form-group">
             <label class="form-label">Số điện thoại</label>
             <input type="tel" class="form-control" formControlName="phone" placeholder="Nhập số điện thoại">
           </div>
+
           <div class="form-group">
             <label class="form-label">Vai trò <span style="color: red;">*</span></label>
+            <!-- chọn 1 role, FE sẽ wrap thành roleKeys[] khi gửi -->
             <select class="form-select" formControlName="role" required>
               <option value="">-- Chọn vai trò --</option>
-              <option *ngFor="let role of roles" [ngValue]="role">{{ role }}</option>
+              <option *ngFor="let r of roles" [ngValue]="r">{{ r.description }} ({{ r.roleKey }})</option>
             </select>
           </div>
-        <div class="form-group">
+
+          <div class="form-group">
             <label>Phòng ban</label>
             <select class="form-select" formControlName="departmentId">
-                <option value="">-- Chọn phòng ban --</option>
-                <option *ngFor="let dep of departments" [value]="dep.id">
-                {{ dep.name }}
-                </option>
+              <option [ngValue]="null">-- Chọn phòng ban --</option>
+              <option *ngFor="let dep of departments" [ngValue]="dep.id">{{ dep.name }}</option>
             </select>
-        </div>
+          </div>
+
+          <div class="form-group">
+            <label>Chức danh</label>
+            <select class="form-select" formControlName="positionId">
+              <option [ngValue]="null">-- Chọn chức danh --</option>
+              <option *ngFor="let pos of positions" [ngValue]="pos.id">{{ pos.name }}</option>
+            </select>
+          </div>
+
           <div class="password-note">
             <i class="fas fa-info-circle"></i>
-            Mật khẩu mặc định sẽ được tạo tự động và gửi về email của người dùng.
+            Mật khẩu tạm sẽ được tạo tự động và gửi về email của người dùng. Họ cần đổi mật khẩu ở lần đăng nhập đầu.
           </div>
         </div>
+
         <div class="modal-footer">
           <button class="btn btn-secondary" type="button" (click)="closeModal()">Hủy</button>
           <button class="btn btn-primary" type="submit" [disabled]="addForm.invalid">Thêm người dùng</button>
@@ -143,48 +158,67 @@
       </form>
     </div>
   </div>
-  
+
+  <!-- Modal: Sửa -->
   <div class="modal" *ngIf="isEditModalOpen">
     <div class="modal-content">
       <div class="modal-header">
         <h3 class="modal-title">Chỉnh sửa thông tin người dùng</h3>
         <span class="close" (click)="closeModal()">&times;</span>
       </div>
+
       <form [formGroup]="editForm" (ngSubmit)="updateUser()">
         <div class="modal-body">
           <div class="form-group">
             <label class="form-label">Họ và tên <span style="color: red;">*</span></label>
             <input type="text" class="form-control" formControlName="fullName" required>
           </div>
+
           <div class="form-group">
             <label class="form-label">Email <span style="color: red;">*</span></label>
             <input type="email" class="form-control" formControlName="email" required>
           </div>
+
           <div class="form-group">
             <label class="form-label">Số điện thoại</label>
             <input type="tel" class="form-control" formControlName="phone">
           </div>
+
           <div class="form-group">
-            <label class="form-label">Vai trò <span style="color: red;">*</span></label>
-            <select class="form-select" formControlName="role" required>
-              <option *ngFor="let role of roles" [ngValue]="role">{{ role }}</option>
+            <label class="form-label">Vai trò</label>
+            <!-- tạm thời support multi, tuỳ theo API update -->
+            <select class="form-select" formControlName="roleKeys" multiple>
+              <option *ngFor="let r of roles" [ngValue]="r.roleKey">{{ r.description }} ({{ r.roleKey }})</option>
             </select>
           </div>
+
           <div class="form-group">
             <label class="form-label">Phòng ban</label>
-            <select class="form-select" formControlName="department">
-              <option *ngFor="let dept of departments" [ngValue]="dept">{{ dept }}</option>
+            <select class="form-select" formControlName="departmentId">
+              <option [ngValue]="null">-- Chọn phòng ban --</option>
+              <option *ngFor="let dep of departments" [ngValue]="dep.id">{{ dep.name }}</option>
             </select>
           </div>
+
+          <div class="form-group">
+            <label class="form-label">Chức danh</label>
+            <select class="form-select" formControlName="positionId">
+              <option [ngValue]="null">-- Chọn chức danh --</option>
+              <option *ngFor="let pos of positions" [ngValue]="pos.id">{{ pos.name }}</option>
+            </select>
+          </div>
+
           <div class="form-group">
             <label class="form-label">Trạng thái</label>
             <select class="form-select" formControlName="status">
-              <option value="Đang hoạt động">Đang hoạt động</option>
-              <option value="Ngừng hoạt động">Ngừng hoạt động</option>
-              <option value="Chờ kích hoạt">Chờ kích hoạt</option>
+              <option value="ACTIVE">Đang hoạt động</option>
+              <option value="INACTIVE">Ngừng hoạt động</option>
+              <option value="PENDING">Chờ kích hoạt</option>
+              <option value="LOCKED">Bị khóa</option>
             </select>
           </div>
         </div>
+
         <div class="modal-footer">
           <button class="btn btn-secondary" type="button" (click)="closeModal()">Hủy</button>
           <button class="btn btn-primary" type="submit" [disabled]="editForm.invalid">Cập nhật</button>
@@ -192,7 +226,8 @@
       </form>
     </div>
   </div>
-  
+
+  <!-- Modal: Xoá -->
   <div class="modal" *ngIf="isDeleteModalOpen">
     <div class="modal-content">
       <div class="modal-header">
@@ -208,7 +243,8 @@
       </div>
     </div>
   </div>
-  
+
+  <!-- Modal: Reset mật khẩu -->
   <div class="modal" *ngIf="isResetModalOpen">
     <div class="modal-content">
       <div class="modal-header">
@@ -228,5 +264,4 @@
       </div>
     </div>
   </div>
-
-  </main>
+</main>

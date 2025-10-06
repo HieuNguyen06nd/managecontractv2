@@ -1,6 +1,7 @@
 package com.hieunguyen.ManageContract.service.impl;
 
 import com.hieunguyen.ManageContract.common.constants.*;
+import com.hieunguyen.ManageContract.dto.approval.ApprovalStepResponse;
 import com.hieunguyen.ManageContract.dto.approval.StepApprovalRequest;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.dto.contractSign.SignStepRequest;
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -381,6 +383,112 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
 
         return dto;
     }
+
+    @Override
+    public ContractResponse getApprovalProgressOrPreview(Long contractId, Long flowId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new RuntimeException("Contract not found"));
+
+        // 1) Nếu đã snapshot vào ContractApproval -> trả "progress thật"
+        List<ContractApproval> approvals =
+                contractApprovalRepository.findAllByContractIdOrderByStepOrderAsc(contractId);
+
+        ContractResponse dto = ContractMapper.toResponse(contract);
+
+        if (!approvals.isEmpty()) {
+            dto.setHasFlow(true);
+            dto.setFlowSource("CONTRACT");
+            dto.setFlowId(approvals.get(0).getStep().getFlow().getId());
+            dto.setFlowName(approvals.get(0).getStep().getFlow().getName());
+
+            List<ApprovalStepResponse> steps = approvals.stream().map(a -> {
+                ApprovalStep s = a.getStep();
+                ApprovalStepResponse r = ApprovalStepResponse.builder()
+                        .id(a.getId()) // id runtime của ContractApproval
+                        .stepOrder(a.getStepOrder())
+                        .required(a.getRequired())
+                        .approverType(s.getApproverType())
+                        .isFinalStep(a.getIsFinalStep())
+                        .employeeId(s.getEmployee() != null ? s.getEmployee().getId() : null)
+                        .employeeName(s.getEmployee() != null
+                                ? (s.getEmployee().getFullName() != null ? s.getEmployee().getFullName()
+                                : s.getEmployee().getAccount().getEmail())
+                                : null)
+                        .positionId(s.getPosition() != null ? s.getPosition().getId() : null)
+                        .positionName(s.getPosition() != null ? s.getPosition().getName() : null)
+                        .departmentId(s.getDepartment() != null ? s.getDepartment().getId() : null)
+                        .departmentName(s.getDepartment() != null ? s.getDepartment().getName() : null)
+                        .action(s.getAction())
+                        .signaturePlaceholder(s.getSignaturePlaceholder())
+                        .status(a.getStatus())
+                        .isCurrent(a.getIsCurrent())
+                        .decidedBy(a.getApprover() != null
+                                ? (a.getApprover().getFullName() != null ? a.getApprover().getFullName()
+                                : a.getApprover().getAccount().getEmail())
+                                : null)
+                        .decidedAt(a.getApprovedAt() != null ? a.getApprovedAt().toString() : null)
+                        .build();
+                return r;
+            }).toList();
+
+            dto.setSteps(steps);
+            // set currentStep* cho tiện FE
+            contractApprovalRepository.findByContractIdAndIsCurrentTrue(contractId)
+                    .ifPresent(a -> {
+                        dto.setCurrentStepId(a.getId());
+                        dto.setCurrentStepName(buildCurrentStepName(a.getStep()));
+                        dto.setCurrentStepAction(a.getStep().getAction().name());
+                        dto.setCurrentStepSignaturePlaceholder(a.getStep().getSignaturePlaceholder());
+                    });
+            return dto;
+        }
+
+        // 2) Chưa submit -> preview theo flowId (nếu có) hoặc default của template
+        ApprovalFlow flow;
+        if (flowId != null) {
+            flow = flowRepository.findById(flowId)
+                    .orElseThrow(() -> new RuntimeException("Flow not found"));
+            if (!flow.getTemplate().getId().equals(contract.getTemplate().getId())) {
+                throw new RuntimeException("Flow không thuộc template của hợp đồng");
+            }
+            dto.setFlowSource("SELECTED");
+        } else {
+            flow = Optional.ofNullable(contract.getTemplate().getDefaultFlow())
+                    .orElseThrow(() -> new RuntimeException("Template chưa có flow mặc định"));
+            dto.setFlowSource("TEMPLATE_DEFAULT");
+        }
+
+        dto.setHasFlow(false);
+        dto.setFlowId(flow.getId());
+        dto.setFlowName(flow.getName());
+
+        List<ApprovalStepResponse> previewSteps = flow.getSteps().stream()
+                .sorted(Comparator.comparingInt(ApprovalStep::getStepOrder))
+                .map(s -> ApprovalStepResponse.builder()
+                        .id(s.getId()) // id thiết kế (ApprovalStep)
+                        .stepOrder(s.getStepOrder())
+                        .required(s.getRequired())
+                        .approverType(s.getApproverType())
+                        .isFinalStep(s.getIsFinalStep())
+                        .employeeId(s.getEmployee() != null ? s.getEmployee().getId() : null)
+                        .employeeName(s.getEmployee() != null
+                                ? (s.getEmployee().getFullName() != null ? s.getEmployee().getFullName()
+                                : s.getEmployee().getAccount().getEmail())
+                                : null)
+                        .positionId(s.getPosition() != null ? s.getPosition().getId() : null)
+                        .positionName(s.getPosition() != null ? s.getPosition().getName() : null)
+                        .departmentId(s.getDepartment() != null ? s.getDepartment().getId() : null)
+                        .departmentName(s.getDepartment() != null ? s.getDepartment().getName() : null)
+                        .action(s.getAction())
+                        .signaturePlaceholder(s.getSignaturePlaceholder())
+                        // runtime fields để null => FE hiểu là preview
+                        .build()
+                ).toList();
+
+        dto.setSteps(previewSteps);
+        return dto;
+    }
+
 
 
 }

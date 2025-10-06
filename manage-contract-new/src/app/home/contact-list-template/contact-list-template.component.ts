@@ -171,4 +171,6 @@ export class ContactListTemplateComponent implements OnInit {
     this.showDetailModal = false;
     this.selectedTemplate = null;
   }
+
+  
 }

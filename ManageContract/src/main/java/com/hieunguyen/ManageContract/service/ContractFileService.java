@@ -3,6 +3,8 @@ package com.hieunguyen.ManageContract.service;
 import com.hieunguyen.ManageContract.entity.Contract;
 import com.hieunguyen.ManageContract.entity.ContractSignature;
 
+import java.io.File;
+
 public interface ContractFileService {
 
     String generateContractFile(Contract contract);
@@ -37,6 +39,17 @@ public interface ContractFileService {
             boolean bold,
             String placeholderKey
     );
+
+    /**
+     * Lấy file hợp đồng trực tiếp (PDF hoặc DOCX) để FE có thể xem/ký
+     *
+     * @param contractId Id của hợp đồng
+     * @return File object trỏ tới file trên server
+     */
+    File getContractFile(Long contractId);
+    File getPdfOrConvert(Long contractId);
+
+    String generateDocxFile(Contract contract);
 
     /**
      * (tuỳ chọn) nếu bạn muốn chèn theo thực thể ContractSignature đã lưu DB.

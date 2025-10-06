@@ -105,6 +105,7 @@ export class ContractFlowComponent implements OnInit {
   // ================= LIFECYCLE =================
 
   ngOnInit(): void {
+    this.initEmptyForm();
     this.loadReferences();
     this.loadTemplates();
   }
@@ -116,8 +117,9 @@ export class ContractFlowComponent implements OnInit {
     if (this.selectedTemplateForList) this.loadFlowsForList();
   }
 
-  switchToCreate() {
+  switchToCreate(reset = false) {
     this.viewMode = 'create';
+    if (reset) this.resetUiStateForCreate();
   }
 
   // ================= LIST MODE =================
@@ -129,7 +131,10 @@ export class ContractFlowComponent implements OnInit {
     }
     this.approvalFlowService.listFlowsByTemplate(this.selectedTemplateForList).subscribe({
       next: (res) => {
+        // Sắp xếp luồng, đưa luồng mặc định lên đầu
         this.flows = res?.data ?? [];
+        this.flows.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));  // Đảm bảo luồng mặc định lên đầu
+
         this.expanded.clear();
         this.isLoadingDetail.clear();
         this.stepCache.clear();
@@ -141,6 +146,7 @@ export class ContractFlowComponent implements OnInit {
       }
     });
   }
+
 
   toggleSteps(flowId: number) {
     if (this.expanded.has(flowId)) {
@@ -216,23 +222,25 @@ editFlow(id: number) {
 
       // clear & đổ lại steps theo đúng thứ tự
       this.steps.clear();
-      const sorted = (flow.steps || [])
-        .slice()
-        .sort((a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0));
-
+      const sorted = (flow.steps || []).slice().sort((a,b)=>(a.stepOrder??0)-(b.stepOrder??0));
       sorted.forEach(s => {
         const grp = this.fb.group({
-          approverType: <'USER' | 'POSITION'>((s.approverType as any) ?? 'USER'),
+          approverType: <ApproverTypeUI>((s.approverType as any) ?? 'USER'),
           employeeId: [s.employeeId ?? null],
           positionId: [s.positionId ?? null],
           departmentId: [s.departmentId ?? null],
+
+          // THÊM 2 DÒNG NÀY:
+          action: <ApprovalActionUI>((s as any).action ?? 'APPROVE_ONLY'),
+          signaturePlaceholder: [(s as any).signaturePlaceholder ?? ''],
+
           required: [!!s.required, Validators.required],
           isFinalStep: [!!s.isFinalStep, Validators.required]
         });
 
         this.steps.push(grp);
-        // áp lại validator đúng theo loại approver
         this.onChangeApproverType(this.steps.length - 1);
+        this.onChangeAction(this.steps.length - 1);
       });
 
       this.toastr.success('Đã nạp dữ liệu flow vào form để chỉnh sửa.');
@@ -245,17 +253,30 @@ editFlow(id: number) {
 }
 
 
-
-  setDefault(flowId: number) {
+  setDefault(flowId: number): void {
     if (!this.selectedTemplateForList) return;
+
     this.approvalFlowService.setDefaultFlow(this.selectedTemplateForList, flowId).subscribe({
-      next: () => this.toastr.success('Đã đặt flow mặc định cho template'),
+      next: () => {
+        this.toastr.success('Đã đặt flow mặc định cho template');
+
+        this.flows.forEach((flow) => {
+          if (flow.id === flowId) {
+            flow.isDefault = true;  
+          } else {
+            flow.isDefault = false;  
+          }
+        });
+
+        this.flows.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
+      },
       error: (err) => {
         console.error(err);
         this.toastr.error('Không thể đặt mặc định');
       }
     });
   }
+
 
   deleteFlow(flowId: number) {
     if (!confirm('Bạn có chắc muốn xoá flow này?')) return;
@@ -402,7 +423,7 @@ editFlow(id: number) {
 
         // Action + placeholder ký
         action: <ApprovalActionUI>'APPROVE_ONLY',
-        placeholderKey: [''],
+        signaturePlaceholder: [''],
 
         required: [true, Validators.required],
         isFinalStep: [false, Validators.required]
@@ -448,17 +469,15 @@ editFlow(id: number) {
   onChangeAction(index: number): void {
     const group = this.steps.at(index) as FormGroup;
     const action = group.get('action')?.value as ApprovalActionUI;
-    const placeholderKey = group.get('placeholderKey');
-
-    const requiresSign = (action === 'SIGN_ONLY' || action === 'SIGN_THEN_APPROVE');
-
+    const placeholderCtrl = group.get('signaturePlaceholder')!;
+    const requiresSign = action === 'SIGN_ONLY' || action === 'SIGN_THEN_APPROVE';
     if (requiresSign) {
-      placeholderKey?.setValidators([Validators.required, Validators.minLength(2)]);
+      placeholderCtrl.setValidators([Validators.required, Validators.minLength(2)]);
     } else {
-      placeholderKey?.clearValidators();
-      placeholderKey?.setValue('', { emitEvent: false });
+      placeholderCtrl.clearValidators();
+      placeholderCtrl.setValue('', { emitEvent: false });
     }
-    placeholderKey?.updateValueAndValidity();
+    placeholderCtrl.updateValueAndValidity();
   }
 
   // ================= HELPERS =================
@@ -523,73 +542,94 @@ editFlow(id: number) {
 
   // ================= SUBMIT (CREATE FLOW) =================
 
-createApprovalFlow(): void {
-  if (!this.validateStep(4)) return;
+  createApprovalFlow(): void {
+    if (!this.validateStep(4)) return;
 
-  const steps: ApprovalStepRequest[] = this.steps.controls.map((ctrl, idx) => {
-    const v = ctrl.value as {
-      approverType: ApproverTypeUI;
-      employeeId: number | null;
-      positionId: number | null;
-      departmentId: number | null;
-      action: ApprovalActionUI;
-      placeholderKey: string;
-      required: boolean;
-      isFinalStep: boolean;
-    };
+    const steps: ApprovalStepRequest[] = this.steps.controls.map((ctrl, idx) => {
+      const v = ctrl.value as {
+        approverType: ApproverTypeUI;
+        employeeId: number | null;
+        positionId: number | null;
+        departmentId: number | null;
+        action: ApprovalActionUI;
+        signaturePlaceholder: string;
+        required: boolean;
+        isFinalStep: boolean;
+      };
 
-    const type = v.approverType === 'USER' ? ApproverType.USER : ApproverType.POSITION;
+      const type = v.approverType === 'USER' ? ApproverType.USER : ApproverType.POSITION;
+      const needsSign = v.action === 'SIGN_ONLY' || v.action === 'SIGN_THEN_APPROVE';
 
-    return {
-      stepOrder: idx + 1,
-      required: !!v.required,
-      isFinalStep: !!v.isFinalStep,
-      approverType: type,
-      action: (v.action as any as ApprovalAction), // map sang enum service
-      placeholderKey: (v.action === 'SIGN_ONLY' || v.action === 'SIGN_THEN_APPROVE') ? (v.placeholderKey || '').trim() : undefined,
-      employeeId: type === ApproverType.USER ? v.employeeId ?? undefined : undefined,
-      positionId: type === ApproverType.POSITION ? v.positionId ?? undefined : undefined,
-      departmentId: type === ApproverType.POSITION ? v.departmentId ?? undefined : undefined
-    };
-  });
-
-  const payload: ApprovalFlowRequest = {
-    name: (this.form.get('flowName')?.value || '').trim(),
-    description: this.form.get('flowDescription')?.value || '',
-    templateId: this.form.get('selectedTemplateId')?.value,
-    steps
-  };
-
-  if (this.editingFlowId) {
-    // Cập nhật flow nếu đang chỉnh sửa
-    this.approvalFlowService.updateFlow(this.editingFlowId, payload).subscribe({
-      next: (res) => {
-        this.toastr.success('Cập nhật Luồng Phê duyệt thành công!');
-        this.switchToList();
-        this.loadFlowsForList();
-      },
-      error: (err) => {
-        console.error(err);
-        this.toastr.error('Không thể cập nhật Luồng Phê duyệt.');
-      }
+      return {
+        stepOrder: idx + 1,
+        required: !!v.required,
+        isFinalStep: !!v.isFinalStep,
+        approverType: type,
+        action: (v.action as any as ApprovalAction), 
+        signaturePlaceholder: (v.action === 'SIGN_ONLY' || v.action === 'SIGN_THEN_APPROVE') ? (v.signaturePlaceholder || '').trim() : undefined,
+        employeeId: type === ApproverType.USER ? v.employeeId ?? undefined : undefined,
+        positionId: type === ApproverType.POSITION ? v.positionId ?? undefined : undefined,
+        departmentId: type === ApproverType.POSITION ? v.departmentId ?? undefined : undefined
+      };
     });
-  } else {
-    // Tạo mới flow
-    this.approvalFlowService.createFlow(payload).subscribe({
-      next: (res) => {
-        this.toastr.success('Tạo Luồng Phê duyệt thành công!');
-        this.switchToList();
-        this.loadFlowsForList();
-      },
-      error: (err) => {
-        console.error(err);
-        this.toastr.error('Không thể tạo Luồng Phê duyệt.');
-      }
+
+    const payload: ApprovalFlowRequest = {
+      name: (this.form.get('flowName')?.value || '').trim(),
+      description: this.form.get('flowDescription')?.value || '',
+      templateId: this.form.get('selectedTemplateId')?.value,
+      steps
+    };
+
+    if (this.editingFlowId) {
+      // Cập nhật flow nếu đang chỉnh sửa
+      this.approvalFlowService.updateFlow(this.editingFlowId, payload).subscribe({
+        next: (res) => {
+          this.toastr.success('Cập nhật Luồng Phê duyệt thành công!');
+          this.switchToList();
+          this.resetUiStateForCreate();
+          this.loadFlowsForList();
+        },
+        error: (err) => {
+          console.error(err);
+          this.toastr.error('Không thể cập nhật Luồng Phê duyệt.');
+        }
+      });
+    } else {
+      // Tạo mới flow
+      this.approvalFlowService.createFlow(payload).subscribe({
+        next: (res) => {
+          this.toastr.success('Tạo Luồng Phê duyệt thành công!');
+          this.switchToList();
+          this.resetUiStateForCreate();
+          this.loadFlowsForList();
+        },
+        error: (err) => {
+          console.error(err);
+          this.toastr.error('Không thể tạo Luồng Phê duyệt.');
+        }
+      });
+    }
+  }
+
+  private initEmptyForm(): void {
+    this.form = this.fb.group({
+      flowName: ['', [Validators.required, Validators.minLength(3)]],
+      flowDescription: [''],
+      allowCustomFlow: [true],
+      steps: this.fb.array([]),
+      selectedTemplateId: [null, Validators.required],
+      allowOverrideFlow: [true],
     });
   }
-}
 
-
+  /** Reset mọi state để bắt đầu tạo flow mới */
+  private resetUiStateForCreate(): void {
+    this.editingFlowId = null;
+    this.currentStep = 1;
+    this.initEmptyForm();
+    this.form.markAsPristine();
+    this.form.markAsUntouched();
+  }
 
   private resetFormAfterCreate() {
     this.form.reset({

@@ -1,13 +1,3 @@
-export interface ContractResponse {
-  id: number;
-  contractNumber: string;
-  title: string;
-  status: string;       // hoặc ContractStatus nếu muốn dùng enum
-  filePath?: string | null;
-  templateName?: string | null;
-  variables?: VariableValueResponse[];
-}
-
 export interface VariableValueResponse {
   varName: string;
   varValue: string;

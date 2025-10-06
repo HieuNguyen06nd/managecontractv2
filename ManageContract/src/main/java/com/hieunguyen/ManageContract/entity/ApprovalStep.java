@@ -51,4 +51,14 @@ public class ApprovalStep {
     private String signaturePlaceholder;
 
     private Boolean isFinalStep = false;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ApprovalStep that)) return false;
+        return id != null && id.equals(that.getId());
+    }
+    @Override
+    public int hashCode() { return getClass().hashCode(); }
+
 }

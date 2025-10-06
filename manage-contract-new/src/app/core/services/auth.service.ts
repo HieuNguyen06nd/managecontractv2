@@ -78,5 +78,14 @@ export class AuthService {
     );
   }
 
+  firstChangePassword(newPassword: string, changePasswordToken: string)
+    : Observable<ResponseData<AuthResponse>> {
+    return this.http.post<ResponseData<AuthResponse>>(
+      `${this.baseUrl}/first-change-password`,
+      { newPassword },
+      { headers: { Authorization: `Bearer ${changePasswordToken}` } }
+    );
+  }
+
 
 }

@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.Random;
 
+import static jakarta.mail.Transport.send;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -87,4 +89,30 @@ public class EmailServiceImpl implements EmailService {
         log.info("OTP được tạo: {}", otpStr);
         return otpStr;
     }
+
+    @Override
+    public void sendInitialPassword(String email, String tempPassword) {
+        String subject = "Mật khẩu tạm thời";
+        String html = """
+            <p>Chào bạn,</p>
+            <p>Tài khoản của bạn đã được tạo.</p>
+            <p><b>Mật khẩu tạm:</b> %s</p>
+            <p>Vui lòng đăng nhập và <b>đổi mật khẩu</b> để kích hoạt.</p>
+        """.formatted(tempPassword);
+        sendHtml(email, subject, html);
+    }
+
+    private void sendHtml(String to, String subject, String html) {
+        try {
+            MimeMessage mime = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(html, true); // true = HTML
+            mailSender.send(mime);
+        } catch (MessagingException e) {
+            throw new RuntimeException("Gửi email thất bại", e);
+        }
+    }
+
 }

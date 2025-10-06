@@ -51,6 +51,18 @@ public class PositionServiceImpl implements PositionService {
     }
 
     @Override
+    public List<PositionResponse> getPositionsByDepartment(Long departmentId) {
+        List<Position> positions = positionRepository.findByDepartmentId(departmentId);
+        if (positions.isEmpty()) {
+            throw new ResourceNotFoundException("No positions found for department with id: " + departmentId);
+        }
+        return positions.stream()
+                .map(this::mapToPositionResponse)
+                .collect(Collectors.toList());
+    }
+
+
+    @Override
     public PositionResponse updatePosition(Long id, PositionRequest request) {
         Position position = positionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Position not found with id: " + id));

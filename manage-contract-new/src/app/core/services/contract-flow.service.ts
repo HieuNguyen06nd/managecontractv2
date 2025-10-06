@@ -25,6 +25,7 @@ export interface ApprovalStepRequest {
   employeeId?: number;     // bắt buộc nếu USER
   positionId?: number;     // bắt buộc nếu POSITION
   departmentId?: number;   // bắt buộc nếu POSITION
+  
 }
 
 export interface ApprovalFlowRequest {
@@ -48,6 +49,7 @@ export interface ApprovalStepResponse {
   positionName?: string;
   departmentId?: number;
   departmentName?: string;
+  signaturePlaceholder?: string;
 }
 
 export interface ApprovalFlowResponse {
@@ -56,6 +58,7 @@ export interface ApprovalFlowResponse {
   description?: string;
   templateId: number;
   steps: ApprovalStepResponse[];
+  isDefault: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

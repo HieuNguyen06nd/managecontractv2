@@ -66,6 +66,9 @@ app:
   signature:
     storage-dir: ./uploads/signatures    # hoặc /var/app/uploads/signatures
     public-base-url: /static/signatures
+  ds:
+    url: http://localhost:8081          # container map 8081->80
+    source-base: http://host.docker.internal:8080
 
 
 vnpay:

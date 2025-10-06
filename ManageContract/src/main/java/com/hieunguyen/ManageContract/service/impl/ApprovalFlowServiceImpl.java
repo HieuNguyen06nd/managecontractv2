@@ -30,36 +30,29 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
     @Override
     @Transactional
     public ApprovalFlowResponse createFlow(ApprovalFlowRequest request) {
-        // 1) Template
         ContractTemplate template = templateRepository.findById(request.getTemplateId())
                 .orElseThrow(() -> new RuntimeException("Template not found"));
 
-        // 2) Flow
         ApprovalFlow flow = new ApprovalFlow();
         flow.setName(request.getName());
         flow.setDescription(request.getDescription());
         flow.setTemplate(template);
 
-        // 3) Lưu trước lấy ID
-        ApprovalFlow savedFlow = flowRepository.save(flow);
+        // lưu trước để có id (tùy chiến lược, có thể không cần nhưng an toàn)
+        flowRepository.save(flow);
 
-        // 4) Validate + chuẩn hoá steps
         if (request.getSteps() == null || request.getSteps().isEmpty()) {
             throw new IllegalArgumentException("Flow phải có ít nhất 1 step");
         }
-        List<ApprovalStepRequest> normalized = validateAndNormalizeSteps(request.getSteps()); // <-- nhận Collection
+        List<ApprovalStepRequest> normalized = validateAndNormalizeSteps(request.getSteps());
 
-        // 5) Map DTO -> Entity (giữ thứ tự)
-        Set<ApprovalStep> steps = normalized.stream()
-                .map(sr -> mapToApprovalStepEntity(sr, savedFlow))
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        savedFlow.setSteps(steps);
+        for (ApprovalStepRequest sr : normalized) {
+            ApprovalStep step = mapToApprovalStepEntity(sr, flow);
+            flow.addStep(step);
+        }
 
-        // 6) Lưu & trả về
-        ApprovalFlow finalSavedFlow = flowRepository.save(savedFlow);
-        return ApprovalFlowMapper.toFlowResponse(finalSavedFlow);
+        return ApprovalFlowMapper.toFlowResponse(flowRepository.save(flow));
     }
-
     // ---------------- UPDATE ----------------
     @Override
     @Transactional
@@ -73,17 +66,18 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
         if (request.getSteps() == null || request.getSteps().isEmpty()) {
             throw new IllegalArgumentException("Flow phải có ít nhất 1 step");
         }
-        List<ApprovalStepRequest> normalized = validateAndNormalizeSteps(request.getSteps()); // <-- nhận Collection
+        List<ApprovalStepRequest> normalized = validateAndNormalizeSteps(request.getSteps());
 
-        // Xoá step cũ rồi set step mới
         flow.getSteps().clear();
-        Set<ApprovalStep> steps = normalized.stream()
-                .map(sr -> mapToApprovalStepEntity(sr, flow))
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        flow.setSteps(steps);
+
+        for (ApprovalStepRequest sr : normalized) {
+            ApprovalStep step = mapToApprovalStepEntity(sr, flow);
+            flow.addStep(step);
+        }
 
         return ApprovalFlowMapper.toFlowResponse(flowRepository.save(flow));
     }
+
 
     // ---------------- GET BY ID ----------------
     @Override
@@ -100,7 +94,11 @@ public class ApprovalFlowServiceImpl implements ApprovalFlowService {
         templateRepository.findById(templateId)
                 .orElseThrow(() -> new RuntimeException("Template not found"));
         var flows = flowRepository.findByTemplateId(templateId);
-        return flows.stream().map(ApprovalFlowMapper::toFlowResponse).toList();
+        return flows.stream().map(flow -> {
+            ApprovalFlowResponse response = ApprovalFlowMapper.toFlowResponse(flow);
+            response.setIsDefault(flow.getTemplate().getDefaultFlow() != null && flow.getTemplate().getDefaultFlow().getId().equals(flow.getId()));
+            return response;
+        }).collect(Collectors.toList());
     }
 
     // ---------------- SET DEFAULT ----------------

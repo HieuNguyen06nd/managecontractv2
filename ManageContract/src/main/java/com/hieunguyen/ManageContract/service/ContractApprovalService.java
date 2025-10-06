@@ -25,5 +25,7 @@ public interface ContractApprovalService {
     List<ContractResponse> getMyHandledContracts(ContractStatus status);
     List<ContractResponse> getMyPendingContracts();
 
+    ContractResponse getApprovalProgressOrPreview(Long contractId, Long flowId);
+
 }
 

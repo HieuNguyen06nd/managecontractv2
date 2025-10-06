@@ -336,3 +336,54 @@ ngx-extended-pdf-viewer ::ng-deep .container {
 /* Nút ghost trong header (nếu muốn) */
 /* .btn-close đã có ở dưới, giữ nguyên */
 
+.modal-panel--xl .modal-card--xl {
+  width: min(1200px, 96vw);
+  max-height: 90vh;
+  display: flex; flex-direction: column;
+}
+.modal-body { overflow: hidden; }
+/* Modal & viewer wrappers giữ nguyên style bạn đang dùng */
+
+.pdf-viewer-wrap {
+  position: relative;
+  height: calc(80vh - 150px); // hoặc 100% nếu bạn muốn
+  background: #f8f9fa;
+  overflow: hidden;
+}
+
+.sig-ghost {
+  position: absolute;
+  z-index: 2000;              // cao hơn text layer
+  box-sizing: border-box;
+  border: 1px dashed #0d6efd;
+  background: rgba(13,110,253,.06);
+  border-radius: 4px;
+  cursor: move;
+  user-select: none;
+}
+
+.sig-ghost img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.sig-ghost .resize-handle {
+  position: absolute;
+  right: -6px; bottom: -6px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 2px solid #0d6efd;
+  background: #fff;
+  cursor: nwse-resize;
+}
+
+.sign-toolbar {
+  position: sticky; bottom: 0;
+  z-index: 2001;
+  display: flex; gap: 8px; align-items: center;
+  background: rgba(255,255,255,.95);
+  padding: 8px 12px; border-top: 1px solid #e5e7eb;
+}

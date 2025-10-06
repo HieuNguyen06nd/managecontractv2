@@ -1,6 +1,7 @@
 package com.hieunguyen.ManageContract.repository;
 
 import com.hieunguyen.ManageContract.entity.Department;
+import io.lettuce.core.dynamic.annotation.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,4 +23,5 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
             "LEFT JOIN FETCH d.leader " +
             "LEFT JOIN FETCH d.employees")
     Page<Department> findAllWithParentAndLeaderAndEmployees(Pageable pageable);
+
 }

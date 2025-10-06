@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -31,7 +32,7 @@ public class ApprovalFlow {
 
     @OneToMany(mappedBy = "flow", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference
-    private Set<ApprovalStep> steps = new HashSet<>();
+    private Set<ApprovalStep> steps = new LinkedHashSet<>();
 
     @Override
     public boolean equals(Object o) {
@@ -43,6 +44,17 @@ public class ApprovalFlow {
     @Override
     public int hashCode() {
         return getClass().hashCode();
+    }
+
+
+    public void addStep(ApprovalStep s) {
+        steps.add(s);
+        s.setFlow(this);
+    }
+
+    public void removeStep(ApprovalStep s) {
+        steps.remove(s);
+        s.setFlow(null);
     }
 
 }

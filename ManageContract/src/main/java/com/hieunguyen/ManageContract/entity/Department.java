@@ -26,7 +26,7 @@ public class Department {
     private Department parent;
 
     // Danh sách phòng ban con
-    @OneToMany(mappedBy = "parent")
+    @OneToMany(mappedBy = "parent", fetch = FetchType.LAZY)
     private Set<Department> children = new HashSet<>();
 
     // Leader của phòng ban (một user cụ thể)
@@ -35,10 +35,13 @@ public class Department {
     private Employee leader;
 
     // Danh sách nhân viên trong phòng ban
-    @OneToMany(mappedBy = "department")
+    @OneToMany(mappedBy = "department", fetch = FetchType.LAZY)
     private Set<Employee> employees = new HashSet<>();
 
     private Status status;
+
+    @OneToMany(mappedBy = "department")
+    private Set<Position> positions = new HashSet<>();
 }
 
 

@@ -25,7 +25,12 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               { "glob": "**/*", "input": "public" },
-              { "glob": "**/*", "input": "src/assets" }
+              { "glob": "**/*", "input": "src/assets" },
+              {
+                "glob": "**/*",
+                "input": "node_modules/ngx-extended-pdf-viewer/assets/",
+                "output": "/assets/"
+              }
             ],
             "styles": [
               "node_modules/bootstrap/dist/css/bootstrap.min.css",
@@ -73,7 +78,12 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               { "glob": "**/*", "input": "public" },
-              { "glob": "**/*", "input": "src/assets" }
+              { "glob": "**/*", "input": "src/assets" },
+              {
+                "glob": "**/*",
+                "input": "node_modules/ngx-extended-pdf-viewer/assets/",
+                "output": "/assets/"
+              }
             ],
             "styles": ["src/styles.scss"],
             "scripts": []

@@ -1,18 +1,13 @@
 package com.hieunguyen.ManageContract.controller;
 
 import com.hieunguyen.ManageContract.dto.ResponseData;
-import com.hieunguyen.ManageContract.dto.authAccount.AuthRequest;
-import com.hieunguyen.ManageContract.dto.authAccount.AuthResponse;
-import com.hieunguyen.ManageContract.dto.authAccount.RegisterRequest;
-import com.hieunguyen.ManageContract.dto.authAccount.ResetPasswordRequest;
-import com.hieunguyen.ManageContract.dto.user.UserProfileResponse;
+import com.hieunguyen.ManageContract.dto.authAccount.*;
 import com.hieunguyen.ManageContract.service.AuthAccountService;
 import com.hieunguyen.ManageContract.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.apache.tomcat.util.net.openssl.ciphers.Authentication;
-import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -30,6 +25,16 @@ public class AuthController {
         String message = authService.register(request);
         return new ResponseData<>(200, "Đăng ký thành công", message);
     }
+
+    // -------- CREATE USER BY ADMIN --------
+    @PostMapping("/users")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ADMIN')")
+    @Operation(summary = "Admin tạo tài khoản người dùng (mặc định role EMPLOYEE nếu không truyền)")
+    public ResponseData<String> createUserByAdmin(@Valid @RequestBody AdminCreateUserRequest req) {
+        String msg = authService.createUserByAdmin(req);
+        return new ResponseData<>(200, "Tạo tài khoản thành công", msg);
+    }
+
 
     // Xác thực email
     @GetMapping("/verify-email")
@@ -56,6 +61,18 @@ public class AuthController {
 
         return new ResponseData<>(200, "Đăng nhập thành công", response);
     }
+
+    @PostMapping("/first-change-password")
+    @Operation(summary = "Đổi mật khẩu lần đầu và kích hoạt tài khoản")
+    public ResponseData<AuthResponse> firstChangePassword(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody @Valid com.hieunguyen.ManageContract.dto.authAccount.FirstChangePasswordRequest body
+    ) {
+        String token = (authorization != null && authorization.startsWith("Bearer ")) ? authorization.substring(7) : null;
+        AuthResponse res = authService.changePasswordFirstLogin(token, body.newPassword());
+        return new ResponseData<>(200, "Đổi mật khẩu & kích hoạt thành công", res);
+    }
+
 
     // Xác thực OTP
     @PostMapping("/verify-otp")

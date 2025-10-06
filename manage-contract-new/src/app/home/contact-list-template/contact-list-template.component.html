@@ -1,170 +1,205 @@
 <main class="main-content">
-  <h1 class="page-title">
-    <i class="fas fa-file-contract"></i>
-    Danh sách hợp đồng mẫu
-  </h1>
+  <div class="container py-4">
 
-  <div class="template-container">
-    <!-- Header actions -->
-    <div class="header-actions">
-      <div class="search-box">
-        <i class="fas fa-search search-icon"></i>
-        <input
-          type="text"
-          class="search-input"
-          placeholder="Tìm kiếm hợp đồng mẫu..."
-          [(ngModel)]="searchTerm" />
-      </div>
-
-      <div class="filter-section">
-        <!-- Lọc theo CATEGORY CODE viết HOA -->
-        <select class="filter-select" [(ngModel)]="categoryFilter">
-          <option value="">Tất cả danh mục</option>
-          <option value="LABOR">Hợp đồng lao động</option>
-          <option value="BUSINESS">Hợp đồng kinh doanh</option>
-          <option value="SERVICE">Hợp đồng dịch vụ</option>
-          <option value="RENTAL">Hợp đồng thuê</option>
-          <option value="LEGAL">Pháp lý</option>
-        </select>
-
-        <select class="filter-select" [(ngModel)]="statusFilter">
-          <option value="">Tất cả trạng thái</option>
-          <option value="active">Đang hoạt động</option>
-          <option value="inactive">Ngừng hoạt động</option>
-        </select>
-
-        <select class="filter-select" [ngModel]="pageSize" (ngModelChange)="onChangePageSize($event)">
-          <option *ngFor="let opt of pageSizeOptions" [value]="opt">{{ opt }}/trang</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Loading / Error -->
-    <div *ngIf="loading" class="py-4 text-center text-muted">Đang tải…</div>
-    <div *ngIf="!loading && error" class="alert alert-danger">{{ error }}</div>
-
-    <!-- Grid -->
-    <div class="templates-grid" *ngIf="!loading && !error">
-      <div class="template-card" *ngFor="let t of pagedTemplates">
-        <div class="template-header">
-          <div class="template-icon">
-            <i class="fas" [ngClass]="{
-              'fa-user-tie': ((t.categoryCode || '').toUpperCase() === 'LABOR'),
-              'fa-handshake': (['BUSINESS','PARTNERSHIP'].includes((t.categoryCode || '').toUpperCase())),
-              'fa-concierge-bell': ((t.categoryCode || '').toUpperCase() === 'SERVICE'),
-              'fa-home': ((t.categoryCode || '').toUpperCase() === 'RENTAL'),
-              'fa-shield-alt': ((t.categoryCode || '').toUpperCase() === 'LEGAL')
-            }"></i>
-          </div>
-          <div class="template-title">{{ t.name }}</div>
-        </div>
-
-        <div class="template-body">
-          <div class="template-description">
-            {{ t.description || '—' }}
-          </div>
-          <div class="template-details">
-            <div class="template-detail">
-              <span class="detail-label">Danh mục</span>
-              <!-- Ưu tiên categoryName, fallback theo code -->
-              <span class="detail-value">{{ getTemplateCategoryLabel(t) }}</span>
-            </div>
-            <div class="template-detail">
-              <span class="detail-label">Số biến</span>
-              <span class="detail-value">{{ t.variables?.length || 0 }} biến</span>
-            </div>
-            <div class="template-detail">
-              <span class="detail-label">Ngày tạo</span>
-              <span class="detail-value">—</span>
-            </div>
-            <div class="template-detail">
-              <span class="detail-label">Lần sử dụng</span>
-              <span class="detail-value">—</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="template-footer">
-          <span class="template-status" [ngClass]="getStatusClass(t)">{{ getStatusLabel(t) }}</span>
-          <div class="template-actions">
-            <button class="btn btn-primary btn-sm" (click)="openDetail(t)">
-              <i class="fas fa-eye"></i> Xem
-            </button>
-            <button class="btn btn-secondary btn-sm" type="button">
-              <i class="fas fa-copy"></i> Sao chép
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Không có dữ liệu -->
-      <div *ngIf="!pagedTemplates.length" class="py-4 text-center text-muted">
-        Không có mẫu nào phù hợp.
-      </div>
-    </div>
-
-    <!-- Footer actions -->
-    <div class="view-more" *ngIf="!loading && !error && totalTemplates > pageSize && currentPage < totalPages">
-      <button class="btn btn-primary" (click)="nextPage()">
-        <i class="fas fa-plus"></i> Xem thêm mẫu hợp đồng
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="mb-0">Mẫu hợp đồng</h3>
+      <button class="btn btn-outline-secondary" (click)="fetchTemplates()">
+        <i class="fas fa-rotate me-1"></i> Làm mới
       </button>
     </div>
 
+    <!-- Loading / Error -->
+    <div *ngIf="loading" class="alert alert-info">
+      <i class="fas fa-spinner fa-spin me-1"></i> Đang tải danh sách template...
+    </div>
+    <div *ngIf="!loading && error" class="alert alert-danger">
+      {{ error }}
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label">Tìm kiếm</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fas fa-search"></i></span>
+              <input
+                class="form-control"
+                placeholder="Tên, mô tả, danh mục..."
+                [(ngModel)]="searchTerm"
+                (ngModelChange)="currentPage = 1"
+              />
+            </div>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Danh mục</label>
+            <select
+              class="form-select"
+              [(ngModel)]="categoryFilter"
+              (ngModelChange)="currentPage = 1"
+            >
+              <option [ngValue]="''">Tất cả</option>
+              <option [ngValue]="'LABOR'">Lao động</option>
+              <option [ngValue]="'BUSINESS'">Kinh doanh</option>
+              <option [ngValue]="'SERVICE'">Dịch vụ</option>
+              <option [ngValue]="'RENTAL'">Thuê</option>
+              <option [ngValue]="'LEGAL'">Pháp lý</option>
+            </select>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Trạng thái</label>
+            <select
+              class="form-select"
+              [(ngModel)]="statusFilter"
+              (ngModelChange)="currentPage = 1"
+            >
+              <option [ngValue]="''">Tất cả</option>
+              <option [ngValue]="'active'">Đang hoạt động</option>
+              <option [ngValue]="'inactive'">Ngừng hoạt động</option>
+            </select>
+          </div>
+
+          <div class="col-md-2">
+            <label class="form-label">Hiển thị</label>
+            <select
+              class="form-select"
+              [ngModel]="pageSize"
+              (ngModelChange)="onChangePageSize($event)"
+            >
+              <option *ngFor="let sz of pageSizeOptions" [ngValue]="sz">{{ sz }}/trang</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grid -->
+    <div class="row g-3">
+      <div class="col-md-4" *ngFor="let t of pagedTemplates">
+        <div class="card template-card h-100">
+          <div class="card-body d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <span class="badge bg-secondary">{{ getTemplateCategoryLabel(t) }}</span>
+              <span class="badge" [class]="getStatusClass(t)">{{ getStatusLabel(t) }}</span>
+            </div>
+
+            <h5 class="card-title mb-1">{{ t.name }}</h5>
+            <p class="card-text text-muted small flex-grow-1">
+              {{ t.description || '—' }}
+            </p>
+
+            <div class="d-flex justify-content-between text-muted small mb-3">
+              <span><i class="fas fa-tags me-1"></i>{{ t.variables?.length || 0 }} biến</span>
+              <span>
+                <i class="fas fa-file-alt me-1"></i>
+                {{ (t.categoryCode || 'Khác') }}
+              </span>
+            </div>
+
+            <div class="d-grid">
+              <button class="btn btn-outline-primary btn-sm" (click)="openDetail(t)">
+                <i class="fas fa-eye me-1"></i> Xem chi tiết
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="!loading && !error && !filteredTemplates.length" class="col-12">
+        <div class="text-center text-muted py-5">
+          Không có template phù hợp.
+        </div>
+      </div>
+    </div>
+
     <!-- Pagination -->
-    <div class="pagination" *ngIf="!loading && !error && totalTemplates > 0">
-      <button class="pagination-btn" [disabled]="currentPage === 1" (click)="prevPage()">&laquo;</button>
-
-      <button class="pagination-btn"
-              *ngFor="let p of pages"
-              [class.active]="p === currentPage"
-              (click)="goToPage(p)">{{ p }}</button>
-
-      <button class="pagination-btn" [disabled]="currentPage === totalPages" (click)="nextPage()">&raquo;</button>
-    </div>
-
-    <!-- Range info -->
-    <div class="text-muted small mt-2" *ngIf="!loading && !error && totalTemplates > 0">
-      Hiển thị {{ displayFrom }} – {{ displayTo }} / {{ totalTemplates }}
+    <div class="d-flex justify-content-between align-items-center mt-3" *ngIf="totalTemplates">
+      <div class="text-muted small">
+        Hiển thị {{ displayFrom }} – {{ displayTo }} / {{ totalTemplates }}
+      </div>
+      <nav aria-label="Pagination">
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item" [class.disabled]="currentPage === 1">
+            <button class="page-link" (click)="prevPage()">«</button>
+          </li>
+          <li
+            class="page-item"
+            *ngFor="let p of pages"
+            [class.active]="currentPage === p"
+          >
+            <button class="page-link" (click)="goToPage(p)">{{ p }}</button>
+          </li>
+          <li class="page-item" [class.disabled]="currentPage === totalPages">
+            <button class="page-link" (click)="nextPage()">»</button>
+          </li>
+        </ul>
+      </nav>
     </div>
   </div>
 
-  <!-- Modal xem chi tiết -->
-  <div class="modal" *ngIf="showDetailModal" (click)="closeDetail()">
-    <div class="modal-content" (click)="$event.stopPropagation()">
-      <div class="modal-header">
-        <h3 class="modal-title">{{ selectedTemplate?.name }}</h3>
-        <span class="close" (click)="closeDetail()">&times;</span>
-      </div>
+  <!-- Detail Modal -->
+  <div class="modal fade show" tabindex="-1" [ngClass]="{'d-block': showDetailModal}" *ngIf="showDetailModal">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            {{ selectedTemplate?.name }}
+            <span class="badge ms-2" [class]="getStatusClass(selectedTemplate!)">
+              {{ getStatusLabel(selectedTemplate!) }}
+            </span>
+          </h5>
+          <button type="button" class="btn-close" aria-label="Close" (click)="closeDetail()"></button>
+        </div>
 
-      <div class="modal-body">
-        <div class="template-preview">
-          <div class="preview-header">
-            <h4>Xem trước hợp đồng</h4>
+        <div class="modal-body">
+          <div class="mb-2">
+            <span class="badge bg-secondary me-2">
+              {{ getTemplateCategoryLabel(selectedTemplate!) }}
+            </span>
+            <span class="text-muted small">
+              Mã danh mục: {{ (selectedTemplate?.categoryCode || '—') }}
+            </span>
           </div>
-          <!-- Có thể bind preview HTML nếu API có -->
-          <div class="preview-content text-muted">
-            (Chưa có nội dung xem trước — cần call API preview.)
+
+          <p class="text-muted">
+            {{ selectedTemplate?.description || 'Không có mô tả.' }}
+          </p>
+
+          <h6 class="mt-4">Biến trong template</h6>
+          <div class="table-responsive border rounded">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 60px;">#</th>
+                  <th>Tên biến</th>
+                  <th>Kiểu</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let v of (selectedTemplate?.variables || []); let i = index">
+                  <td>{{ i + 1 }}</td>
+                  <td><code>{{ v.varName }}</code></td>
+                  <td>{{ getVariableTypeLabel(v) }}</td>
+                </tr>
+                <tr *ngIf="!selectedTemplate?.variables?.length">
+                  <td colspan="3" class="text-center text-muted">Không có biến.</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
-        <div class="variables-list" *ngIf="selectedTemplate">
-          <div class="variables-title">Biến số trong hợp đồng</div>
-
-          <div class="variable-item" *ngFor="let v of selectedTemplate.variables; let i = index">
-            <span class="variable-name">{{ v.varName || ('var_' + i) }}</span>
-            <span class="variable-type">{{ getVariableTypeLabel(v) }}</span>
-          </div>
-
-          <div *ngIf="!selectedTemplate.variables?.length" class="text-muted small">
-            Không có biến.
-          </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" (click)="closeDetail()">Đóng</button>
         </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-secondary" (click)="closeDetail()">Đóng</button>
-        <button class="btn btn-primary" type="button">Sử dụng mẫu này</button>
       </div>
     </div>
   </div>
+
+  <!-- Backdrop -->
+  <div class="modal-backdrop fade show" *ngIf="showDetailModal"></div>
 </main>

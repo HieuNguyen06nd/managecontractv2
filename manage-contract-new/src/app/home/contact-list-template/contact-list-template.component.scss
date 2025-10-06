@@ -289,7 +289,7 @@
         .modal {
             display: none;
             position: fixed;
-            z-index: 1000;
+            z-index: 1001;
             left: 0;
             top: 0;
             width: 100%;
@@ -433,3 +433,28 @@
                 margin-bottom: 5px;
             }
         }
+.template-card {
+  border: 1px solid #edf0f5;
+  transition: transform .12s ease, box-shadow .12s ease;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(0,0,0,.06);
+  }
+}
+
+.status-active {
+  background: #e6f7ee !important;
+  color: #1f9254 !important;
+  border: 1px solid #b9e6cc !important;
+}
+
+.status-inactive {
+  background: #fff3f3 !important;
+  color: #c0392b !important;
+  border: 1px solid #ffd6d6 !important;
+}
+
+/* Modal fix for custom backdrop */
+.modal.d-block {
+  background: rgba(0,0,0,.1);
+}

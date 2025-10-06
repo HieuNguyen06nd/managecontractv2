@@ -11,7 +11,8 @@ import { ApprovalFlowService, ApprovalFlowRequest, ApprovalStepRequest, Approver
 import { DepartmentService, DepartmentResponse } from '../../core/services/department.service';
 import { PositionService, PositionResponse } from '../../core/services/position.service';
 import { EmployeeService, AuthProfileResponse } from '../../core/services/employee.service';
-import {ContractService,CreateContractRequest,ContractResponse,VariableValueRequest} from '../../core/services/contract.service';
+import {ContractService,CreateContractRequest,VariableValueRequest} from '../../core/services/contract.service';
+import { ContractResponse } from '../../core/models/contract.model';
 import { ContractApprovalService } from '../../core/services/contract-approval.service';
 
 

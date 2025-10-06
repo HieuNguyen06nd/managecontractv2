@@ -47,23 +47,41 @@ export class LoginComponent {
       password: this.password,
     };
 
-    this.authService.loginWithPassword(req).subscribe({
+    this.authService.loginWithOtp(req).subscribe({
       next: (res) => {
-        console.log('Đăng nhập thành công:', res);
-        this.toastr.success('Đăng nhập thành công!');
+        const data = res?.data;
+        if (!data) {
+          this.toastr.error('Phản hồi không hợp lệ');
+          return;
+        }
 
-        // Lưu token và refreshToken
-        localStorage.setItem('token', res.data.token);
-        localStorage.setItem('refreshToken', res.data.refreshToken);
+        if ((data as any).mustChangePassword) {
+          const cpToken = (data as any).changePasswordToken;
+          if (!cpToken) {
+            this.toastr.error('Thiếu token đổi mật khẩu');
+            return;
+          }
+          this.toastr.info('Vui lòng đổi mật khẩu để kích hoạt tài khoản');
+          this.router.navigate(['/auth/change-password'], { queryParams: { token: cpToken } });
+          return;
+        }
 
-        // Lưu user info (id, roles)
-        localStorage.setItem('userId', res.data.userId.toString());
-        localStorage.setItem('roles', JSON.stringify(res.data.roles));
-        this.router.navigate(['/dasboad']); 
+        if (!data.accessToken || !data.refreshToken) {
+          this.toastr.error('Thiếu access token/refresh token');
+          return;
+        }
+
+        localStorage.setItem('token', data.accessToken);
+        localStorage.setItem('refreshToken', data.refreshToken);
+        localStorage.setItem('userId', String(data.userId));
+        localStorage.setItem('roles', JSON.stringify(data.roles || []));
+
+        this.toastr.success('Đăng nhập bằng OTP thành công!');
+        this.router.navigateByUrl('/dashboard');
       },
       error: (err) => {
-        console.error('Lỗi đăng nhập:', err);
-        this.toastr.error('Sai tài khoản hoặc mật khẩu!');
+        console.error('Lỗi đăng nhập OTP:', err);
+        this.toastr.error(err?.error?.message || 'Đăng nhập OTP thất bại.');
       },
     });
   }
@@ -103,7 +121,7 @@ export class LoginComponent {
         this.toastr.success('Đăng nhập bằng OTP thành công!');
 
         //  Lưu token và refreshToken
-        localStorage.setItem('token', res.data.token);
+        localStorage.setItem('token', res.data.accessToken);
         localStorage.setItem('refreshToken', res.data.refreshToken);
 
         // Lưu user info (id, roles)

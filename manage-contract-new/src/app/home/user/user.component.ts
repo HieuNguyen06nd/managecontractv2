@@ -1,148 +1,203 @@
+// src/app/home/user/user.component.ts
 import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, Validators, FormControl } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { EmployeeService } from '../../core/services/employee.service';
-import { AuthProfileResponse } from '../../core/models/auth.model';
-import { ResponseData } from '../../core/models/response-data.model';
-import { BehaviorSubject, debounceTime, distinctUntilChanged, of, Subject } from 'rxjs';
+import { EmployeeService, AdminCreateUserRequest } from '../../core/services/employee.service';
+import { AuthProfileResponse, RoleResponse, StatusUser } from '../../core/models/auth.model';
+import { BehaviorSubject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { DepartmentService } from '../../core/services/department.service';
-import {  DepartmentResponse } from '../../core/models/department.model'
+import { DepartmentResponse } from '../../core/models/department.model';
+import { RoleService } from '../../core/services/role.service';
+import { PositionService } from '../../core/services/position.service';
+
+type RoleOption = { roleKey: string; description: string };
+type PositionOption = { id: number; name: string };
 
 @Component({
   selector: 'app-user-management',
   standalone: true,
-  imports: [CommonModule,FormsModule, ReactiveFormsModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule],
   templateUrl: './user.component.html',
   styleUrls: ['./user.component.scss'],
 })
 export class UserComponent implements OnInit {
   users: AuthProfileResponse[] = [];
   filteredUsers: AuthProfileResponse[] = [];
-  roles: string[] = ['Quản trị viên', 'Quản lý', 'Người dùng']; // Mock data
+
+  roles: RoleOption[] = [];
   departments: DepartmentResponse[] = [];
-  
+  positions: PositionOption[] = [];
+
   isAddModalOpen = false;
   isEditModalOpen = false;
   isDeleteModalOpen = false;
   isResetModalOpen = false;
-  
+
   currentUserId: number | null = null;
-  currentUserName: string = '';
-  
+  currentUserName = '';
+
   addForm: FormGroup;
   editForm: FormGroup;
-  
-  searchTerms = new BehaviorSubject<string>('');  // để dùng được .value
-  filterStatusTerm: string = '';  // bỏ private
-  filterRoleTerm: string = '';    // bỏ private
 
-  constructor(private fb: FormBuilder, private employeeService: EmployeeService, private departmentService: DepartmentService) {
+  searchTerms = new BehaviorSubject<string>('');
+  filterStatusTerm: string = ''; // 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'LOCKED'
+  filterRoleTerm: string = '';   // roleKey
+
+  constructor(
+    private fb: FormBuilder,
+    private employeeService: EmployeeService,
+    private departmentService: DepartmentService,
+    private roleService: RoleService,
+    private positionService: PositionService
+  ) {
     this.addForm = this.fb.group({
       fullName: ['', Validators.required],
       email: ['', [Validators.required, Validators.email]],
       phone: [''],
-      role: ['', Validators.required],
-      departmentId: [null],     
+      role: ['', Validators.required],       // chọn 1 vai trò (sau đó wrap thành roleKeys[])
+      departmentId: [null],
+      positionId: [null],
     });
-    
+
     this.editForm = this.fb.group({
       id: [null],
       fullName: ['', Validators.required],
       email: ['', [Validators.required, Validators.email]],
       phone: [''],
-      role: ['', Validators.required],
-      departmentId: [null],     
+      roleKeys: new FormControl<string[]>([]), // có thể sửa sau khi có API update
+      departmentId: [null],
+      positionId: [null],
       status: [''],
     });
   }
 
   ngOnInit(): void {
     this.loadUsers();
-    
-    this.searchTerms.pipe(
-      debounceTime(300),
-      distinctUntilChanged()
-    ).subscribe(term => this.filterUsers());
+    this.loadDropdowns();
+
+    this.searchTerms.pipe(debounceTime(300), distinctUntilChanged())
+      .subscribe(() => this.filterUsers());
   }
-  
+
   loadUsers(): void {
     this.employeeService.getAll().subscribe(res => {
-      this.users = res.data;
+      this.users = res.data || [];
       this.filterUsers();
     });
   }
-  
+
+  loadDropdowns(): void {
+    this.roleService.getAll().subscribe(r => {
+      const arr = r.data || [];
+      this.roles = arr.map(x => ({ roleKey: x.roleKey, description: x.description }));
+    });
+    this.departmentService.getAllDepartments().subscribe(r => {
+      this.departments = r.data || [];
+    });
+    this.positionService.getAllPositions().subscribe(r => {
+      const arr = r.data || [];
+      this.positions = arr.map(p => ({ id: p.id, name: p.name }));
+    });
+  }
+
   onSearch(event: Event): void {
     const term = (event.target as HTMLInputElement).value;
     this.searchTerms.next(term);
   }
-  
+
   onFilterChange(): void {
     this.filterUsers();
   }
-  
- filterUsers(): void {
-    let tempUsers = this.users;
 
-    // Lọc theo tên, email, sđt
-    if (this.searchTerms.value) {
-      const searchTerm = this.searchTerms.value.toLowerCase();
-      tempUsers = tempUsers.filter(user =>
-        user.fullName.toLowerCase().includes(searchTerm) ||
-        user.email.toLowerCase().includes(searchTerm) ||
-        (user.phone && user.phone.includes(searchTerm))
+  filterUsers(): void {
+    let temp = [...this.users];
+
+    // search
+    const searchTerm = (this.searchTerms.value || '').toLowerCase();
+    if (searchTerm) {
+      temp = temp.filter(user =>
+        (user.fullName || '').toLowerCase().includes(searchTerm) ||
+        (user.email || '').toLowerCase().includes(searchTerm) ||
+        (user.phone || '').includes(searchTerm)
       );
     }
 
-    // Lọc theo trạng thái
+    // status
     if (this.filterStatusTerm) {
-      tempUsers = tempUsers.filter(user =>
-        user.status === this.filterStatusTerm
-      );
+      temp = temp.filter(u => u.status === this.filterStatusTerm);
     }
 
-    // Lọc theo vai trò
+    // role (so sánh theo roleKey)
     if (this.filterRoleTerm) {
-      tempUsers = tempUsers.filter(user =>
-        user.roles.some(role => role.description === this.filterRoleTerm)
-      );
+      temp = temp.filter(u => (u.roles || []).some(r => r.roleKey === this.filterRoleTerm));
     }
 
-    this.filteredUsers = tempUsers;
+    this.filteredUsers = temp;
+  }
+
+  roleLabels(roles?: RoleResponse[]): string {
+    if (!roles || roles.length === 0) return 'N/A';
+    return roles.map(r => r.description || r.roleKey).join(', ');
   }
 
   openAddUserModal(): void {
-    this.addForm.reset();
+    this.addForm.reset({
+      fullName: '',
+      email: '',
+      phone: '',
+      role: '',
+      departmentId: null,
+      positionId: null,
+    });
     this.isAddModalOpen = true;
   }
-  
+
   openEditUserModal(user: AuthProfileResponse): void {
     this.currentUserId = user.id;
+    this.currentUserName = user.fullName;
+
+    // departmentId: ưu tiên field departmentId nếu BE trả; nếu department là object thì lấy .id; nếu là string thì null
+    const depId =
+      (user as any).departmentId ??
+      (user.department && typeof user.department === 'object'
+        ? (user.department as any).id ?? null
+        : null);
+
+    // positionId: tương tự
+    const posId =
+      (user as any).positionId ??
+      (user.position && typeof user.position === 'object'
+        ? (user.position as any).id ?? null
+        : null);
+
     this.editForm.patchValue({
       id: user.id,
       fullName: user.fullName,
       email: user.email,
       phone: user.phone,
-      role: user.roles.length > 0 ? user.roles[0].description : '',
-      department: user.department || '',   
+      roleKeys: (user.roles || []).map(r => r.roleKey),
+      departmentId: depId,
+      positionId: posId,
       status: user.status,
     });
+
     this.isEditModalOpen = true;
   }
-  
+
+
   openDeleteUserModal(userId: number, fullName: string): void {
     this.currentUserId = userId;
     this.currentUserName = fullName;
     this.isDeleteModalOpen = true;
   }
-  
+
   openResetPasswordModal(userId: number, fullName: string): void {
     this.currentUserId = userId;
     this.currentUserName = fullName;
     this.isResetModalOpen = true;
   }
-  
+
   closeModal(): void {
     this.isAddModalOpen = false;
     this.isEditModalOpen = false;
@@ -150,42 +205,59 @@ export class UserComponent implements OnInit {
     this.isResetModalOpen = false;
   }
 
+  /** Tạo user qua /api/auth/users (BE sẽ gửi mật khẩu tạm & bắt đổi lần đầu) */
   addUser(): void {
-    if (this.addForm.valid) {
-      this.employeeService.create(this.addForm.value).subscribe(res => {
+    if (this.addForm.invalid) return;
+
+    const f = this.addForm.value;
+    const roleKey = (f.role && (f.role.roleKey || f.role)) as string | undefined;
+
+    const payload: AdminCreateUserRequest = {
+      email: f.email,
+      fullName: f.fullName,
+      phone: f.phone,
+      roleKeys: roleKey ? [roleKey] : [],   // wrap mảng theo BE
+      departmentId: f.departmentId ?? null,
+      positionId: f.positionId ?? null,
+    };
+
+    this.employeeService.createByAdmin(payload).subscribe({
+      next: _ => {
         this.loadUsers();
         this.closeModal();
-        alert('Đã thêm người dùng thành công!'); // Thay bằng Toastr
-      });
-    }
+        alert('Đã thêm người dùng thành công!');
+      },
+      error: err => alert(err?.error?.message || 'Lỗi tạo người dùng'),
+    });
+  }
+
+
+  displayDept(user: AuthProfileResponse): string {
+    const d: any = (user as any).department ?? (user as any).departmentName;
+    if (!d) return '-';
+    return typeof d === 'string' ? d : (d.name ?? '-');
+  }
+
+  displayPos(user: AuthProfileResponse): string {
+    const p: any = (user as any).position ?? (user as any).positionName;
+    if (!p) return '-';
+    return typeof p === 'string' ? p : (p.name ?? '-');
   }
 
   updateUser(): void {
-    if (this.editForm.valid && this.currentUserId !== null) {
-      this.employeeService.update(this.currentUserId, this.editForm.value).subscribe(res => {
-        this.loadUsers();
-        this.closeModal();
-        alert('Đã cập nhật người dùng thành công!');
-      });
-    }
+    // TODO: Nối với API update người dùng khi sẵn sàng
+    alert('API cập nhật người dùng chưa kết nối BE.');
   }
 
   deleteUser(): void {
-    if (this.currentUserId !== null) {
-      this.employeeService.delete(this.currentUserId).subscribe(res => {
-        this.loadUsers();
-        this.closeModal();
-        alert('Đã xóa người dùng thành công!');
-      });
-    }
+    // TODO: Nối với API xoá người dùng khi sẵn sàng
+    alert('API xoá người dùng chưa kết nối BE.');
+    this.closeModal();
   }
 
-  // Phương thức reset mật khẩu sẽ được thêm vào service
   resetPassword(): void {
-    if (this.currentUserId !== null) {
-      // Gọi service.resetPassword(this.currentUserId).subscribe(...)
-      this.closeModal();
-      alert('Đã reset mật khẩu thành công!');
-    }
+    // TODO: Nối với API reset mật khẩu bởi admin (nếu đã có)
+    this.closeModal();
+    alert('(Demo) Đã reset mật khẩu — hãy nối API thật nếu đã có.');
   }
 }

@@ -63,4 +63,8 @@ export class PositionService {
   deletePosition(id: number): Observable<ResponseData<void>> {
     return this.http.delete<ResponseData<void>>(`${this.baseUrl}/${id}`);
   }
+
+  getPositionsByDepartment(departmentId: number): Observable<ResponseData<PositionResponse[]>> {
+    return this.http.get<ResponseData<PositionResponse[]>>(`${this.baseUrl}/by-department/${departmentId}`);
+  }
 }

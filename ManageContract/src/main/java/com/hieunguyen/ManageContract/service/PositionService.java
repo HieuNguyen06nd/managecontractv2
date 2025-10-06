@@ -14,4 +14,5 @@ public interface PositionService {
     PositionResponse updatePosition(Long id, PositionRequest request);
     void deletePosition(Long id);
     Page<PositionResponse> getAllPositions(Pageable pageable);
+    List<PositionResponse> getPositionsByDepartment(Long departmentId);
 }

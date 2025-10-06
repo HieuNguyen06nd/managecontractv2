@@ -8,7 +8,7 @@
         <button class="btn btn-outline-secondary" [class.active]="viewMode==='list'" (click)="switchToList()">
           <i class="fas fa-list me-1"></i> Danh sách
         </button>
-        <button class="btn btn-primary" [class.active]="viewMode==='create'" (click)="switchToCreate()">
+        <button class="btn btn-primary" [class.active]="viewMode==='create'" (click)="switchToCreate(true)">
           <i class="fas fa-plus me-1"></i> Tạo mới
         </button>
       </div>
@@ -28,7 +28,7 @@
           </select>
         </div>
         <div class="col-md-6 text-end">
-          <button class="btn btn-primary" (click)="switchToCreate()">
+          <button class="btn btn-primary" (click)="switchToCreate(true)">
             <i class="fas fa-plus me-1"></i> Tạo luồng mới
           </button>
         </div>
@@ -43,6 +43,9 @@
                 <div class="fw-bold">{{ f.name }}</div>
                 <div class="text-muted small">{{ f.description || '—' }}</div>
                 <div class="small">Số bước: {{ (stepsFor(f)?.length || f.steps?.length || 0) }}</div>
+
+                <!-- Hiển thị "Mặc định" nếu là luồng mặc định của template -->
+                <div *ngIf="f.isDefault" class="badge bg-success ms-2">Mặc định</div>
               </div>
               <div class="d-flex gap-2">
                 <!-- Toggle xem bước -->
@@ -301,16 +304,15 @@
                   <div class="col-md-4" *ngIf="stepRequiresSignature(i)">
                     <label class="form-label small text-muted">Placeholder ký</label>
                     <input type="text"
-                           class="form-control"
-                           placeholder="VD: SIGN_{{ i + 1 }}"
-                           formControlName="placeholderKey"
-                           [ngClass]="{'is-invalid': steps.at(i).get('placeholderKey')?.invalid && steps.at(i).get('placeholderKey')?.touched}">
-                    <div *ngIf="steps.at(i).get('placeholderKey')?.invalid && steps.at(i).get('placeholderKey')?.touched"
-                         class="text-danger small mt-1">
+                          class="form-control"
+                          placeholder="VD: SIGN_{{ i + 1 }}"
+                          formControlName="signaturePlaceholder"
+                          [ngClass]="{'is-invalid': steps.at(i).get('signaturePlaceholder')?.invalid && steps.at(i).get('signaturePlaceholder')?.touched}">
+                    <div *ngIf="steps.at(i).get('signaturePlaceholder')?.invalid && steps.at(i).get('signaturePlaceholder')?.touched"
+                        class="text-danger small mt-1">
                       Bắt buộc khi là bước ký.
                     </div>
                   </div>
-
                   <!-- EMPLOYEE -->
                   <div class="col-md-8" *ngIf="steps.at(i).get('approverType')?.value === 'USER'">
                     <label class="form-label small text-muted">Người ký/phê duyệt cụ thể</label>
@@ -526,13 +528,10 @@
                                     }">
                                 {{ step.get('approverType')?.value === 'USER' ? 'Nhân viên' : 'Vị trí' }}
                               </span>
-
                               <span class="badge bg-outline border">{{ actionLabel(step.get('action')?.value) }}</span>
-
-                              <span *ngIf="stepRequiresSignature(i) && step.get('placeholderKey')?.value" class="badge bg-secondary">
-                                {{ step.get('placeholderKey')?.value }}
+                              <span *ngIf="stepRequiresSignature(i) && step.get('signaturePlaceholder')?.value" class="badge bg-secondary">
+                                {{ step.get('signaturePlaceholder')?.value }}
                               </span>
-
                               <span *ngIf="step.get('required')?.value" class="badge bg-success">Bắt buộc</span>
                               <span *ngIf="step.get('isFinalStep')?.value" class="final-step-badge">Bước cuối</span>
                             </div>

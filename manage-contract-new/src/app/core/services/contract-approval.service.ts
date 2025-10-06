@@ -2,8 +2,9 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { ResponseData } from '../models/response-data.model';
-import { StepApprovalRequest, SignStepRequest, ContractResponse, ContractStatus } from '../models/contract-approval.models';
+import { StepApprovalRequest, SignStepRequest, ContractStatus } from '../models/contract-approval.models';
 import { environment } from '../../../environments/environment';
+import { ContractResponse } from '../models/contract.model';
 
 @Injectable({ providedIn: 'root' })
 export class ContractApprovalService {
@@ -87,4 +88,13 @@ export class ContractApprovalService {
       body
     );
   }
+
+  getPreview(contractId: number, flowId?: number) {
+  let params = new HttpParams();
+  if (flowId != null) params = params.set('flowId', String(flowId));
+  return this.http.get<ResponseData<ContractResponse>>(
+    `${this.baseUrl}/${contractId}/preview`,
+    { params }
+  );
+}
 }

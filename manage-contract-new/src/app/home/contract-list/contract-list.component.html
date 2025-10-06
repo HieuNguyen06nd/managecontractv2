@@ -1,0 +1,449 @@
+<main class="main-content">
+  <div class="container-fluid">
+    <!-- Main Content -->
+    <div class="col-md ms-sm-auto px-4 py-4">
+      <!-- Page Header -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h3 mb-0">Quản lý Hợp đồng</h2>
+        <button class="btn btn-primary">
+         <a href="contract/create"> <i class="fas fa-plus me-2"></i>  Tạo hợp đồng mới</a>
+        </button>
+      </div>
+
+      <!-- Loading / Error -->
+      <div *ngIf="loading()" class="alert alert-info">Đang tải dữ liệu...</div>
+      <div *ngIf="error()" class="alert alert-danger">{{ error() }}</div>
+
+      <!-- Stats Cards -->
+      <div class="row mb-4">
+        <div class="col-md-3">
+          <div class="card stats-card">
+            <div class="card-body">
+              <i class="fas fa-edit fa-2x stats-draft"></i>
+              <div class="stats-number stats-draft">{{ statDraft() }}</div>
+              <div class="text-muted">Hợp đồng nháp</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stats-card">
+            <div class="card-body">
+              <i class="fas fa-paper-plane fa-2x stats-pending"></i>
+              <div class="stats-number stats-pending">{{ statPending() }}</div>
+              <div class="text-muted">Đã trình ký</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stats-card">
+            <div class="card-body">
+              <i class="fas fa-file-signature fa-2x stats-signed"></i>
+              <div class="stats-number stats-signed">{{ statSigned() }}</div>
+              <div class="text-muted">Đã ký</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stats-card">
+            <div class="card-body">
+              <i class="fas fa-ban fa-2x stats-cancelled"></i>
+              <div class="stats-number stats-cancelled">{{ statCancelled() }}</div>
+              <div class="text-muted">Đã hủy</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter Section -->
+      <div class="filter-section">
+        <div class="row">
+          <!-- Status -->
+          <div class="col-md-3">
+            <div class="mb-3">
+              <label class="form-label">Trạng thái</label>
+              <select
+                class="form-select"
+                [ngModel]="statusFilter()"
+                (ngModelChange)="statusFilter.set($event); search()"
+              >
+                <option value="all">Tất cả trạng thái</option>
+                <option value="draft">Nháp</option>
+                <option value="pending">Đã trình ký</option>
+                <option value="signed">Đã ký</option>
+                <option value="cancelled">Đã hủy</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Keyword -->
+          <div class="col-md-3">
+            <div class="mb-3">
+              <label class="form-label">Tìm kiếm</label>
+              <input
+                class="form-control"
+                placeholder="Số HĐ, tiêu đề..."
+                [ngModel]="keyword()"
+                (ngModelChange)="keyword.set($event); search()"
+              />
+            </div>
+          </div>
+
+          <!-- Date from -->
+          <div class="col-md-3">
+            <div class="mb-3">
+              <label class="form-label">Ngày tạo từ</label>
+              <input
+                type="date"
+                class="form-control"
+                [ngModel]="dateFrom()"
+                (ngModelChange)="dateFrom.set($event); search()"
+              />
+            </div>
+          </div>
+
+          <!-- Date to -->
+          <div class="col-md-3">
+            <div class="mb-3">
+              <label class="form-label">Đến ngày</label>
+              <input
+                type="date"
+                class="form-control"
+                [ngModel]="dateTo()"
+                (ngModelChange)="dateTo.set($event); search()"
+              />
+            </div>
+          </div>
+        </div> <!-- /row -->
+
+        <div class="d-flex justify-content-end">
+          <button class="btn btn-outline-secondary me-2" (click)="resetFilters()">
+            <i class="fas fa-redo-alt me-1"></i> Đặt lại
+          </button>
+          <button class="btn btn-primary" (click)="search()">
+            <i class="fas fa-search me-1"></i> Tìm kiếm
+          </button>
+        </div>
+      </div>
+
+      <!-- Contract List -->
+      <div class="card mt-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Danh sách hợp đồng</h5>
+          <div>
+            <button class="btn btn-sm btn-outline-secondary" (click)="$event.preventDefault()">
+              <i class="fas fa-download me-1"></i> Xuất Excel
+            </button>
+          </div>
+        </div>
+
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th width="5%">#</th>
+                  <th width="15%">Số hợp đồng</th>
+                  <th width="25%">Tiêu đề</th>
+                  <th width="15%">Trạng thái</th>
+                  <th width="15%">Người tạo</th>
+                  <th width="15%">Ngày tạo</th>
+                  <th width="10%">Thao tác</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr *ngFor="let c of paged(); index as i" (click)="$event.stopPropagation()">
+                  <td>{{ (pageIndex() - 1) * pageSize() + i + 1 }}</td>
+                  <td>{{ c.contractNumber || ('HD-' + c.id) }}</td>
+                  <td>{{ c.title }}</td>
+                  <td>
+                    <span [class]="statusBadgeClass(c.status)">{{ statusLabel(c.status) }}</span>
+                  </td>
+                  <td>{{ createdByName(c) }}</td>
+                  <td>{{ createdAt(c) }}</td>
+                  <td class="text-nowrap">
+                    <button class="btn btn-sm btn-outline-primary action-btn me-1"
+                            title="Xem PDF"
+                            (click)="viewPdf(c)">
+                    <i class="fas fa-eye"></i>
+                    </button>
+                    <!-- CHỈ hiện khi là DRAFT -->
+                    <button class="btn btn-sm btn-outline-warning action-btn me-1"
+                            *ngIf="(c.status || '').toUpperCase() === 'DRAFT'"
+                            title="Trình ký"
+                            (click)="openSubmitModal(c)">
+                    <i class="fas fa-paper-plane"></i>
+                    </button>
+
+
+                    <button
+                      class="btn btn-sm btn-outline-success action-btn me-1"
+                      title="Chỉnh sửa"
+                      (click)="edit(c)"
+                    >
+                      <i class="fas fa-edit"></i>
+                    </button>
+
+                    <button
+                      class="btn btn-sm btn-outline-danger action-btn"
+                      title="Xóa"
+                      (click)="remove(c)"
+                    >
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+
+                <tr *ngIf="!loading() && filtered().length === 0">
+                  <td colspan="7" class="text-center text-muted py-4">Không có dữ liệu</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Pagination -->
+        <div class="card-footer bg-white">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              Hiển thị
+              {{ math.min((pageIndex()-1)*pageSize()+1, filtered().length) }}
+              -
+              {{ math.min(pageIndex()*pageSize(), filtered().length) }}
+              của {{ filtered().length }} bản ghi
+            </div>
+
+            <nav>
+              <ul class="pagination mb-0">
+                <li class="page-item" [class.disabled]="pageIndex() === 1">
+                  <a class="page-link" (click)="goPage(pageIndex()-1)">Trước</a>
+                </li>
+
+                <li
+                  class="page-item"
+                  *ngFor="let p of [].constructor(pageCount()); index as idx"
+                  [class.active]="(idx+1) === pageIndex()"
+                >
+                  <a class="page-link" (click)="goPage(idx+1)">{{ idx+1 }}</a>
+                </li>
+
+                <li class="page-item" [class.disabled]="pageIndex() === pageCount()">
+                  <a class="page-link" (click)="goPage(pageIndex()+1)">Tiếp</a>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <!-- Preview note -->
+      <div class="contract-preview mt-4 d-none d-md-block">
+        <h4 class="contract-title">Xem trước hợp đồng</h4>
+        <div class="text-muted">Chọn một hợp đồng để xem chi tiết hoặc bấm “Xem PDF”.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF Modal -->
+<div class="modal fade show" tabindex="-1" [ngClass]="{'d-block': showPdf()}" *ngIf="showPdf()">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Xem hợp đồng (PDF)</h5>
+        <button type="button" class="btn-close" aria-label="Close" (click)="closePdf()"></button>
+      </div>
+
+      <div class="modal-body" style="min-height:70vh;">
+        <div *ngIf="pdfLoading()" class="text-center py-5">
+          <div class="spinner-border" role="status"></div>
+          <div class="mt-2">Đang tải PDF...</div>
+        </div>
+
+        <div *ngIf="!pdfLoading() && pdfError()" class="alert alert-danger">
+          {{ pdfError() }}
+        </div>
+
+        <ng-container *ngIf="!pdfLoading() && !pdfError() && pdfSafeUrl">
+          <!-- Dùng iframe để hiển thị PDF -->
+          <iframe
+            [src]="pdfSafeUrl"
+            width="100%"
+            height="100%"
+            style="border:0; min-height:65vh;"
+          ></iframe>
+
+          <!-- Hoặc dùng <object> tuỳ ý:
+          <object [data]="pdfSafeUrl" type="application/pdf" width="100%" height="100%">
+            <p>Trình duyệt không hỗ trợ xem PDF inline. <a [href]="pdfSafeUrl">Tải PDF</a></p>
+          </object>
+          -->
+        </ng-container>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" (click)="closePdf()">Đóng</button>
+        <button type="button" class="btn btn-primary" (click)="downloadFromModal()">Tải PDF</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+    <!-- Backdrop thủ công -->
+    <div class="modal-backdrop fade show" *ngIf="showPdf()"></div>
+
+    <!-- Submit (Trình ký) Modal -->
+
+    <div class="modal fade show"
+        tabindex="-1"
+        role="dialog"
+        aria-modal="true"
+        [ngClass]="{ 'd-block': showSubmit() }"
+        *ngIf="showSubmit()"
+        (click)="closeSubmitModal()">
+
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" (click)="$event.stopPropagation()">
+        <div class="modal-content">
+
+        <div class="modal-header">
+            <h5 class="modal-title">
+            Trình ký: {{ submitTarget?.contractNumber || ('HD-' + submitTarget?.id) }}
+            </h5>
+            <button type="button" class="btn-close" aria-label="Close" (click)="closeSubmitModal()"></button>
+        </div>
+
+        <div class="modal-body">
+            <!-- Thông tin cơ bản -->
+            <div class="mb-3">
+            <div class="fw-semibold mb-1">Thông tin hợp đồng</div>
+            <div class="small text-muted">
+                Tiêu đề: {{ submitTarget?.title || '-' }}<br>
+                Trạng thái: {{ statusLabel(submitTarget?.status) }}
+            </div>
+            </div>
+
+            <!-- ĐÃ có luồng (progress) -->
+            <div *ngIf="currentFlow()?.exists" class="border rounded p-3 mb-3 bg-light">
+            <div class="fw-semibold mb-2">Luồng hiện tại</div>
+
+            <div class="d-flex flex-wrap align-items-start gap-2 mt-2">
+                <ng-container *ngFor="let s of (currentFlow()?.steps || []); let last = last;">
+                <div class="card p-2"
+                    [ngClass]="{
+                        'border-success': s.status==='APPROVED',
+                        'border-danger':  s.status==='REJECTED',
+                        'border-primary': !s.status
+                    }"
+                    style="min-width:220px;">
+                    <div class="fw-semibold">Bước {{ s.stepOrder }}</div>
+                    <div>{{ s.approverName || '—' }}</div>
+                    <div class="text-muted small">
+                    {{ s.action || 'APPROVE_ONLY' }}
+                    <span *ngIf="s.placeholderKey"> • {{ s.placeholderKey }}</span>
+                    </div>
+                    <div class="small mt-1" *ngIf="s.status">
+                    Trạng thái: {{ s.status }}
+                    <span *ngIf="s.decidedBy"> • {{ s.decidedBy }}</span>
+                    <span *ngIf="s.decidedAt"> • {{ s.decidedAt }}</span>
+                    </div>
+                </div>
+
+                <div *ngIf="!last" class="align-self-center">
+                    <i class="fas fa-chevron-right text-muted"></i>
+                </div>
+                </ng-container>
+            </div>
+
+            <div class="small text-muted mt-2">
+                (Hợp đồng đã có luồng phê duyệt — không thể trình lại.)
+            </div>
+            </div>
+
+            <!-- CHƯA có luồng (preview & chọn flow) -->
+            <div *ngIf="!currentFlow()?.exists" class="border rounded p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="fw-semibold">Chọn luồng trình ký</div>
+                <div class="d-flex align-items-center">
+                <select class="form-select form-select-sm me-2"
+                        style="min-width:260px"
+                        [disabled]="flowsLoading() || flows().length === 0"
+                        [ngModel]="selectedFlowId()"
+                        (ngModelChange)="selectedFlowId.set(+$event)">
+                    <option [ngValue]="null" *ngIf="flows().length === 0">Không có luồng</option>
+                    <option *ngFor="let f of flows();" [ngValue]="f.id">{{ f.name }}</option>
+                </select>
+
+                <button class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        title="Cấu hình luồng"
+                        (click)="$event.preventDefault()">
+                    Cấu hình luồng
+                </button>
+                </div>
+            </div>
+
+            <div *ngIf="flowsLoading()" class="text-muted">Đang tải luồng...</div>
+
+            <ng-container *ngIf="!flowsLoading()">
+                <div *ngIf="flows().length === 0" class="text-danger small">
+                Không tìm thấy luồng cho template này. Hãy cấu hình trước khi trình ký.
+                </div>
+
+                <div *ngIf="selectedFlowId() as fid" class="mt-2">
+                <div class="small text-muted mb-2">Xem trước các bước của luồng đã chọn:</div>
+
+                <ng-container *ngFor="let f of flows();">
+                    <ng-container *ngIf="f.id === fid">
+                    <div class="d-flex flex-wrap align-items-start gap-2">
+                        <ng-container *ngFor="let s of f.steps; let last = last; ">
+                        <div class="card p-2" style="min-width:220px;">
+                            <div class="fw-semibold">Bước {{ s.stepOrder }}</div>
+                            <div>{{ s.employeeName || (s.departmentName && s.positionName ? (s.departmentName + ' - ' + s.positionName) : '—') }}</div>
+                            <div class="text-muted small">
+                            {{ (s.action || 'APPROVE_ONLY') }}
+                            <span *ngIf="s.signaturePlaceholder"> • ô ký: {{ s.signaturePlaceholder }}</span>
+                            <span *ngIf="s.required === false"> • không bắt buộc</span>
+                            </div>
+                        </div>
+
+                        <div *ngIf="!last" class="align-self-center">
+                            <i class="fas fa-chevron-right text-muted"></i>
+                        </div>
+                        </ng-container>
+                    </div>
+                    </ng-container>
+                </ng-container>
+                </div>
+            </ng-container>
+            </div>
+
+            <div *ngIf="submitError()" class="alert alert-danger mb-0">{{ submitError() }}</div>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeSubmitModal()">Đóng</button>
+
+            <!-- Bật khi: chưa có flow + đã chọn flow -->
+            <button type="button"
+                    class="btn btn-primary"
+                    [disabled]="submitting() || currentFlow()?.exists || (!selectedFlowId() && !currentFlow()?.exists)"
+                    (click)="confirmSubmit()">
+            <span *ngIf="!submitting()">Xác nhận trình ký</span>
+            <span *ngIf="submitting()" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            </button>
+        </div>
+
+        </div>
+    </div>
+    </div>
+
+    <!-- Backdrop thủ công -->
+    <div class="modal-backdrop fade show" *ngIf="showSubmit()"></div>
+
+
+
+
+
+
+</main>

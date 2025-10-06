@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.service;
 
+import com.hieunguyen.ManageContract.dto.authAccount.AdminCreateUserRequest;
 import com.hieunguyen.ManageContract.dto.authAccount.AuthResponse;
 import com.hieunguyen.ManageContract.dto.authAccount.RegisterRequest;
 import com.hieunguyen.ManageContract.dto.authAccount.ResetPasswordRequest;
@@ -17,5 +18,7 @@ public interface AuthService {
 
     void sendForgotPasswordOtp(String email);  // Gửi OTP cho người quên mật khẩu
     void resetPasswordWithOtp(ResetPasswordRequest request);  // Đặt lại mật khẩu bằng OTP
+    String createUserByAdmin(AdminCreateUserRequest req);
+    AuthResponse changePasswordFirstLogin(String changePasswordJwt, String newPassword);
 
 }
