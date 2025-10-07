@@ -6,6 +6,8 @@ import { TemplatePreviewResponse, TemplateVariablePreview } from '../../core/mod
 import { ContractTemplateResponse } from '../../core/models/contract-template-response.model';
 import { VariableUpdateRequest } from '../../core/models/variable-update-request.model';
 import { ContractTemplateCreateRequest } from '../../core/models/ontract-template-create-request.model';
+import { ToastrService } from 'ngx-toastr';
+import { Router } from '@angular/router';  
 
 type VariableDraft = TemplateVariablePreview & { varType: string; required: boolean ;name: string};
 
@@ -27,6 +29,10 @@ export class ContractTemplateComponent implements OnInit {
   isLoading = false;
   progress = 0;
 
+  maxFileMB = 5;                 // giới hạn dung lượng
+  dragActive = false;            // highlight dropzone
+  inlineError = '';              // lỗi hiển thị ngay dưới ô
+
   // Preview
   previewResponse?: TemplatePreviewResponse;
   extractedVariables: VariableDraft[] = [];
@@ -41,7 +47,10 @@ export class ContractTemplateComponent implements OnInit {
   successMessage = '';
   errorMessage = '';
 
-  constructor(private contractTemplateService: ContractTemplateService) {}
+  constructor(private contractTemplateService: ContractTemplateService,
+    private toastr: ToastrService,
+     private router: Router 
+  ) {}
 
   ngOnInit(): void {
     const userStr = localStorage.getItem('user');
@@ -62,12 +71,8 @@ export class ContractTemplateComponent implements OnInit {
   // Upload file
   onFileSelected(event: any): void {
     const file = event.target.files?.[0];
-    if (file && file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      this.selectedFile = file;
-      this.resetMessages();
-    } else {
-      this.errorMessage = 'Vui lòng chọn file DOCX';
-    }
+    if (!file) return;
+    this.validateAndSetFile(file);
   }
 
   triggerFileInput(): void {
@@ -80,26 +85,47 @@ export class ContractTemplateComponent implements OnInit {
 
   onFileDropped(event: DragEvent): void {
     event.preventDefault();
+    this.dragActive = false;
     const file = event.dataTransfer?.files?.[0];
     if (!file) return;
+    this.validateAndSetFile(file);
+  }
+   private validateAndSetFile(file: File) {
+    this.inlineError = '';
+    this.errorMessage = '';
 
-    if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      this.selectedFile = file;
-      this.resetMessages();
-    } else {
-      this.errorMessage = 'Vui lòng chọn file DOCX';
+    // validate đuôi .docx
+    const isDocx = /\.docx$/i.test(file.name);
+    if (!isDocx) {
+      this.inlineError = 'Vui lòng chọn đúng tệp .docx';
+      this.toastr.error(this.inlineError);
+      return;
     }
+
+    // validate size
+    const maxBytes = this.maxFileMB * 1024 * 1024;
+    if (file.size > maxBytes) {
+      this.inlineError = `Kích thước tệp vượt quá ${this.maxFileMB}MB`;
+      this.toastr.error(this.inlineError);
+      return;
+    }
+
+    this.selectedFile = file;
+    this.toastr.success('Đã chọn file hợp lệ');
   }
 
   // Preview
   previewTemplate(): void {
     this.resetMessages();
+    this.inlineError = '';
     this.isLoading = true;
+    this.progress = 10;
 
     if (this.activeTab === 'file') {
       if (!this.selectedFile) {
         this.isLoading = false;
-        this.errorMessage = 'Vui lòng chọn file';
+        this.inlineError = 'Vui lòng chọn file .docx';
+        this.toastr.error(this.inlineError);
         return;
       }
       this.contractTemplateService.previewFromFile(this.selectedFile).subscribe({
@@ -109,7 +135,8 @@ export class ContractTemplateComponent implements OnInit {
     } else {
       if (!this.docLink.trim()) {
         this.isLoading = false;
-        this.errorMessage = 'Vui lòng nhập link Google Docs';
+        this.inlineError = 'Vui lòng nhập link Google Docs';
+        this.toastr.error(this.inlineError);
         return;
       }
       this.contractTemplateService.previewFromLink(this.docLink).subscribe({
@@ -124,7 +151,6 @@ export class ContractTemplateComponent implements OnInit {
     this.progress = 100;
 
     this.previewResponse = response;
-    // ✅ thêm varType mặc định là 'TEXT' cho đồng bộ BE
     this.extractedVariables = (response.variables || []).map((v) => ({
       ...v,
       varType: 'TEXT',
@@ -135,8 +161,10 @@ export class ContractTemplateComponent implements OnInit {
     if (this.extractedVariables.length) {
       this.currentStep = 2;
       this.successMessage = `Đã trích xuất ${this.extractedVariables.length} biến`;
+      this.toastr.success(this.successMessage);
     } else {
-      this.errorMessage = 'Không tìm thấy biến nào trong hợp đồng';
+      this.inlineError = 'Không tìm thấy biến nào trong hợp đồng, bạn vẫn có thể tiếp tục.';
+      this.currentStep = 2;
     }
   }
 
@@ -146,58 +174,68 @@ export class ContractTemplateComponent implements OnInit {
 
   // Tạo mới / Cập nhật
   onCreateOrUpdateTemplate(): void {
-    if (!this.previewResponse) return;
-
-    if (!this.finalizedTemplate) {
-      // Tạo mới template
-      const request: ContractTemplateCreateRequest = {
-        tempFileName: this.previewResponse.tempFileName,
-        name: this.templateName,
-        description: this.templateDescription,
-        variables: this.extractedVariables.map((v) => ({
-          varName: v.varName,
-          varType: (v.varType || 'TEXT').toUpperCase(),
-          required: v.required,
-          name: v.name.trim(),
-          orderIndex: v.orderIndex
-        }))
-      };
-
-      this.contractTemplateService.finalizeTemplate(request).subscribe({
-        next: (template) => {
-          this.finalizedTemplate = template;
-          this.currentStep = 3;
-          this.successMessage = 'Template đã tạo thành công';
-        },
-        error: (err) => this.handleError(err)
-      });
-    } else {
-      // Cập nhật biến
-      const payload: VariableUpdateRequest[] = this.extractedVariables.map((v) => ({
-        varName: v.varName,
-        varType: (v.varType || 'TEXT').toUpperCase(),
-        required: v.required,
-        name: v.name.trim()
-      }));
-
-      this.contractTemplateService.updateVariables(this.finalizedTemplate.id, payload).subscribe({
-        next: () => {
-          this.successMessage = 'Cập nhật biến thành công';
-          this.currentStep = 3;
-        },
-        error: (err) => this.handleError(err)
-      });
+    if (!this.templateName.trim()) {
+      this.toastr.error('Tên template là bắt buộc.');
+      return;
     }
+
+    const request: ContractTemplateCreateRequest = {
+      tempFileName: this.previewResponse?.tempFileName || '',
+      name: this.templateName,
+      description: this.templateDescription,
+      variables: this.extractedVariables.map(v => ({
+        varName: v.varName,
+        varType: v.varType || 'TEXT',
+        required: v.required,
+        name: v.name.trim(),
+        orderIndex: v.orderIndex
+      }))
+    };
+
+    this.contractTemplateService.finalizeTemplate(request).subscribe({
+      next: (template) => {
+        this.finalizedTemplate = template;
+        this.successMessage = 'Template đã tạo thành công';
+        this.toastr.success(this.successMessage);
+
+        // Chuyển hướng đến danh sách template sau khi tạo thành công
+        this.router.navigate(['/contract/templates/list']);
+      },
+      error: (err) => {
+        this.handleError(err);
+      }
+    });
   }
 
   private handleError(err: any): void {
     this.isLoading = false;
-    this.errorMessage = err?.error?.message || err?.message || 'Có lỗi xảy ra';
+    this.progress = 0;
+    const msg = err?.error?.message || err?.message || 'Có lỗi xảy ra';
+    this.errorMessage = msg;
+    this.inlineError = msg;
+    this.toastr.error(msg);
   }
 
-  private resetMessages(): void {
+  public resetMessages(): void {
     this.successMessage = '';
     this.errorMessage = '';
     this.progress = 0;
   }
+
+  formatBytes(bytes: number): string {
+    if (!bytes) return '0 B';
+    const sizes = ['B','KB','MB','GB'];
+    const i = Math.floor(Math.log(bytes)/Math.log(1024));
+    return `${(bytes/Math.pow(1024,i)).toFixed(1)} ${sizes[i]}`;
+  }
+  removeSelectedFile(e?: Event): void {
+    e?.stopPropagation();
+    this.selectedFile = null;
+    this.inlineError = '';
+    this.resetMessages();
+    if (this.fileInput?.nativeElement) this.fileInput.nativeElement.value = '';
+  }
+  onDragEnter(e: DragEvent) { e.preventDefault(); this.dragActive = true; }
+  onDragLeave(e: DragEvent) { e.preventDefault(); this.dragActive = false; }
+
 }

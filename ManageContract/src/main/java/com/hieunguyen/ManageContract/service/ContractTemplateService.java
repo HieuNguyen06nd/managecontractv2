@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.service;
 
+import com.hieunguyen.ManageContract.dto.approval.ApprovalFlowResponse;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateCreateRequest;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateResponse;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateUpdateRequest;
@@ -28,5 +29,7 @@ public interface ContractTemplateService {
     ContractTemplateResponse finalizeTemplate(ContractTemplateCreateRequest request, Long accountId);
 
     List<ContractTemplateResponse> getAllTemplates();
+
+    ApprovalFlowResponse getDefaultFlowByTemplate(Long templateId);
 
 }

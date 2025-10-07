@@ -1,33 +1,20 @@
+export interface VariableValueRequest {
+  varName: string;
+  varValue: string;
+}
+export interface VariableValueResponse {
+  varName: string;
+  varValue: string;
+}
+
 export interface CreateContractRequest {
   templateId: number;
   title: string;
   variables: VariableValueRequest[];
-  flowId?: number| null;         // optional
+  flowId?: number | null;
   allowChangeFlow?: boolean;
 }
 
-export interface ContractResponse {
-  id: number;
-  contractNumber?: string;
-  title?: string;
-  status?: string;
-  filePath?: string;       // nhớ để string | undefined (không dùng null)
-  templateId?: number;     // nếu bạn có field này ở BE
-  templateName?: string;
-  createdAt?: string;
-
-  currentStepId?: number;
-  currentStepName?: string;
-  currentStepAction?: string;
-  currentStepSignaturePlaceholder?: string;
-
-  // ==== thêm để hiển thị luồng ký / preview ====
-  hasFlow?: boolean;                 // BE set true nếu đã snapshot vào ContractApproval
-  flowSource?: 'CONTRACT' | 'TEMPLATE_DEFAULT' | 'SELECTED';
-  flowId?: number;
-  flowName?: string;
-  steps?: ApprovalStepResponse[];    // <-- khai báo type ở dưới
-}
 export interface ApprovalStepResponse {
   id: number;
   stepOrder: number;
@@ -45,18 +32,34 @@ export interface ApprovalStepResponse {
   action?: 'APPROVE_ONLY' | 'SIGN_ONLY' | 'SIGN_THEN_APPROVE';
   signaturePlaceholder?: string;
 
-  // runtime khi đã submit:
+  // runtime
   status?: 'PENDING' | 'APPROVED' | 'REJECTED';
   isCurrent?: boolean;
   decidedBy?: string;
   decidedAt?: string;
 }
 
-export interface VariableValueRequest {
-  varName: string;
-  varValue: string;
-}
-export interface VariableValueResponse {
-  varName: string;
-  varValue: string;
+export interface ContractResponse {
+  id: number;
+  contractNumber?: string;
+  title?: string;
+  status?: string;
+  filePath?: string;          // ok để optional string
+  templateId?: number;
+  templateName?: string;
+  createdAt?: string;
+
+  currentStepId?: number | null;
+  currentStepName?: string | null;
+  currentStepAction?: string | null;
+  currentStepSignaturePlaceholder?: string | null;
+
+  hasFlow?: boolean | null;
+  flowSource?: 'CONTRACT' | 'TEMPLATE_DEFAULT' | 'SELECTED' | null;
+  flowId?: number | null;
+  flowName?: string | null;
+  steps?: ApprovalStepResponse[] | null;
+
+  variables?: VariableValueResponse[];       
+  variableValues?: VariableValueResponse[]; 
 }

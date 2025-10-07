@@ -209,3 +209,40 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
         }
+
+        .badge-outline {
+            background-color: transparent;
+            border: 1px solid rgba(0,0,0,.175);
+            color: #212529;
+            font-weight: 500;
+        }
+
+        /* Badge outline “giả” thay cho bg-outline */
+.badge-outline {
+  background-color: transparent !important;
+  border: 1px solid rgba(0,0,0,.175) !important;
+  color: #212529 !important;
+  font-weight: 500;
+}
+
+/* Làm mềm badge secondary để chữ tối, dễ đọc (áp cho placeholder ký) */
+#defaultFlow .badge.bg-secondary,
+.signature-flow .badge.bg-secondary {
+  background-color: #e9ecef !important; /* xám nhạt */
+  color: #495057 !important;            /* chữ xám đậm */
+  border: 1px solid rgba(0,0,0,.08);
+}
+
+/* Nếu có dùng badge cho “hành động” ở nơi khác, đảm bảo chữ tối */
+.signature-flow .badge,
+#defaultFlow .badge {
+  line-height: 1;
+  padding: .35rem .5rem;
+  font-size: .78rem;
+}
+
+/* Icon/emoji trong badge không đẩy chữ vỡ dòng */
+.signature-flow .badge i,
+#defaultFlow .badge i {
+  vertical-align: middle;
+}

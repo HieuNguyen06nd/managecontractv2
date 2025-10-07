@@ -4,8 +4,13 @@
     <!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h3 class="mb-0">Mẫu hợp đồng</h3>
-      <button class="btn btn-outline-secondary" (click)="fetchTemplates()">
-        <i class="fas fa-rotate me-1"></i> Làm mới
+      <div class="d-flex">
+        <button class="btn btn-outline-secondary" (click)="fetchTemplates()">
+          <i class="fas fa-sync-alt me-1"></i> Làm mới
+        </button>
+      </div>
+      <button class="btn btn-primary" (click)="goToCreateTemplatePage()">
+        <i class="fas fa-plus me-1"></i> Tạo mẫu hợp đồng
       </button>
     </div>
 
@@ -77,7 +82,7 @@
       </div>
     </div>
 
-    <!-- Grid -->
+    <!-- Grid of Templates -->
     <div class="row g-3">
       <div class="col-md-4" *ngFor="let t of pagedTemplates">
         <div class="card template-card h-100">
@@ -94,24 +99,22 @@
 
             <div class="d-flex justify-content-between text-muted small mb-3">
               <span><i class="fas fa-tags me-1"></i>{{ t.variables?.length || 0 }} biến</span>
-              <span>
-                <i class="fas fa-file-alt me-1"></i>
-                {{ (t.categoryCode || 'Khác') }}
-              </span>
+              <span><i class="fas fa-file-alt me-1"></i>{{ (t.categoryCode || 'Khác') }}</span>
             </div>
 
-            <div class="d-grid">
-              <button class="btn btn-outline-primary btn-sm" (click)="openDetail(t)">
-                <i class="fas fa-eye me-1"></i> Xem chi tiết
+            <!-- Action Buttons in one row -->
+            <div class="d-flex justify-content-start gap-2">
+              <button class="btn btn-outline-primary btn-sm" (click)="openDetail(t, false)">
+                <i class="fas fa-eye small-icon me-1"></i> Xem chi tiết
+              </button>
+              <button class="btn btn-outline-warning btn-sm" (click)="openDetail(t, true)">
+                <i class="fas fa-edit small-icon me-1"></i> Sửa
+              </button>
+              <button class="btn btn-outline-info btn-sm" (click)="updateTemplateStatus(t)">
+                <i class="fas fa-toggle-on small-icon me-1"></i> {{ t.status === 'active' ? 'Tắt hoạt động' : 'Bật hoạt động' }}
               </button>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div *ngIf="!loading && !error && !filteredTemplates.length" class="col-12">
-        <div class="text-center text-muted py-5">
-          Không có template phù hợp.
         </div>
       </div>
     </div>
@@ -141,65 +144,140 @@
     </div>
   </div>
 
-  <!-- Detail Modal -->
-  <div class="modal fade show" tabindex="-1" [ngClass]="{'d-block': showDetailModal}" *ngIf="showDetailModal">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-      <div class="modal-content" (click)="$event.stopPropagation()">
+  <!-- Modal Detail Template -->
+  <div class="modal d-block" *ngIf="showDetailModal">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">
-            {{ selectedTemplate?.name }}
-            <span class="badge ms-2" [class]="getStatusClass(selectedTemplate!)">
-              {{ getStatusLabel(selectedTemplate!) }}
-            </span>
-          </h5>
-          <button type="button" class="btn-close" aria-label="Close" (click)="closeDetail()"></button>
+          <h5 class="modal-title">{{ isEditMode ? 'Chỉnh sửa hợp đồng' : 'Xem chi tiết' }}</h5>
+          <button type="button" class="btn-close" (click)="closeDetail()"></button>
         </div>
 
         <div class="modal-body">
-          <div class="mb-2">
-            <span class="badge bg-secondary me-2">
-              {{ getTemplateCategoryLabel(selectedTemplate!) }}
-            </span>
-            <span class="text-muted small">
-              Mã danh mục: {{ (selectedTemplate?.categoryCode || '—') }}
-            </span>
-          </div>
+          <!-- Form for editing (if template has an ID) -->
+          <form *ngIf="isEditMode" (ngSubmit)="saveTemplate()">
+            <div class="mb-3">
+              <label for="templateName" class="form-label">Tên hợp đồng</label>
+              <input
+                id="templateName"
+                type="text"
+                class="form-control"
+                [(ngModel)]="selectedTemplate.name"
+                name="name"
+                required
+              />
+            </div>
 
-          <p class="text-muted">
-            {{ selectedTemplate?.description || 'Không có mô tả.' }}
-          </p>
+            <div class="mb-3">
+              <label for="templateDescription" class="form-label">Mô tả</label>
+              <textarea
+                id="templateDescription"
+                class="form-control"
+                [(ngModel)]="selectedTemplate.description"
+                name="description"
+                rows="3"
+              ></textarea>
+            </div>
 
-          <h6 class="mt-4">Biến trong template</h6>
-          <div class="table-responsive border rounded">
-            <table class="table table-sm align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th style="width: 60px;">#</th>
-                  <th>Tên biến</th>
-                  <th>Kiểu</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let v of (selectedTemplate?.variables || []); let i = index">
-                  <td>{{ i + 1 }}</td>
-                  <td><code>{{ v.varName }}</code></td>
-                  <td>{{ getVariableTypeLabel(v) }}</td>
-                </tr>
-                <tr *ngIf="!selectedTemplate?.variables?.length">
-                  <td colspan="3" class="text-center text-muted">Không có biến.</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="mb-3">
+              <label class="form-label">Các biến trong hợp đồng</label>
+              <div *ngFor="let variable of selectedTemplate?.variables; let i = index">
+                <div class="d-flex mb-3">
+                  <input
+                    type="text"
+                    class="form-control me-2"
+                    [(ngModel)]="variable.varName"
+                    name="varName{{ i }}"
+                    placeholder="Tên biến"
+                    required
+                  />
+                  <select class="form-select me-2" [(ngModel)]="variable.varType" name="varType{{ i }}" required>
+                    <option value="TEXT" [selected]="variable.varType === 'TEXT'">Văn bản ngắn</option>
+                    <option value="NUMBER" [selected]="variable.varType === 'NUMBER'">Số</option>
+                    <option value="DATE" [selected]="variable.varType === 'DATE'">Ngày tháng</option>
+                    <option value="BOOLEAN" [selected]="variable.varType === 'BOOLEAN'">True/False</option>
+                    <option value="TEXTAREA" [selected]="variable.varType === 'TEXTAREA'">Văn bản dài</option>
+                    <option value="LIST" [selected]="variable.varType === 'LIST'">Danh sách</option>
+                    <option value="DROPDOWN" [selected]="variable.varType === 'DROPDOWN'">Dropdown</option>
+                  </select>
+                  <input
+                    type="checkbox"
+                    [(ngModel)]="variable.required"
+                    name="required{{ i }}"
+                    class="form-check-input me-2"
+                  />
+                  <label class="form-check-label">Bắt buộc</label>
+                </div>
+              </div>
+            </div>
+          </form>
+
+          <!-- Only view mode -->
+          <div *ngIf="!isEditMode">
+            <div class="mb-3">
+              <label for="templateName" class="form-label">Tên hợp đồng</label>
+              <input
+                id="templateName"
+                type="text"
+                class="form-control"
+                [(ngModel)]="selectedTemplate.name"
+                name="name"
+                readonly
+              />
+            </div>
+
+            <div class="mb-3">
+              <label for="templateDescription" class="form-label">Mô tả</label>
+              <textarea
+                id="templateDescription"
+                class="form-control"
+                [(ngModel)]="selectedTemplate.description"
+                name="description"
+                rows="3"
+                readonly
+              ></textarea>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Các biến trong hợp đồng</label>
+              <div *ngFor="let variable of selectedTemplate?.variables; let i = index">
+                <div class="d-flex mb-3">
+                  <input
+                    type="text"
+                    class="form-control me-2"
+                    [(ngModel)]="variable.varName"
+                    name="varName{{ i }}"
+                    readonly
+                  />
+                  <select class="form-select me-2" [(ngModel)]="variable.varType" name="varType{{ i }}" disabled>
+                    <option value="TEXT">Văn bản ngắn</option>
+                    <option value="NUMBER">Số</option>
+                    <option value="DATE">Ngày tháng</option>
+                    <option value="BOOLEAN">True/False</option>
+                    <option value="TEXTAREA">Văn bản dài</option>
+                    <option value="LIST">Danh sách</option>
+                    <option value="DROPDOWN">Dropdown</option>
+                  </select>
+                  <input
+                    type="checkbox"
+                    [(ngModel)]="variable.required"
+                    name="required{{ i }}"
+                    class="form-check-input me-2"
+                    disabled
+                  />
+                  <label class="form-check-label">Bắt buộc</label>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="modal-footer">
           <button class="btn btn-outline-secondary" (click)="closeDetail()">Đóng</button>
+          <button *ngIf="isEditMode" class="btn btn-primary" type="submit" (click)="saveTemplate()">Lưu thay đổi</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Backdrop -->
-  <div class="modal-backdrop fade show" *ngIf="showDetailModal"></div>
 </main>

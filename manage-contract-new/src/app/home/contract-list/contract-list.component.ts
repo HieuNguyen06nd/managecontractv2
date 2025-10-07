@@ -2,12 +2,14 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { ContractService } from '../../core/services/contract.service';
-import { ContractResponse } from '../../core/models/contract.model';
+import { ContractResponse, VariableValueResponse } from '../../core/models/contract.model';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { timer } from 'rxjs';
+import { Router } from '@angular/router';  
 import { retryWhen, scan, delayWhen } from 'rxjs/operators';
 import { ContractApprovalService } from '../../core/services/contract-approval.service';
 import { ApprovalFlowService, ApprovalFlowResponse, ApprovalStepResponse } from '../../core/services/contract-flow.service';
+import { FormBuilder, FormGroup } from '@angular/forms'; 
 
 type UiStatus = 'all' | 'draft' | 'pending' | 'signed' | 'cancelled';
 
@@ -23,8 +25,13 @@ export class ContractListComponent implements OnInit {
   private approvalService = inject(ContractApprovalService);
   private flowService = inject(ApprovalFlowService);
   private sanitizer = inject(DomSanitizer);
+  private fb = inject(FormBuilder);
 
   public math = Math;
+
+  constructor(
+    private router: Router
+  ) {}
 
   // data
   contracts = signal<ContractResponse[]>([]);
@@ -59,6 +66,12 @@ export class ContractListComponent implements OnInit {
   flowsLoading = signal<boolean>(false);
   selectedFlowId = signal<number | null>(null);
 
+  showDeleteModal = signal<boolean>(false);
+  showCancelModal = signal<boolean>(false);
+  deleteContract: ContractResponse | null = null;
+  cancelContract: ContractResponse | null = null;
+
+
   // Flow hiện trạng (nếu HĐ đã gắn)
   currentFlow = signal<{
     exists: boolean;
@@ -87,6 +100,7 @@ export class ContractListComponent implements OnInit {
         (x.title?.toLowerCase().includes(kw))
       );
     }
+    
 
     const st = this.statusFilter();
     if (st !== 'all') {
@@ -156,6 +170,10 @@ export class ContractListComponent implements OnInit {
     });
   }
 
+  goToCreateTemplatePage(): void {
+    this.router.navigate(['/contract/create']);
+  }
+
   // ===== filters/paging =====
   resetFilters(): void {
     this.statusFilter.set('all');
@@ -170,11 +188,6 @@ export class ContractListComponent implements OnInit {
     if (p < 1 || p > max) return;
     this.pageIndex.set(p);
   }
-
-  // ===== actions: create/edit/remove =====
-  createContract(): void { alert('Đi đến màn tạo hợp đồng'); }
-  edit(item: ContractResponse): void { alert(`Chỉnh sửa: ${item.contractNumber || item.id}`); }
-  remove(item: ContractResponse): void { alert(`Xóa: ${item.contractNumber || item.id}`); }
 
   // ===== PDF Viewer (popup) =====
   viewPdf(item: ContractResponse): void {
@@ -372,9 +385,10 @@ export class ContractListComponent implements OnInit {
   statusLabel(status?: string): string {
     const s = (status || '').toUpperCase();
     if (s === 'DRAFT') return 'Nháp';
-    if (s === 'PENDING_APPROVAL') return 'Đã trình ký';
+    if (s === 'PENDING_APPROVAL') return 'Đang trình ký';
     if (s === 'APPROVED') return 'Đã ký';
-    if (s === 'REJECTED' || s === 'CANCELLED') return 'Đã hủy';
+    if (s === 'REJECTED' ) return 'Từ chối';
+    if (s === 'CANCELLED') return 'Đã Huỷ';
     return s || '-';
   }
   createdAt(row: any): string {
@@ -406,4 +420,130 @@ export class ContractListComponent implements OnInit {
     const slot = s.placeholderKey ? ` — ô ký: ${s.placeholderKey}` : '';
     return `${name} (${act})${opt}${slot}`;
   }
+
+    // Variable data for editing
+  editVariables: { varName: string, varValue: string }[] = [];
+
+  editForm: FormGroup = this.fb.group({
+    title: [''],
+    status: ['DRAFT']
+  });
+  showEdit = signal<boolean>(false);
+  editContract: ContractResponse | null = null;
+
+  // Open Edit Modal
+  edit(item: ContractResponse): void {
+    this.editContract = item;
+    this.editForm.setValue({ title: item.title, status: item.status });
+
+    // ƯU TIÊN variableValues, fallback sang variables (BE đang trả 'variables')
+    const source = (item.variableValues && item.variableValues.length)
+      ? item.variableValues
+      : (item as any).variables ?? [];
+
+    console.log('vars for edit:', source);          // <-- phải thấy mảng 8 phần tử như JSON
+    this.editVariables = source.map((v: VariableValueResponse) => ({
+      varName: v.varName,
+      varValue: v.varValue ?? ''
+    }));
+
+    console.log('item:', item);
+console.log('item.variables:', (item as any).variables);
+console.log('item.variableValues:', item.variableValues);
+console.log('editVariables:', this.editVariables);
+
+    this.showEdit.set(true);
+  }
+
+
+  // Close Edit Modal
+  closeEditModal(): void {
+    this.showEdit.set(false);
+    this.editContract = null;
+  }
+
+  // Submit the form to update contract
+  submitEdit(): void {
+    if (this.editContract && this.editForm.valid) {
+      const updatedContract = {
+        ...this.editContract,
+        ...this.editForm.value,
+        variables: this.editVariables
+      };
+
+      this.contractService.updateContract(updatedContract.id, updatedContract).subscribe({
+        next: (response) => {
+          // Update the contract in the list after successful update
+          const updatedContracts = this.contracts().map(c =>
+            c.id === updatedContract.id ? response.data : c
+          );
+          this.contracts.set(updatedContracts);
+          this.closeEditModal();
+        },
+        error: (err) => {
+          this.error.set('Cập nhật hợp đồng thất bại');
+          console.error(err);
+        }
+      });
+    }
+  }
+
+  openCancelModal(contract: ContractResponse): void {
+    this.cancelContract = contract;
+    this.showCancelModal.set(true);
+  }
+
+  // Đóng modal hủy hợp đồng
+  closeCancelModal(): void {
+    this.showCancelModal.set(false);
+    this.cancelContract = null;
+  }
+
+  // Xác nhận hủy hợp đồng
+  cancelContractAction(): void {
+    if (this.cancelContract) {
+      this.contractService.cancelContract(this.cancelContract.id).subscribe({
+        next: () => {
+          alert('Hợp đồng đã được hủy');
+          this.fetchContracts(); // Cập nhật lại danh sách hợp đồng
+          this.closeCancelModal(); // Đóng modal
+        },
+        error: (err) => {
+          console.error(err);
+          alert('Có lỗi xảy ra khi hủy hợp đồng');
+        }
+      });
+    }
+  }
+
+  // Mở modal xóa hợp đồng
+  openDeleteModal(contract: ContractResponse): void {
+    this.deleteContract = contract;
+    this.showDeleteModal.set(true);
+  }
+
+  // Đóng modal xóa hợp đồng
+  closeDeleteModal(): void {
+    this.showDeleteModal.set(false);
+    this.deleteContract = null;
+  }
+
+  // Xác nhận xóa hợp đồng
+  deleteContractAction(): void {
+    if (this.deleteContract) {
+      this.contractService.deleteContract(this.deleteContract.id).subscribe({
+        next: () => {
+          alert('Hợp đồng đã được xóa');
+          this.fetchContracts(); // Cập nhật lại danh sách hợp đồng
+          this.closeDeleteModal(); // Đóng modal
+        },
+        error: (err) => {
+          console.error(err);
+          alert('Có lỗi xảy ra khi xóa hợp đồng');
+        }
+      });
+    }
+  }
+
+
 }

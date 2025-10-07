@@ -14,4 +14,9 @@ public interface ContractService {
     String previewTemplate(CreateContractRequest request);
     List<ContractResponse> getMyContracts(@Nullable ContractStatus status);
 
+    void cancelContract(Long contractId);
+    void changeApprover(Long contractId, Long stepId, Long newApproverId, boolean isUserApprover);
+    ContractResponse updateContract(Long contractId, CreateContractRequest request);
+    ContractResponse getById(Long id);
+    void deleteContract(Long contractId);
 }

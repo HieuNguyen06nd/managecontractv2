@@ -3,10 +3,9 @@ import { CommonModule } from '@angular/common';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
 import { FormsModule } from '@angular/forms';
-
+import { ContractTemplateResponse } from '../../core/models/contract-template-response.model';
 import {
-  ContractTemplateService,
-  ContractTemplateResponse
+  ContractTemplateService
 } from '../../core/services/contract-template.service';
 
 import {
@@ -77,7 +76,12 @@ export class ContractFlowComponent implements OnInit {
 
   // ====== FORM ======
   form!: FormGroup;
+  positionsByStep = new Map<number, PositionResponse[]>();
 
+  isDeleteModalOpen = false;
+  deleteFlowId: number | null = null;
+  deleteFlowName = '';
+    
   constructor(
     private fb: FormBuilder,
     private toastr: ToastrService,
@@ -455,8 +459,11 @@ editFlow(id: number) {
     } else {
       positionId?.setValidators([Validators.required]);
       departmentId?.setValidators([Validators.required]);
+
       employeeId?.clearValidators();
       employeeId?.setValue(null, { emitEvent: false });
+      const deptVal = Number(departmentId?.value);
+      if (deptVal) this.loadPositionsForStep(index, deptVal, Number(positionId?.value));
     }
     employeeId?.updateValueAndValidity();
     positionId?.updateValueAndValidity();
@@ -479,6 +486,22 @@ editFlow(id: number) {
     }
     placeholderCtrl.updateValueAndValidity();
   }
+
+  onChangeDepartment(index: number): void {
+    const group = this.steps.at(index) as FormGroup;
+    const deptId = Number(group.get('departmentId')?.value);
+
+    // reset position mỗi lần đổi dept
+    group.get('positionId')?.setValue(null, { emitEvent: false });
+
+    if (!deptId) {
+      this.positionsByStep.set(index, []);
+      return;
+    }
+    this.loadPositionsForStep(index, deptId);
+  }
+
+
 
   // ================= HELPERS =================
 
@@ -611,6 +634,33 @@ editFlow(id: number) {
     }
   }
 
+  openDeleteModal(flow: ApprovalFlowResponse): void {
+    this.deleteFlowId = flow.id;
+    this.deleteFlowName = flow.name ?? `#${flow.id}`;
+    this.isDeleteModalOpen = true;
+  }
+
+  closeDeleteModal(): void {
+    this.isDeleteModalOpen = false;
+    this.deleteFlowId = null;
+    this.deleteFlowName = '';
+  }
+
+  confirmDelete(): void {
+    if (!this.deleteFlowId) return;
+    this.approvalFlowService.deleteFlow(this.deleteFlowId).subscribe({
+      next: () => {
+        this.toastr.success('Đã xoá flow');
+        this.closeDeleteModal();
+        this.loadFlowsForList();
+      },
+      error: (err) => {
+        console.error(err);
+        this.toastr.error('Không thể xoá flow');
+      }
+    });
+  }
+
   private initEmptyForm(): void {
     this.form = this.fb.group({
       flowName: ['', [Validators.required, Validators.minLength(3)]],
@@ -643,4 +693,34 @@ editFlow(id: number) {
     this.steps.clear();
     this.currentStep = 1;
   }
+
+  private loadPositionsForStep(stepIndex: number, deptId: number, keepPositionId?: number | null) {
+    if (!deptId) {
+      this.positionsByStep.set(stepIndex, []);
+      // clear position khi chưa chọn dept
+      this.steps.at(stepIndex).get('positionId')?.setValue(null, { emitEvent: false });
+      return;
+    }
+
+    this.positionService.getPositionsByDepartment(deptId).subscribe({
+      next: res => {
+        const list = res?.data ?? [];
+        this.positionsByStep.set(stepIndex, list);
+
+        // nếu đang sửa flow: giữ lại position cũ nếu còn trong danh sách
+        if (keepPositionId != null) {
+          const exists = list.some(p => Number(p.id) === Number(keepPositionId));
+          if (!exists) {
+            this.steps.at(stepIndex).get('positionId')?.setValue(null, { emitEvent: false });
+          }
+        }
+      },
+      error: err => {
+        console.error(err);
+        this.positionsByStep.set(stepIndex, []);
+        this.steps.at(stepIndex).get('positionId')?.setValue(null, { emitEvent: false });
+      }
+    });
+  }
+
 }

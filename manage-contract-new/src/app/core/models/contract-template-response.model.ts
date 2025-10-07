@@ -25,9 +25,10 @@ export interface TemplateVariable {
 
 export interface ContractTemplateResponse {
   id: number;
-  name: string;
+  name?: string;
   description?: string;
   filePath: string;
+  status: 'active' | 'inactive'; 
 
   createdBy?: AuthAccountResponse;
   variables?: TemplateVariable[];

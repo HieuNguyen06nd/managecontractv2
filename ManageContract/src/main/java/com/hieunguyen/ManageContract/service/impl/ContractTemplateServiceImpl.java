@@ -1,17 +1,21 @@
 package com.hieunguyen.ManageContract.service.impl;
 
 import com.hieunguyen.ManageContract.common.exception.ResourceNotFoundException;
+import com.hieunguyen.ManageContract.dto.approval.ApprovalFlowResponse;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateCreateRequest;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateResponse;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateUpdateRequest;
 import com.hieunguyen.ManageContract.dto.templateVariable.TemplatePreviewResponse;
 import com.hieunguyen.ManageContract.dto.templateVariable.TemplateVariablePreview;
 import com.hieunguyen.ManageContract.dto.templateVariable.VariableUpdateRequest;
+import com.hieunguyen.ManageContract.entity.ApprovalFlow;
 import com.hieunguyen.ManageContract.entity.ContractTemplate;
 import com.hieunguyen.ManageContract.entity.Employee;
 import com.hieunguyen.ManageContract.entity.TemplateVariable;
+import com.hieunguyen.ManageContract.mapper.ApprovalFlowMapper;
 import com.hieunguyen.ManageContract.mapper.ContractTemplateMapper;
 import com.hieunguyen.ManageContract.mapper.TemplateVariableMapper;
+import com.hieunguyen.ManageContract.repository.ApprovalFlowRepository;
 import com.hieunguyen.ManageContract.repository.ContractTemplateRepository;
 import com.hieunguyen.ManageContract.repository.TemplateVariableRepository;
 import com.hieunguyen.ManageContract.repository.UserRepository;
@@ -41,6 +45,8 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
     private final ContractTemplateRepository templateRepository;
     private final TemplateVariableRepository variableRepository;
     private final UserRepository userRepository;
+    private final ApprovalFlowRepository approvalFlowRepository;
+
 
     private static final Path UPLOAD_DIR = Paths.get("uploads", "templates");
 
@@ -175,6 +181,25 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         return templates.stream()
                 .map(ContractTemplateMapper::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public ApprovalFlowResponse getDefaultFlowByTemplate(Long templateId) {
+        var template = templateRepository.findByIdWithDefaultFlow(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("Template không tồn tại"));
+
+        ApprovalFlow defaultFlow = template.getDefaultFlow();
+        if (defaultFlow == null) {
+            throw new ResourceNotFoundException("Template chưa được đặt luồng mặc định");
+        }
+
+        // Nếu muốn trả cả steps chi tiết:
+        var flowWithSteps = approvalFlowRepository.findByIdWithSteps(defaultFlow.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy default flow"));
+
+        var resp = ApprovalFlowMapper.toFlowResponse(flowWithSteps);
+        resp.setIsDefault(true);
+        return resp;
     }
 
 

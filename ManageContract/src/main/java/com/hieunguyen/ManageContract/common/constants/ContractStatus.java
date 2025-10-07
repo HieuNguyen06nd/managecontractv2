@@ -7,6 +7,7 @@ public enum ContractStatus {
     REJECTED,     // bị từ chối
     ACTIVE,       // có hiệu lực
     EXPIRED,      // hết hạn
-    TERMINATED    // chấm dứt trước hạn
+    TERMINATED,    // chấm dứt trước hạn
+    CANCELLED
 }
 

@@ -5,58 +5,33 @@ import { Observable, map } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import { ResponseData } from '../models/response-data.model';
-
+import { ApprovalFlowResponse } from './contract-flow.service';
 
 import { TemplatePreviewResponse } from '../models/template-preview-response.model';
+import { ContractTemplateResponse } from '../models/contract-template-response.model';
 import { VariableUpdateRequest } from '../models/variable-update-request.model';
 import { ContractTemplateUpdateRequest } from '../models/contract-template-update-request.model';
 import { ContractTemplateCreateRequest } from '../models/ontract-template-create-request.model';
-// Trạng thái dùng chung với BE (ACTIVE/INACTIVE/LOCKED)
 export enum Status {
   ACTIVE = 'ACTIVE',
   INACTIVE = 'INACTIVE',
   LOCKED = 'LOCKED',
 }
 
-// Người tạo template (BE: AuthAccountResponse) – để optional vì có thể BE không trả đủ
 export interface AuthAccountResponse {
   id: number;
   fullName?: string;
   email?: string;
   phone?: string;
-  // bổ sung field khác nếu BE có
 }
 
-// Biến của template (BE: TemplateVariableResponse)
 export interface TemplateVariable {
   id: number;
   varName: string;
-  varType: string | null;     // BE trả string enum -> giữ nguyên
+  varType: string | null;   
   required: boolean;
   orderIndex: number;
 }
-
-export interface ContractTemplateResponse {
-  id: number;
-  name: string;
-  description?: string;
-  filePath: string;
-
-  createdBy?: AuthAccountResponse;
-  variables: TemplateVariable[];
-
-  // flow info
-  defaultFlowId?: number;
-  defaultFlowName?: string;
-  allowOverrideFlow?: boolean;
-
-  // category info
-  categoryId?: number;
-  categoryCode?: string;  
-  categoryName?: string;  
-  categoryStatus?: Status; // ACTIVE/INACTIVE
-}
-
 
 @Injectable({ providedIn: 'root' })
 export class ContractTemplateService {
@@ -141,9 +116,16 @@ export class ContractTemplateService {
       .pipe(map((res) => this.normalizeOne(res.data)));
   }
 
-  // =========================================================
-  // =============== NORMALIZE HELPER METHODS ================
-  // =========================================================
+  updateTemplateStatus(templateId: number, status: { status: 'active' | 'inactive' }): Observable<void> {
+    return this.http
+      .put<void>(`${this.baseUrl}/${templateId}/status`, status);
+  }
+
+  getDefaultFlowByTemplate(templateId: number): Observable<ApprovalFlowResponse> {
+    return this.http
+      .get<ResponseData<ApprovalFlowResponse>>(`${this.baseUrl}/${templateId}/default-flow`)
+      .pipe(map((res) => res.data));
+  }
 
   /** Đảm bảo mọi TemplateVariable có định dạng đúng theo models (tránh undefined) */
   private normalizeVariable(v: any): TemplateVariable {
@@ -159,12 +141,11 @@ export class ContractTemplateService {
 
   /** Chuẩn hoá 1 template */
   private normalizeOne(t: ContractTemplateResponse): ContractTemplateResponse {
-    if (!t) return t;
-    return {
-      ...t,
-      variables: (t.variables ?? []).map((v) => this.normalizeVariable(v)),
-    };
-  }
+      return {
+        ...t,
+        status: t.status ?? 'inactive', // Default to 'inactive' if status is missing
+      };
+    }
 
   /** Chuẩn hoá list template */
   private normalizeList(

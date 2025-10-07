@@ -33,7 +33,7 @@ public class Contract {
     @JoinColumn(name = "flow_id")
     private ApprovalFlow flow;
 
-    @OneToMany(mappedBy = "contract")
+    @OneToMany(mappedBy = "contract", cascade = CascadeType.ALL)
     private List<ContractVariableValue> variableValues;
 }
 

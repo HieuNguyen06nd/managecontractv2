@@ -9,10 +9,19 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ApprovalFlowRepository extends JpaRepository<ApprovalFlow, Long> {
-    // trả về nhiều flow
     List<ApprovalFlow> findByTemplateId(Long templateId);
 
-    // lấy đúng 1 flow mặc định (nếu bạn set mặc định trên Template)
     @Query("select t.defaultFlow from ContractTemplate t where t.id = :templateId")
     Optional<ApprovalFlow> findDefaultFlowByTemplateId(@Param("templateId") Long templateId);
+
+    @Query("""
+        select distinct f
+        from ApprovalFlow f
+        left join fetch f.steps s
+        left join fetch s.employee e
+        left join fetch s.position p
+        left join fetch s.department d
+        where f.id = :id
+    """)
+    Optional<ApprovalFlow> findByIdWithSteps(@Param("id") Long id);
 }

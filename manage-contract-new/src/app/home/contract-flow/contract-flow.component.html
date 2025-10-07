@@ -63,9 +63,10 @@
                         [disabled]="!selectedTemplateForList">
                   Đặt mặc định
                 </button>
-                <button class="btn btn-sm btn-outline-danger" (click)="deleteFlow(f.id)">
+                <button class="btn btn-sm btn-outline-danger" (click)="openDeleteModal(f)">
                   <i class="fas fa-trash"></i>
                 </button>
+
               </div>
             </div>
 
@@ -339,28 +340,34 @@
 
                   <!-- POSITION -->
                   <div class="col-md-4" *ngIf="steps.at(i).get('approverType')?.value === 'POSITION'">
-                    <label class="form-label small text-muted">Chức vụ</label>
-                    <select class="form-select"
-                            formControlName="positionId"
-                            [ngClass]="{'is-invalid': steps.at(i).get('positionId')?.invalid && steps.at(i).get('positionId')?.touched}">
-                      <option [ngValue]="null">-- Chọn chức vụ --</option>
-                      <option *ngFor="let p of positions" [ngValue]="p.id">{{ p.name }}</option>
-                    </select>
-                    <div *ngIf="steps.at(i).get('positionId')?.invalid && steps.at(i).get('positionId')?.touched"
-                         class="text-danger small mt-1">Vui lòng chọn chức vụ.</div>
-                  </div>
-
-                  <div class="col-md-4" *ngIf="steps.at(i).get('approverType')?.value === 'POSITION'">
                     <label class="form-label small text-muted">Phòng ban</label>
                     <select class="form-select"
                             formControlName="departmentId"
+                            (change)="onChangeDepartment(i)"
                             [ngClass]="{'is-invalid': steps.at(i).get('departmentId')?.invalid && steps.at(i).get('departmentId')?.touched}">
                       <option [ngValue]="null">-- Chọn phòng ban --</option>
                       <option *ngFor="let d of departments" [ngValue]="d.id">{{ d.name }}</option>
                     </select>
                     <div *ngIf="steps.at(i).get('departmentId')?.invalid && steps.at(i).get('departmentId')?.touched"
-                         class="text-danger small mt-1">Vui lòng chọn phòng ban.</div>
+                        class="text-danger small mt-1">Vui lòng chọn phòng ban.</div>
                   </div>
+
+                  <div class="col-md-4"
+                      *ngIf="steps.at(i).get('approverType')?.value === 'POSITION'
+                              && steps.at(i).get('departmentId')?.value">
+                    <label class="form-label small text-muted">Chức vụ (thuộc phòng ban)</label>
+                    <select class="form-select"
+                            formControlName="positionId"
+                            [ngClass]="{'is-invalid': steps.at(i).get('positionId')?.invalid && steps.at(i).get('positionId')?.touched}">
+                      <option [ngValue]="null">-- Chọn chức vụ --</option>
+                      <ng-container *ngIf="positionsByStep.get(i) as posOpts">
+                        <option *ngFor="let p of posOpts" [ngValue]="p.id">{{ p.name }}</option>
+                      </ng-container>
+                    </select>
+                    <div *ngIf="steps.at(i).get('positionId')?.invalid && steps.at(i).get('positionId')?.touched"
+                        class="text-danger small mt-1">Vui lòng chọn chức vụ.</div>
+                  </div>
+
                 </div>
               </div>
 
@@ -448,7 +455,7 @@
                       {{ t.description || '—' }}
                     </p>
                     <div class="d-flex justify-content-between text-muted small">
-                      <span><i class="fas fa-tags me-1"></i>{{ t.variables.length || 0 }} biến</span>
+                      <span><i class="fas fa-tags me-1"></i>{{ t.variables && t.variables.length || 0 }} biến</span>
                       <span><i class="fas fa-user me-1"></i>{{ t.createdBy?.fullName || '—' }}</span>
                     </div>
                   </div>
@@ -596,4 +603,26 @@
       </div>
     </div>
   </div>
+
+  <!-- DELETE MODAL -->
+<div class="modal-backdrop-custom" *ngIf="isDeleteModalOpen"></div>
+  <div class="modal-custom" *ngIf="isDeleteModalOpen">
+    <div class="modal-dialog-custom">
+      <div class="modal-header">
+        <h5 class="modal-title">Xóa luồng phê duyệt</h5>
+        <button type="button" class="btn-close" (click)="closeDeleteModal()"></button>
+      </div>
+      <div class="modal-body">
+        Bạn chắc chắn muốn xóa <b>{{ deleteFlowName }}</b>?
+        <div class="text-muted small mt-2">Hành động này không thể hoàn tác.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" (click)="closeDeleteModal()">Hủy</button>
+        <button class="btn btn-danger" (click)="confirmDelete()">
+          <i class="fas fa-trash me-1"></i> Xóa
+        </button>
+      </div>
+    </div>
+  </div>
+
 </main>

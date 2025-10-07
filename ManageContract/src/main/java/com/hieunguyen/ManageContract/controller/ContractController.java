@@ -75,4 +75,44 @@ public class ContractController {
         List<ContractResponse> data = contractService.getMyContracts(status);
         return new ResponseData<>(200, "Danh sách hợp đồng của tôi", data);
     }
+
+    @PutMapping("/{id}")
+    public ResponseData<ContractResponse> updateContract(
+            @PathVariable Long id, @RequestBody CreateContractRequest request) {
+        ContractResponse response = contractService.updateContract(id, request);
+        return new ResponseData<>(200, "Cập nhật hợp đồng thành công", response);
+    }
+
+    // ---------- NEW: Change Approver ----------
+    @PutMapping("/{contractId}/approver/{stepId}")
+    public ResponseData<String> changeApprover(
+            @PathVariable Long contractId,
+            @PathVariable Long stepId,
+            @RequestParam Long newApproverId,
+            @RequestParam boolean isUserApprover) {
+        contractService.changeApprover(contractId, stepId, newApproverId, isUserApprover);
+        return new ResponseData<>(200, "Thay đổi người ký thành công", null);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseData<ContractResponse> getById(@PathVariable Long id) {
+        // dùng service hoặc repo đều được, miễn trả về ContractResponse
+        ContractResponse res = contractService.getById(id); // bạn thêm hàm này trong service
+        return new ResponseData<>(200, "OK", res);
+    }
+
+    // Xóa hợp đồng theo id
+    @DeleteMapping("/{contractId}")
+    public ResponseData<Void> deleteContract(@PathVariable Long contractId) {
+        contractService.deleteContract(contractId);
+        return new ResponseData<>(200, "Xoá thành công");
+    }
+
+    // Hủy hợp đồng theo id
+    @PutMapping("/{contractId}/cancel")
+    public ResponseData<Void> cancelContract(@PathVariable Long contractId) {
+        contractService.cancelContract(contractId);
+        return new ResponseData<>(200, "Huỷ thành công");
+    }
+
 }

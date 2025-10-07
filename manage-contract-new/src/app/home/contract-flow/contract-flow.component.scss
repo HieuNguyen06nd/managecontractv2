@@ -218,3 +218,28 @@ body {
 
 .badge-user { background: var(--info); color: #fff; }
 .badge-position { background: var(--success); color: #fff; }
+.modal-backdrop-custom {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 1040;
+}
+
+.modal-custom {
+  position: fixed; inset: 0;
+  display: grid; place-items: center;
+  z-index: 1050;
+  padding: 1rem;
+}
+
+.modal-dialog-custom {
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.2);
+  overflow: hidden;
+}
+
+.modal-header, .modal-footer { padding: 1rem 1.25rem; background: #f8f9fa; }
+.modal-body { padding: 1rem 1.25rem; }
+.btn-close { border: none; background: transparent; }

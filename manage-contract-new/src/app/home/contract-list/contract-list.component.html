@@ -5,54 +5,14 @@
       <!-- Page Header -->
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="h3 mb-0">Quản lý Hợp đồng</h2>
-        <button class="btn btn-primary">
-         <a href="contract/create"> <i class="fas fa-plus me-2"></i>  Tạo hợp đồng mới</a>
+        <button class="btn btn-primary" (click)="goToCreateTemplatePage()">
+            <i class="fas fa-plus me-1"></i> Tạo hợp đồng mới
         </button>
       </div>
 
       <!-- Loading / Error -->
       <div *ngIf="loading()" class="alert alert-info">Đang tải dữ liệu...</div>
       <div *ngIf="error()" class="alert alert-danger">{{ error() }}</div>
-
-      <!-- Stats Cards -->
-      <div class="row mb-4">
-        <div class="col-md-3">
-          <div class="card stats-card">
-            <div class="card-body">
-              <i class="fas fa-edit fa-2x stats-draft"></i>
-              <div class="stats-number stats-draft">{{ statDraft() }}</div>
-              <div class="text-muted">Hợp đồng nháp</div>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="card stats-card">
-            <div class="card-body">
-              <i class="fas fa-paper-plane fa-2x stats-pending"></i>
-              <div class="stats-number stats-pending">{{ statPending() }}</div>
-              <div class="text-muted">Đã trình ký</div>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="card stats-card">
-            <div class="card-body">
-              <i class="fas fa-file-signature fa-2x stats-signed"></i>
-              <div class="stats-number stats-signed">{{ statSigned() }}</div>
-              <div class="text-muted">Đã ký</div>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="card stats-card">
-            <div class="card-body">
-              <i class="fas fa-ban fa-2x stats-cancelled"></i>
-              <div class="stats-number stats-cancelled">{{ statCancelled() }}</div>
-              <div class="text-muted">Đã hủy</div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <!-- Filter Section -->
       <div class="filter-section">
@@ -177,17 +137,29 @@
 
 
                     <button
-                      class="btn btn-sm btn-outline-success action-btn me-1"
-                      title="Chỉnh sửa"
-                      (click)="edit(c)"
+                        class="btn btn-sm btn-outline-success action-btn me-1"
+                        title="Chỉnh sửa"
+                        (click)="edit(c)"
+                        *ngIf="(c.status || '').toUpperCase() === 'DRAFT'"
+                        >
+                        <i class="fas fa-edit"></i>
+                        </button>
+
+                    <button
+                        class="btn btn-sm btn-outline-danger action-btn me-1"
+                        title="Hủy"
+                        *ngIf="(c.status || '').toUpperCase() === 'PENDING_APPROVAL'"
+                        (click)="openCancelModal(c)"
                     >
-                      <i class="fas fa-edit"></i>
+                      <i class="fas fa-times-circle"></i>
                     </button>
 
+                    <!-- Hiển thị nút xóa nếu trạng thái hợp đồng là DRAFT -->
                     <button
                       class="btn btn-sm btn-outline-danger action-btn"
                       title="Xóa"
-                      (click)="remove(c)"
+                      *ngIf="(c.status || '').toUpperCase() === 'DRAFT'"
+                      (click)="openDeleteModal(c)"
                     >
                       <i class="fas fa-trash"></i>
                     </button>
@@ -235,12 +207,6 @@
           </div>
         </div>
       </div>
-
-      <!-- Preview note -->
-      <div class="contract-preview mt-4 d-none d-md-block">
-        <h4 class="contract-title">Xem trước hợp đồng</h4>
-        <div class="text-muted">Chọn một hợp đồng để xem chi tiết hoặc bấm “Xem PDF”.</div>
-      </div>
     </div>
   </div>
 
@@ -272,12 +238,6 @@
             height="100%"
             style="border:0; min-height:65vh;"
           ></iframe>
-
-          <!-- Hoặc dùng <object> tuỳ ý:
-          <object [data]="pdfSafeUrl" type="application/pdf" width="100%" height="100%">
-            <p>Trình duyệt không hỗ trợ xem PDF inline. <a [href]="pdfSafeUrl">Tải PDF</a></p>
-          </object>
-          -->
         </ng-container>
       </div>
 
@@ -440,6 +400,111 @@
 
     <!-- Backdrop thủ công -->
     <div class="modal-backdrop fade show" *ngIf="showSubmit()"></div>
+
+    <!-- Edit Contract Modal -->
+    <div class="modal fade show" tabindex="-1" [ngClass]="{'d-block': showEdit()}" *ngIf="showEdit()">
+    <div class="modal-dialog modal-lg" (click)="$event.stopPropagation()">
+        <div class="modal-content">
+
+        <div class="modal-header">
+            <h5 class="modal-title">Chỉnh sửa hợp đồng</h5>
+            <button type="button" class="btn-close" aria-label="Close" (click)="closeEditModal()"></button>
+        </div>
+
+        <div class="modal-body">
+        <form [formGroup]="editForm">
+        <div class="mb-3">
+            <label for="contractTitle" class="form-label">Tiêu đề hợp đồng</label>
+            <input
+            id="contractTitle"
+            class="form-control"
+            formControlName="title"  
+            placeholder="Nhập tiêu đề hợp đồng"
+            />
+        </div>
+
+        <!-- Biến hợp đồng -->
+        <div class="mb-3">
+            <label class="form-label">Biến hợp đồng</label>
+            <div class="row">
+            <div class="col-md-6">
+                <strong>Tên biến</strong>
+            </div>
+            <div class="col-md-6">
+                <strong>Giá trị</strong>
+            </div>
+            </div>
+
+            <!-- Hiển thị các biến hợp đồng -->
+            <div *ngFor="let variable of editVariables; let i = index" class="row">
+            <div class="col-md-6">
+                <!-- Hiển thị tên biến -->
+                <span>{{ variable.varName }}</span>
+            </div>
+            <div class="col-md-6">
+                <!-- Input giá trị biến -->
+                <input
+                class="form-control mb-2"
+                [placeholder]="variable.varName"
+                [(ngModel)]="editVariables[i].varValue"
+                [ngModelOptions]="{standalone: true}" 
+                />
+            </div>
+            </div>
+        </div>
+        </form>
+
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeEditModal()">Đóng</button>
+            <button type="button" class="btn btn-primary" (click)="submitEdit()">Cập nhật</button>
+        </div>
+
+        </div>
+    </div>
+    </div>
+
+      <!-- Modal: Confirm Delete -->
+    <div class="modal fade show" tabindex="-1" [ngClass]="{ 'd-block': showDeleteModal() }" *ngIf="showDeleteModal()">
+        <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+            <h5 class="modal-title">Xóa hợp đồng</h5>
+            <button type="button" class="btn-close" aria-label="Close" (click)="closeDeleteModal()"></button>
+            </div>
+            <div class="modal-body">
+            <p>Bạn có chắc chắn muốn xóa hợp đồng <strong>{{ deleteContract?.contractNumber }}</strong> không?</p>
+            </div>
+            <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeDeleteModal()">Hủy</button>
+            <button type="button" class="btn btn-danger" (click)="deleteContractAction()">Xóa</button>
+            </div>
+        </div>
+        </div>
+    </div>
+
+      <!-- Modal: Confirm Cancel -->
+    <div class="modal fade show" tabindex="-1" [ngClass]="{ 'd-block': showCancelModal() }" *ngIf="showCancelModal()">
+        <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+            <h5 class="modal-title">Hủy hợp đồng</h5>
+            <button type="button" class="btn-close" aria-label="Close" (click)="closeCancelModal()"></button>
+            </div>
+            <div class="modal-body">
+            <p>Bạn có chắc chắn muốn hủy hợp đồng <strong>{{ cancelContract?.contractNumber }}</strong> không?</p>
+            </div>
+            <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeCancelModal()">Hủy</button>
+            <button type="button" class="btn btn-danger" (click)="cancelContractAction()">Hủy hợp đồng</button>
+            </div>
+        </div>
+        </div>
+    </div>
+    <!-- Backdrop thủ công -->
+    <div class="modal-backdrop fade show" *ngIf="showEdit()"></div>
+
 
 
 

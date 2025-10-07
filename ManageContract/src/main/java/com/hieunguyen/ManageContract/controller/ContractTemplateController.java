@@ -1,6 +1,7 @@
 package com.hieunguyen.ManageContract.controller;
 
 import com.hieunguyen.ManageContract.dto.ResponseData;
+import com.hieunguyen.ManageContract.dto.approval.ApprovalFlowResponse;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateCreateRequest;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateResponse;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateUpdateRequest;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/templates")
@@ -58,12 +60,12 @@ public class ContractTemplateController {
 
     // ------------------ Cập nhật kiểu dữ liệu biến (FE chọn) ------------------
     @PostMapping("/{templateId}/variables")
-    public ResponseEntity<ResponseData<String>> updateVariableTypes(
+    public ResponseData<String> updateVariableTypes(
             @PathVariable Long templateId,
             @RequestBody List<VariableUpdateRequest> requests
     ) {
         templateService.updateVariableTypes(templateId, requests);
-        return ResponseEntity.ok(new ResponseData<>(200, "Cập nhật kiểu dữ liệu thành công", null));
+        return new ResponseData<>(200, "Cập nhật kiểu dữ liệu thành công", null);
     }
 
     // ------------------ Cập nhật template (name, description) ------------------
@@ -81,5 +83,12 @@ public class ContractTemplateController {
         List<ContractTemplateResponse> templates = templateService.getAllTemplates();
         return new ResponseData<>(200,"Danh sách template", templates);
     }
+
+    @GetMapping("/{templateId}/default-flow")
+    public ResponseData<ApprovalFlowResponse> getDefaultFlow(@PathVariable Long templateId) {
+        ApprovalFlowResponse res = templateService.getDefaultFlowByTemplate(templateId);
+        return new ResponseData<>(200, "Default flow của template", res);
+    }
+
 
 }

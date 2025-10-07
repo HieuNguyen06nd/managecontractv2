@@ -15,6 +15,7 @@ export interface PositionResponse {
     name: string;
     description?: string;
     status: Status;
+    departmentId?: number;  
 }
 
 

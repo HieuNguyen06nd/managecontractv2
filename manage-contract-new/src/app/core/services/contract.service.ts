@@ -3,19 +3,15 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
-
+import { map } from 'rxjs/operators';
 import { ResponseData } from '../models/response-data.model';
-import { ContractResponse } from '../models/contract.model';
+import { ContractResponse, VariableValueRequest, VariableValueResponse,CreateContractRequest } from '../models/contract.model';
 
-export interface CreateContractRequest {
-  templateId: number;
-  title: string;
-  variables: VariableValueRequest[];
-  flowId?: number | null;
-  allowChangeFlow?: boolean;
+
+function normalizeContract(c: ContractResponse): ContractResponse {
+  const vs = (c as any).variables as VariableValueResponse[] | undefined;
+  return { ...c, variableValues: c.variableValues ?? vs ?? [] };
 }
-export interface VariableValueRequest { varName: string; varValue: string; }
-export interface VariableValueResponse { varName: string; varValue: string; }
 
 @Injectable({ providedIn: 'root' })
 export class ContractService {
@@ -32,8 +28,9 @@ export class ContractService {
   }
 
   /** GET /api/contracts/{id} */
-  getContractById(id: number): Observable<ResponseData<ContractResponse>> {
-    return this.http.get<ResponseData<ContractResponse>>(`${this.baseUrl}/${id}`);
+  getContractById(id: number) {
+    return this.http.get<ResponseData<ContractResponse>>(`${this.baseUrl}/${id}`)
+      .pipe(map(res => ({ ...res, data: normalizeContract(res.data) })));
   }
 
   /** GET /api/contracts */
@@ -86,4 +83,40 @@ export class ContractService {
     const url = `${this.baseUrl}/${contractId}/file/download${cacheBust ? `?t=${cacheBust}` : ''}`;
     return this.http.get(url, { responseType: 'blob' });
   }
+
+    /** PUT /api/contracts/{id} */
+  updateContract(id: number, request: CreateContractRequest): Observable<ResponseData<ContractResponse>> {
+    return this.http.put<ResponseData<ContractResponse>>(`${this.baseUrl}/${id}`, request);
+  }
+
+  // ===== NEW: Change Approver =====
+
+  /** PUT /api/contracts/{contractId}/approver/{stepId} */
+  changeApprover(
+    contractId: number, 
+    stepId: number, 
+    newApproverId: number, 
+    isUserApprover: boolean
+  ): Observable<ResponseData<string>> {
+    const params = new HttpParams()
+      .set('newApproverId', newApproverId.toString())
+      .set('isUserApprover', isUserApprover.toString());
+    return this.http.put<ResponseData<string>>(
+      `${this.baseUrl}/${contractId}/approver/${stepId}`, 
+      {}, 
+      { params }
+    );
+  }
+ /** PUT /api/contracts/{contractId}/cancel */
+  cancelContract(contractId: number): Observable<ResponseData<void>> {
+    return this.http.put<ResponseData<void>>(`${this.baseUrl}/${contractId}/cancel`, {});
+  }
+
+  // ===== NEW: Delete Contract =====
+
+  /** DELETE /api/contracts/{contractId} */
+  deleteContract(contractId: number): Observable<ResponseData<void>> {
+    return this.http.delete<ResponseData<void>>(`${this.baseUrl}/${contractId}`);
+  }
+  
 }

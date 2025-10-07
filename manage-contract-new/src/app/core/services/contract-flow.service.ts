@@ -64,6 +64,7 @@ export interface ApprovalFlowResponse {
 @Injectable({ providedIn: 'root' })
 export class ApprovalFlowService {
   private baseUrl = `${environment.apiUrl}/flows`;
+  private tmplBase = `${environment.apiUrl}/templates`;
 
   constructor(private http: HttpClient) {}
 
@@ -95,6 +96,12 @@ export class ApprovalFlowService {
   /** Xoá flow */
   deleteFlow(flowId: number): Observable<ResponseData<void>> {
     return this.http.delete<ResponseData<void>>(`${this.baseUrl}/${flowId}`);
+  }
+
+  getDefaultFlowByTemplate(templateId: number) {
+    return this.http.get<ResponseData<ApprovalFlowResponse>>(
+      `${this.tmplBase}/${templateId}/default-flow`
+    );
   }
 
 }

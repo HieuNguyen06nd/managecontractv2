@@ -4,6 +4,7 @@ import com.hieunguyen.ManageContract.common.constants.ContractStatus;
 import com.hieunguyen.ManageContract.entity.Contract;
 import com.hieunguyen.ManageContract.entity.ContractTemplate;
 import io.lettuce.core.dynamic.annotation.Param;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
@@ -19,4 +20,7 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
 
     // lọc theo trạng thái (tùy chọn)
     List<Contract> findByCreatedBy_Account_EmailAndStatus(String email, ContractStatus status);
+
+    @EntityGraph(attributePaths = {"variableValues", "createdBy", "template", "flow"})
+    Optional<Contract> findWithVarsById(Long id);
 }
