@@ -57,6 +57,8 @@ public class ContractApproval {
     // Step cuối cùng trong flow
     private Boolean isFinalStep;
 
+    private String signaturePlaceholder;
+
     // Position của người approve nếu approver chưa gán
     @ManyToOne
     @JoinColumn(name = "position_id")

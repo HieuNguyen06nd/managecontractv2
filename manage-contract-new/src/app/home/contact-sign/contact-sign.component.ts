@@ -44,6 +44,7 @@ export class ContactSignComponent implements OnInit, OnDestroy, AfterViewInit {
   pendingContracts: PendingCard[] = [];
   approvedContracts: PendingCard[] = [];
   rejectedContracts: PendingCard[] = [];
+  signaturePlaceholders: string[] = []; 
 
   loading = false;
   errorMsg = '';

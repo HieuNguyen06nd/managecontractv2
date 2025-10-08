@@ -445,7 +445,7 @@ loadTemplates(): void {
           : 'Không thể lưu nháp hợp đồng. Vui lòng thử lại.';
         this.toastr.error(this.errorMessage);
       }
-    });
+    }); 
 }
 
 
