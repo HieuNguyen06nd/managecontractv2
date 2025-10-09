@@ -1,11 +1,13 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';  
 import { ContractTemplateService } from '../../core/services/contract-template.service';
+import { CategoryService } from '../../core/services/category.service';
 import { ToastrService } from 'ngx-toastr';
 import {
   ContractTemplateResponse,
   TemplateVariable,
 } from '../../core/models/contract-template-response.model';
+import { Category } from '../../core/models/category.model';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -18,11 +20,13 @@ import { FormsModule } from '@angular/forms';
 })
 export class ContactListTemplateComponent implements OnInit {
   templates: ContractTemplateResponse[] = [];
+  categories: Category[] = [];
   loading = false;
+  categoriesLoading = false;
   error = '';
 
   searchTerm = '';
-  categoryFilter: '' | 'LABOR' | 'BUSINESS' | 'SERVICE' | 'RENTAL' | 'LEGAL' = '';
+  categoryFilter: number | null = null;
   statusFilter: '' | 'active' | 'inactive' = '';
 
   pageSizeOptions: number[] = [6, 12, 24];
@@ -37,18 +41,20 @@ export class ContactListTemplateComponent implements OnInit {
     name: '',
     description: '',
     filePath: '',
-    status: 'active', // Mặc định là 'active'
-    variables: [] // Khởi tạo biến mặc định
+    status: 'active',
+    variables: []
   };
 
   constructor(
     private templateService: ContractTemplateService,
+    private categoryService: CategoryService,
     private router: Router,
     private toastr: ToastrService
   ) {}
 
   ngOnInit(): void {
     this.fetchTemplates();
+    this.fetchCategories();
   }
 
   fetchTemplates(): void {
@@ -63,6 +69,21 @@ export class ContactListTemplateComponent implements OnInit {
         this.error = 'Không thể tải danh sách hợp đồng mẫu.';
         console.error(err);
         this.loading = false;
+      }
+    });
+  }
+
+  fetchCategories(): void {
+    this.categoriesLoading = true;
+    this.categoryService.getAllCategories().subscribe({
+      next: (response) => {
+        this.categories = response?.data || [];
+        this.categoriesLoading = false;
+      },
+      error: (err) => {
+        console.error('Lỗi khi tải danh mục:', err);
+        this.categories = [];
+        this.categoriesLoading = false;
       }
     });
   }
@@ -127,24 +148,46 @@ export class ContactListTemplateComponent implements OnInit {
     const raw = (v?.varType ?? 'TEXT');
     const type = String(raw).toUpperCase();
     const map: Record<string, string> = {
-      TEXT: 'Text',
-      NUMBER: 'Number',
-      DATE: 'Date',
-      CURRENCY: 'Currency',
+      'STRING': 'Văn bản',
+      'TEXT': 'Văn bản',
+      'NUMBER': 'Số',
+      'DATE': 'Ngày tháng',
+      'BOOLEAN': 'True/False',
+      'TEXTAREA': 'Văn bản dài',
+      'LIST': 'Danh sách',
+      'DROPDOWN': 'Dropdown',
+      'TABLE': 'Bảng',
+      'CURRENCY': 'Tiền tệ',
     };
-    return map[type] ?? 'Text';
+    return map[type] ?? 'Văn bản';
   }
 
-  // Add missing helper functions
+  // Category helpers
   getTemplateCategoryLabel(t: ContractTemplateResponse): string {
-    switch ((t.categoryCode || '').toUpperCase()) {
-      case 'LABOR': return 'Lao động';
-      case 'BUSINESS': return 'Kinh doanh';
-      case 'SERVICE': return 'Dịch vụ';
-      case 'RENTAL': return 'Thuê';
-      case 'LEGAL': return 'Pháp lý';
-      default: return 'Khác';
+    if (t.categoryName) {
+      return t.categoryName;
     }
+    
+    if (t.categoryId && this.categories.length > 0) {
+      const category = this.categories.find(c => c.id === t.categoryId);
+      return category ? category.name : 'Khác';
+    }
+    
+    // Fallback to categoryCode if no categoryId or categories not loaded
+    const code = (t.categoryCode || '').toUpperCase();
+    const byCode: Record<string, string> = {
+      'LABOR': 'Lao động',
+      'BUSINESS': 'Kinh doanh',
+      'SERVICE': 'Dịch vụ',
+      'RENTAL': 'Thuê',
+      'LEGAL': 'Pháp lý',
+    };
+    return byCode[code] || 'Khác';
+  }
+
+  getCategoryName(categoryId: number): string {
+    const category = this.categories.find(c => c.id === categoryId);
+    return category ? category.name : 'Không xác định';
   }
 
   getStatusLabel(t: ContractTemplateResponse): string {
@@ -153,6 +196,37 @@ export class ContactListTemplateComponent implements OnInit {
 
   getStatusClass(t: ContractTemplateResponse): string {
     return t.status === 'active' ? 'status-active' : 'status-inactive';
+  }
+
+  // Filter templates based on search and filters
+  get filteredTemplates(): ContractTemplateResponse[] {
+    let filtered = this.templates;
+
+    // Search filter
+    if (this.searchTerm) {
+      const term = this.searchTerm.toLowerCase();
+      filtered = filtered.filter(t => {
+        const name = t.name?.toLowerCase() || '';
+        const description = t.description?.toLowerCase() || '';
+        const categoryLabel = this.getTemplateCategoryLabel(t).toLowerCase();
+        
+        return name.includes(term) || 
+               description.includes(term) ||
+               categoryLabel.includes(term);
+      });
+    }
+
+    // Category filter
+    if (this.categoryFilter) {
+      filtered = filtered.filter(t => t.categoryId === this.categoryFilter);
+    }
+
+    // Status filter
+    if (this.statusFilter) {
+      filtered = filtered.filter(t => t.status === this.statusFilter);
+    }
+
+    return filtered;
   }
 
   // Pagination helpers
@@ -165,7 +239,7 @@ export class ContactListTemplateComponent implements OnInit {
   }
 
   get totalTemplates(): number {
-    return this.templates.length;
+    return this.filteredTemplates.length;
   }
 
   get totalPages(): number {
@@ -178,7 +252,7 @@ export class ContactListTemplateComponent implements OnInit {
 
   get pagedTemplates(): ContractTemplateResponse[] {
     const start = (this.currentPage - 1) * this.pageSize;
-    return this.templates.slice(start, start + this.pageSize);
+    return this.filteredTemplates.slice(start, start + this.pageSize);
   }
 
   onChangePageSize(size: number | string): void {

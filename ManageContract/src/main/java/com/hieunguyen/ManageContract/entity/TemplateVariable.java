@@ -26,6 +26,9 @@ public class TemplateVariable {
 
     private String name; // Ten cua bien FE
 
+    @Column(columnDefinition = "TEXT")
+    private String config;
+
     @ElementCollection
     private List<String> allowedValues; // cho DROPDOWN / LIST
 

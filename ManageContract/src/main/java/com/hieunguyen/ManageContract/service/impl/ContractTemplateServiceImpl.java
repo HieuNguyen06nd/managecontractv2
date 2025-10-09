@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hieunguyen.ManageContract.common.exception.ResourceNotFoundException;
 import com.hieunguyen.ManageContract.dto.approval.ApprovalFlowResponse;
 import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateCreateRequest;
@@ -8,17 +9,11 @@ import com.hieunguyen.ManageContract.dto.contractTemplate.ContractTemplateUpdate
 import com.hieunguyen.ManageContract.dto.templateVariable.TemplatePreviewResponse;
 import com.hieunguyen.ManageContract.dto.templateVariable.TemplateVariablePreview;
 import com.hieunguyen.ManageContract.dto.templateVariable.VariableUpdateRequest;
-import com.hieunguyen.ManageContract.entity.ApprovalFlow;
-import com.hieunguyen.ManageContract.entity.ContractTemplate;
-import com.hieunguyen.ManageContract.entity.Employee;
-import com.hieunguyen.ManageContract.entity.TemplateVariable;
+import com.hieunguyen.ManageContract.entity.*;
 import com.hieunguyen.ManageContract.mapper.ApprovalFlowMapper;
 import com.hieunguyen.ManageContract.mapper.ContractTemplateMapper;
 import com.hieunguyen.ManageContract.mapper.TemplateVariableMapper;
-import com.hieunguyen.ManageContract.repository.ApprovalFlowRepository;
-import com.hieunguyen.ManageContract.repository.ContractTemplateRepository;
-import com.hieunguyen.ManageContract.repository.TemplateVariableRepository;
-import com.hieunguyen.ManageContract.repository.UserRepository;
+import com.hieunguyen.ManageContract.repository.*;
 import com.hieunguyen.ManageContract.service.ContractTemplateService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +41,8 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
     private final TemplateVariableRepository variableRepository;
     private final UserRepository userRepository;
     private final ApprovalFlowRepository approvalFlowRepository;
+    private final CategoryRepository categoryRepository;
+    private final ObjectMapper objectMapper;
 
 
     private static final Path UPLOAD_DIR = Paths.get("uploads", "templates");
@@ -103,6 +100,12 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         Employee createdBy = userRepository.findById(accountId)
                 .orElseThrow(() -> new ResourceNotFoundException("Account không tồn tại"));
 
+        Category category = null;
+        if (request.getCategoryId() != null) {
+            category = categoryRepository.findById(request.getCategoryId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Category không tồn tại"));
+        }
+
         try {
             Path tmpPath = UPLOAD_DIR.resolve(request.getTempFileName());
             if (!Files.exists(tmpPath)) throw new ResourceNotFoundException("File tạm không tồn tại trên server");
@@ -122,14 +125,35 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
                     .description(request.getDescription())
                     .filePath(destPath.toString())
                     .createdBy(createdBy)
+                    .category(category)
                     .build();
 
             ContractTemplate savedTemplate = templateRepository.save(template);
 
-            // Mapper biến FE → entity, dùng final để tránh lỗi lambda
+            // Xử lý các biến thông thường
             final ContractTemplate finalTemplate = savedTemplate;
             List<TemplateVariable> variables = request.getVariables().stream()
-                    .map(vreq -> TemplateVariableMapper.toEntity(vreq, finalTemplate))
+                    .map(vreq -> {
+                        TemplateVariable variable = TemplateVariableMapper.toEntity(vreq, finalTemplate);
+
+                        // Xử lý config cho các kiểu biến đặc biệt
+                        if (vreq.getConfig() != null && !vreq.getConfig().isEmpty()) {
+                            try {
+                                // Lưu config dưới dạng JSON string
+                                variable.setConfig(objectMapper.writeValueAsString(vreq.getConfig()));
+                            } catch (Exception e) {
+                                // Nếu không parse được JSON, lưu dạng string thông thường
+                                variable.setConfig(vreq.getConfig().toString());
+                            }
+                        }
+
+                        // Xử lý allowedValues cho DROPDOWN/LIST
+                        if (vreq.getAllowedValues() != null && !vreq.getAllowedValues().isEmpty()) {
+                            variable.setAllowedValues(new ArrayList<>(vreq.getAllowedValues()));
+                        }
+
+                        return variable;
+                    })
                     .collect(Collectors.toList());
 
             variableRepository.saveAll(variables);
@@ -141,7 +165,6 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
             throw new RuntimeException("Lỗi khi xử lý file template: " + ex.getMessage(), ex);
         }
     }
-
     @Transactional
     @Override
     public void updateVariableTypes(Long templateId, List<VariableUpdateRequest> requests) {
@@ -152,11 +175,25 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
             TemplateVariable variable = variableRepository.findByTemplateAndVarName(template, req.getVarName())
                     .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy biến: " + req.getVarName()));
 
-            variable.setVarType(req.getVarType()); // user chọn từ FE
+            variable.setVarType(req.getVarType());
+
+            // Cập nhật config nếu có
+            if (req.getConfig() != null && !req.getConfig().isEmpty()) {
+                try {
+                    variable.setConfig(objectMapper.writeValueAsString(req.getConfig()));
+                } catch (Exception e) {
+                    variable.setConfig(req.getConfig().toString());
+                }
+            }
+
+            // Cập nhật allowedValues nếu có
+            if (req.getAllowedValues() != null && !req.getAllowedValues().isEmpty()) {
+                variable.setAllowedValues(new ArrayList<>(req.getAllowedValues()));
+            }
+
             variableRepository.save(variable);
         }
     }
-
     @Override
     @Transactional
     public ContractTemplateResponse updateTemplate(Long id, ContractTemplateUpdateRequest request) {
@@ -168,6 +205,14 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         }
         if (request.getDescription() != null) {
             template.setDescription(request.getDescription());
+        }
+
+        if (request.getCategoryId() != null) {
+            Category category = categoryRepository.findById(request.getCategoryId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Category không tồn tại"));
+            template.setCategory(category);
+        } else {
+            template.setCategory(null);
         }
 
         template = templateRepository.save(template);
@@ -230,23 +275,97 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
             );
         }
 
-        Pattern pattern = Pattern.compile("\\$\\{(.*?)}");
-        Matcher matcher = pattern.matcher(text);
-
         List<TemplateVariablePreview> variables = new ArrayList<>();
-        int order = 1;
-        while (matcher.find()) {
-            String varName = matcher.group(1).trim();
-            boolean exists = variables.stream().anyMatch(v -> v.getVarName().equalsIgnoreCase(varName));
-            if (exists) continue;
+
+        // Pattern cho các loại biến
+        Pattern simplePattern = Pattern.compile("\\$\\{(.*?)}");
+        Pattern booleanPattern = Pattern.compile("\\$\\{(.*?)\\?(.*?):(.*?)}");
+        Pattern dropdownPattern = Pattern.compile("\\$\\{(.*?)\\|(.*?)}");
+        Pattern tablePattern = Pattern.compile("\\$\\{table:(.*?)}");
+
+        String content = text.toString();
+
+        // Tìm biến boolean: ${var?trueValue:falseValue}
+        Matcher booleanMatcher = booleanPattern.matcher(content);
+        while (booleanMatcher.find()) {
+            String varName = booleanMatcher.group(1).trim();
+            String trueLabel = booleanMatcher.group(2).trim();
+            String falseLabel = booleanMatcher.group(3).trim();
+
+            // SỬA: Tạo Map thay vì String
+            Map<String, Object> configMap = new HashMap<>();
+            configMap.put("trueLabel", trueLabel);
+            configMap.put("falseLabel", falseLabel);
 
             TemplateVariablePreview preview = TemplateVariablePreview.builder()
                     .varName(varName)
-                    .orderIndex(order++)
+                    .orderIndex(variables.size() + 1)
+                    .varType("BOOLEAN")
+                    .config(configMap) // SỬA: Dùng Map thay vì String
                     .build();
             variables.add(preview);
         }
+
+        // Tìm biến dropdown: ${var|option1,option2,option3}
+        Matcher dropdownMatcher = dropdownPattern.matcher(content);
+        while (dropdownMatcher.find()) {
+            String varName = dropdownMatcher.group(1).trim();
+            String optionsStr = dropdownMatcher.group(2).trim();
+            List<String> options = Arrays.stream(optionsStr.split(","))
+                    .map(String::trim)
+                    .collect(Collectors.toList());
+
+            // SỬA: Tạo Map thay vì String
+            Map<String, Object> configMap = new HashMap<>();
+            configMap.put("options", options);
+
+            TemplateVariablePreview preview = TemplateVariablePreview.builder()
+                    .varName(varName)
+                    .orderIndex(variables.size() + 1)
+                    .varType("DROPDOWN")
+                    .config(configMap) // SỬA: Dùng Map thay vì String
+                    .allowedValues(options)
+                    .build();
+            variables.add(preview);
+        }
+
+        // Tìm biến table: ${table:tableName}
+        Matcher tableMatcher = tablePattern.matcher(content);
+        while (tableMatcher.find()) {
+            String tableName = tableMatcher.group(1).trim();
+
+            // SỬA: Tạo Map thay vì String
+            Map<String, Object> configMap = new HashMap<>();
+            configMap.put("tableName", tableName);
+
+            TemplateVariablePreview preview = TemplateVariablePreview.builder()
+                    .varName("table_" + tableName)
+                    .orderIndex(variables.size() + 1)
+                    .varType("TABLE")
+                    .config(configMap) // SỬA: Dùng Map thay vì String
+                    .build();
+            variables.add(preview);
+        }
+
+        // Tìm biến đơn giản: ${varName}
+        Matcher simpleMatcher = simplePattern.matcher(content);
+        while (simpleMatcher.find()) {
+            String varName = simpleMatcher.group(1).trim();
+
+            // Skip nếu đã được xử lý bởi các pattern trên
+            boolean alreadyProcessed = variables.stream()
+                    .anyMatch(v -> v.getVarName().equals(varName) ||
+                            v.getVarName().equals("table_" + varName));
+            if (alreadyProcessed) continue;
+
+            TemplateVariablePreview preview = TemplateVariablePreview.builder()
+                    .varName(varName)
+                    .orderIndex(variables.size() + 1)
+                    .varType("TEXT") // Mặc định
+                    .build();
+            variables.add(preview);
+        }
+
         return variables;
     }
-
 }

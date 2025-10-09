@@ -1,6 +1,7 @@
 package com.hieunguyen.ManageContract.entity;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.hieunguyen.ManageContract.common.constants.Status;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -31,6 +32,10 @@ public class ContractTemplate {
     @JsonManagedReference
     private List<TemplateVariable> variables;
 
+    @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
+    @JsonManagedReference
+    private List<TemplateTableVariable> tableVariables;
+
     @ManyToOne
     @JoinColumn(name = "default_flow_id")
     private ApprovalFlow defaultFlow;
@@ -40,6 +45,10 @@ public class ContractTemplate {
     private Category category;
 
     private Boolean allowOverrideFlow = true;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    private Status status =Status.ACTIVE;
 
 }
 

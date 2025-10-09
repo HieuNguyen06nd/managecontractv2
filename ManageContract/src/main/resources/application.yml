@@ -54,22 +54,23 @@ spring:
 
 api:
   prefix: api/v1
+  upload:
+    dir: ./uploads
 
 jwt:
   secret-key: "sajsjhdhajs u3q9  ioqr 09390jkhfjkasjhilflkjaas"
-  expiration-time: 86400000
-  refresh-expiration-time: 604800000
+  expiration-time: 86400000  # 1 ngày
+  refresh-expiration-time: 604800000  # 1 tuần
 
 app:
   verification:
     url: http://localhost:8080/api/auth/verify-email
   signature:
-    storage-dir: ./uploads/signatures    # hoặc /var/app/uploads/signatures
+    storage-dir: ./uploads/signatures
     public-base-url: /static/signatures
   ds:
-    url: http://localhost:8081          # container map 8081->80
+    url: http://localhost:8081
     source-base: http://host.docker.internal:8080
-
 
 vnpay:
   tmn-code: N5CN6513
@@ -81,7 +82,7 @@ vnpay:
 jodconverter:
   local:
     enabled: true
-    office-home: /Applications/LibreOffice.app/Contents/MacOS
+    office-home: /Applications/LibreOffice.app/Contents/MacOS  # Đảm bảo LibreOffice đã được cài đặt và đường dẫn chính xác
     port-numbers: 2003
     process-timeout: 120000
     task-execution-timeout: 120000
@@ -89,5 +90,3 @@ jodconverter:
 logging:
   level:
     org.jodconverter: DEBUG
-
-

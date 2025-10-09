@@ -22,6 +22,7 @@ public class ContractTemplateMapper {
         dto.setName(template.getName());
         dto.setDescription(template.getDescription());
         dto.setFilePath(template.getFilePath());
+        dto.setStatus(template.getStatus());
 
         // Map createdBy từ User
         if (template.getCreatedBy() != null) {

@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { ResponseData } from '../models/response-data.model';
+import { AuthProfileResponse } from '../models/auth.model';
 
 export interface LoginRequest {
   emailOrPhone: string;
@@ -44,25 +45,6 @@ export interface RegisterResponse {
   status: string;
 }
 
-export interface AuthProfileResponse {
-  id: number;
-  fullName: string;
-  phone: string;
-  email: string;
-  signatureImage?: string;
-  department?: any;
-  position?: string;
-  status: StatusUser;
-  roles: RoleResponse[];
-}
-
-export enum StatusUser {
-    ACTIVE='ACTIVE',
-    INACTIVE = 'INACTIVE',
-    LOCKED = 'LOCKED',
-    PENDING= 'PENDING'
-}
-
 export interface AdminCreateUserRequest {
   email: string;
   fullName?: string;
@@ -78,11 +60,16 @@ export class EmployeeService {
   constructor(private http: HttpClient) {}
 
   createByAdmin(payload: AdminCreateUserRequest) {
-  return this.http.post<ResponseData<string>>(
-    `${this.baseUrl}/users`,
-    payload
-  );
-}
+    return this.http.post<ResponseData<string>>(
+      `${this.baseUrl}/users`,
+      payload
+    );
+  }
+
+    // API để lấy thông tin profile của người dùng
+  getMyProfile(): Observable<ResponseData<AuthProfileResponse>> {
+    return this.http.get<ResponseData<AuthProfileResponse>>(`${this.baseUrl}/me`);
+  }
 
   /**
    * Lấy danh sách toàn bộ nhân viên
@@ -133,6 +120,28 @@ export class EmployeeService {
   delete(id: number): Observable<ResponseData<void>> {
     return this.http.delete<ResponseData<void>>(
       `${this.baseUrl}/delete/${id}`
+    );
+  }
+
+  // API để upload ảnh avatar
+  uploadAvatar(file: File): Observable<ResponseData<AuthProfileResponse>> {
+    const form = new FormData();
+    form.append('file', file); // Tên field "file" khớp với @RequestParam("file") trong controller
+    return this.http.post<ResponseData<AuthProfileResponse>>(`${this.baseUrl}/me/avatar`, form);
+  }
+
+  // API để upload ảnh chữ ký
+  uploadSignature(file: File): Observable<ResponseData<AuthProfileResponse>> {
+    const form = new FormData();
+    form.append('file', file); // Tên field "file" khớp với @RequestParam("file") trong controller
+    return this.http.post<ResponseData<AuthProfileResponse>>(`${this.baseUrl}/me/signature`, form);
+  }
+
+  // API để upload chữ ký từ Base64
+  uploadSignatureBase64(imageBase64: string): Observable<ResponseData<AuthProfileResponse>> {
+    return this.http.post<ResponseData<AuthProfileResponse>>(
+      `${this.baseUrl}/me/signature/base64`,
+      { dataUrl: imageBase64 }
     );
   }
 }

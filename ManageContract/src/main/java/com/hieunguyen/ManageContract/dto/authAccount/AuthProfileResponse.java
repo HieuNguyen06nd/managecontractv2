@@ -19,6 +19,7 @@ public class AuthProfileResponse {
     private String phone;
     private String email;
     private String signatureImage;
+    private String avatarImage;
     private String department;
     private String position;
     private Gender gender;

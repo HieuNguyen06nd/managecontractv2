@@ -10,10 +10,9 @@ import {
   DepartmentRequest,
   Status as DeptStatusApi,
 } from '../../core/services/department.service';
-
+import { AuthProfileResponse } from '../../core/models/auth.model';
 import {
-  EmployeeService,
-  AuthProfileResponse,
+  EmployeeService
 } from '../../core/services/employee.service';
 
 // ===== UI models =====

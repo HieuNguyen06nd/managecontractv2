@@ -1,44 +1,30 @@
 package com.hieunguyen.ManageContract.mapper;
 
 import com.hieunguyen.ManageContract.dto.templateVariable.TemplateVariableRequest;
-import com.hieunguyen.ManageContract.dto.templateVariable.TemplateVariableResponse;
-import com.hieunguyen.ManageContract.entity.ContractTemplate;
 import com.hieunguyen.ManageContract.entity.TemplateVariable;
-
-import java.util.List;
-import java.util.stream.Collectors;
+import com.hieunguyen.ManageContract.entity.ContractTemplate;
 
 public class TemplateVariableMapper {
 
-    public static TemplateVariable toEntity(TemplateVariableRequest req, ContractTemplate template) {
-        TemplateVariable v = new TemplateVariable();
-        v.setVarName(req.getVarName());
-        v.setName(req.getName());
-        v.setVarType(req.getVarType());
-        v.setRequired(Boolean.TRUE.equals(req.getRequired())); // tránh null
-        v.setDefaultValue(req.getDefaultValue());
-        v.setAllowedValues(req.getAllowedValues());
-        v.setOrderIndex(req.getOrderIndex());
-        v.setTemplate(template);
-        return v;
-    }
+    public static TemplateVariable toEntity(TemplateVariableRequest request, ContractTemplate template) {
+        TemplateVariable variable = new TemplateVariable();
+        variable.setVarName(request.getVarName());
+        variable.setVarType(request.getVarType());
+        variable.setRequired(request.getRequired());
+        variable.setName(request.getName());
+        variable.setOrderIndex(request.getOrderIndex());
+        variable.setTemplate(template);
 
-    public static TemplateVariableResponse toResponse(TemplateVariable entity) {
-        TemplateVariableResponse res = new TemplateVariableResponse();
-        res.setId(entity.getId());
-        res.setVarName(entity.getVarName());
-        res.setName(entity.getName());
-        res.setVarType(entity.getVarType());
-        res.setRequired(entity.getRequired());
-        res.setDefaultValue(entity.getDefaultValue());
-        res.setAllowedValues(entity.getAllowedValues());
-        res.setOrderIndex(entity.getOrderIndex());
-        return res;
-    }
+        // THÊM: Xử lý config và allowedValues
+        if (request.getConfig() != null) {
+            // Config sẽ được xử lý trong service để chuyển thành JSON string
+            variable.setConfig(null); // Service sẽ set sau
+        }
 
-    public static List<TemplateVariableResponse> toResponseList(List<TemplateVariable> entities) {
-        return entities.stream()
-                .map(TemplateVariableMapper::toResponse)
-                .collect(Collectors.toList());
+        if (request.getAllowedValues() != null) {
+            variable.setAllowedValues(request.getAllowedValues());
+        }
+
+        return variable;
     }
 }

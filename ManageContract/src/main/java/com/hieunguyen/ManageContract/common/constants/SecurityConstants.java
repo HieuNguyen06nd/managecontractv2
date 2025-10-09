@@ -8,6 +8,7 @@ public class SecurityConstants {
             "/api/vnpay/return",
             "api/vnpay/**",
             "/api/**",
+            "/uploads/**",
 
             // Thêm các endpoint Swagger/OpenAPI
             "/swagger-ui/**",          // Giao diện Swagger UI

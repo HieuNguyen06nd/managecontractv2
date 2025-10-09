@@ -13,6 +13,7 @@ public class ContractTemplateResponse {
     private String name;
     private String description;
     private String filePath;
+    private Status status;
 
     private AuthAccountResponse createdBy;
     private List<TemplateVariableResponse> variables;

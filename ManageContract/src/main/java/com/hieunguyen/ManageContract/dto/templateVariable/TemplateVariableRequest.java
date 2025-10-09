@@ -5,6 +5,7 @@ import com.hieunguyen.ManageContract.common.constants.VariableType;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 public class TemplateVariableRequest {
@@ -15,4 +16,5 @@ public class TemplateVariableRequest {
     private String defaultValue;
     private List<String> allowedValues;
     private Integer orderIndex;
+    private Map<String, Object> config;
 }

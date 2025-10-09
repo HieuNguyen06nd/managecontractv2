@@ -1,9 +1,12 @@
 package com.hieunguyen.ManageContract.service.impl;
 
 import com.hieunguyen.ManageContract.common.constants.Status;
-import com.hieunguyen.ManageContract.dto.category.CategoryRequest;
+import com.hieunguyen.ManageContract.common.exception.ResourceNotFoundException;
+import com.hieunguyen.ManageContract.dto.category.CategoryCreateRequest;
 import com.hieunguyen.ManageContract.dto.category.CategoryResponse;
+import com.hieunguyen.ManageContract.dto.category.CategoryUpdateRequest;
 import com.hieunguyen.ManageContract.entity.Category;
+import com.hieunguyen.ManageContract.mapper.CategoryMapper;
 import com.hieunguyen.ManageContract.repository.CategoryRepository;
 import com.hieunguyen.ManageContract.service.CategoryService;
 import lombok.RequiredArgsConstructor;
@@ -11,79 +14,120 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
-@RequiredArgsConstructor
 @Service
+@RequiredArgsConstructor
 public class CategoryServiceImpl implements CategoryService {
 
-    private final CategoryRepository repository;
+    private final CategoryRepository categoryRepository;
+    private final CategoryMapper categoryMapper;
 
-    private CategoryResponse toDto(Category c) {
-        return CategoryResponse.builder()
-                .id(c.getId())
-                .code(c.getCode())
-                .name(c.getName())
-                .description(c.getDescription())
-                .status(c.getStatus())
-                .createdAt(c.getCreatedAt())
-                .updatedAt(c.getUpdatedAt())
-                .build();
+    @Override
+    public List<CategoryResponse> getAllCategories() {
+        List<Category> categories = categoryRepository.findAll();
+        return categories.stream()
+                .map(categoryMapper::toResponse)
+                .collect(Collectors.toList());
     }
 
-    @Transactional
     @Override
-    public CategoryResponse create(CategoryRequest req) {
-        if (repository.existsByCodeIgnoreCase(req.getCode())) {
-            throw new IllegalArgumentException("Category code đã tồn tại");
-        }
-        Category cat = Category.builder()
-                .code(req.getCode().trim())
-                .name(req.getName().trim())
-                .description(req.getDescription())
-                .status(req.getStatus() != null ? req.getStatus() : Status.ACTIVE)
-                .build();
-        return toDto(repository.save(cat));
+    public List<CategoryResponse> getActiveCategories() {
+        List<Category> categories = categoryRepository.findByStatusOrderByNameAsc(Status.ACTIVE);
+        return categories.stream()
+                .map(categoryMapper::toResponse)
+                .collect(Collectors.toList());
     }
 
-    @Transactional
     @Override
-    public CategoryResponse update(Long id, CategoryRequest req) {
-        Category cat = repository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Category không tồn tại"));
-
-        // Nếu đổi code, kiểm tra trùng
-        if (!cat.getCode().equalsIgnoreCase(req.getCode())
-                && repository.existsByCodeIgnoreCase(req.getCode())) {
-            throw new IllegalArgumentException("Category code đã tồn tại");
+    public List<CategoryResponse> searchCategories(String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return getActiveCategories();
         }
 
-        cat.setCode(req.getCode().trim());
-        cat.setName(req.getName().trim());
-        cat.setDescription(req.getDescription());
-        if (req.getStatus() != null) cat.setStatus(req.getStatus());
-
-        return toDto(repository.save(cat));
+        List<Category> categories = categoryRepository.searchActiveCategories(
+                keyword.trim(), Status.ACTIVE);
+        return categories.stream()
+                .map(categoryMapper::toResponse)
+                .collect(Collectors.toList());
     }
 
+    @Override
+    public CategoryResponse getCategoryById(Long id) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Category không tồn tại với ID: " + id));
+        return categoryMapper.toResponse(category);
+    }
+
+    @Override
+    public CategoryResponse getCategoryByCode(String code) {
+        Category category = categoryRepository.findByCode(code)
+                .orElseThrow(() -> new ResourceNotFoundException("Category không tồn tại với code: " + code));
+        return categoryMapper.toResponse(category);
+    }
+
+    @Override
     @Transactional
-    @Override
-    public void delete(Long id) {
-        if (!repository.existsById(id)) {
-            throw new IllegalArgumentException("Category không tồn tại");
+    public CategoryResponse createCategory(CategoryCreateRequest request) {
+        // Kiểm tra code đã tồn tại chưa
+        if (categoryRepository.existsByCode(request.getCode())) {
+            throw new IllegalArgumentException("Code đã tồn tại: " + request.getCode());
         }
-        repository.deleteById(id);
+
+        Category category = categoryMapper.toEntity(request);
+        Category savedCategory = categoryRepository.save(category);
+
+        return categoryMapper.toResponse(savedCategory);
     }
 
-    @Transactional(readOnly = true)
     @Override
-    public List<CategoryResponse> findAll() {
-        return repository.findAll().stream().map(this::toDto).toList();
+    @Transactional
+    public CategoryResponse updateCategory(Long id, CategoryUpdateRequest request) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Category không tồn tại với ID: " + id));
+
+        // Kiểm tra code đã tồn tại (trừ category hiện tại)
+        if (categoryRepository.existsByCodeAndIdNot(request.getCode(), id)) {
+            throw new IllegalArgumentException("Code đã tồn tại: " + request.getCode());
+        }
+
+        categoryMapper.updateEntityFromRequest(category, request);
+        Category updatedCategory = categoryRepository.save(category);
+
+        return categoryMapper.toResponse(updatedCategory);
     }
 
-    @Transactional(readOnly = true)
     @Override
-    public CategoryResponse findById(Long id) {
-        return repository.findById(id).map(this::toDto)
-                .orElseThrow(() -> new IllegalArgumentException("Category không tồn tại"));
+    @Transactional
+    public void deleteCategory(Long id) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Category không tồn tại với ID: " + id));
+
+        category.setStatus(Status.INACTIVE);
+        categoryRepository.save(category);
+    }
+
+    @Override
+    @Transactional
+    public CategoryResponse activateCategory(Long id) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Category không tồn tại với ID: " + id));
+
+        category.setStatus(Status.ACTIVE);
+        Category activatedCategory = categoryRepository.save(category);
+
+        return categoryMapper.toResponse(activatedCategory);
+    }
+
+    @Override
+    @Transactional
+    public CategoryResponse deactivateCategory(Long id) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Category không tồn tại với ID: " + id));
+
+        category.setStatus(Status.INACTIVE);
+        Category deactivatedCategory = categoryRepository.save(category);
+
+        return categoryMapper.toResponse(deactivatedCategory);
     }
 }

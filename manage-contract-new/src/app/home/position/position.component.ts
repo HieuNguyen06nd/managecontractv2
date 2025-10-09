@@ -2,7 +2,6 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
-
 import { PositionService } from '../../core/services/position.service';
 import { ResponseData } from '../../core/models/response-data.model';
 import { PositionResponse, PositionRequest, Status } from '../../core/models/position.model';

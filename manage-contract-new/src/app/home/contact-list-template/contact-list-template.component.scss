@@ -177,6 +177,46 @@
     transition: opacity 0.15s ease;
 }
 
+.template-card {
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+}
+
+.status-active {
+  background-color: #28a745;
+  color: white;
+}
+
+.status-inactive {
+  background-color: #6c757d;
+  color: white;
+}
+
+.small-icon {
+  font-size: 0.8em;
+}
+
+// Modal backdrop
+.modal-backdrop {
+  background-color: rgba(0,0,0,0.5);
+}
+
+// Responsive adjustments
+@media (max-width: 768px) {
+  .template-card .btn-group {
+    flex-direction: column;
+    gap: 0.5rem;
+    
+    .btn {
+      width: 100%;
+    }
+  }
+}
+
 /* Adjust for small screens (Responsive adjustments) */
 @media (max-width: 768px) {
     .main-content {

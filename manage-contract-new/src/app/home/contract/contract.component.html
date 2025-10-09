@@ -124,11 +124,11 @@
                   <div class="form-group">
                     <label class="form-label required-field">Tên hợp đồng</label>
                     <input type="text"
-                           class="form-control"
-                           formControlName="contractName"
-                           [ngClass]="{'is-invalid': contractForm.get('contractName')?.invalid && contractForm.get('contractName')?.touched}">
+                          class="form-control"
+                          formControlName="contractName"
+                          [ngClass]="{'is-invalid': contractForm.get('contractName')?.invalid && contractForm.get('contractName')?.touched}">
                     <div *ngIf="contractForm.get('contractName')?.invalid && contractForm.get('contractName')?.touched"
-                         class="text-danger small mt-1">
+                        class="text-danger small mt-1">
                       Tên hợp đồng là bắt buộc.
                     </div>
                   </div>
@@ -149,40 +149,164 @@
               <h5 class="mb-3">Nhập giá trị cho các biến</h5>
 
               <div id="variablesContainer" formArrayName="variables">
-                <div class="variable-section"
-                     *ngFor="let variableGroup of variablesFormArray.controls; let i = index;"
-                     [formGroupName]="i">
-                  <ng-container *ngIf="variablesFormArray.at(i).get('name') as nameControl">
-                    <div class="row">
-                      <div class="col-md-6">
-                        <div class="form-group">
-                          <label class="form-label">
-                            {{ variablesFormArray.at(i).get('label')?.value }}
-                            <span class="text-danger" *ngIf="variablesFormArray.at(i).get('value')?.errors?.['required']">*</span>
-                          </label>
-                          <input
-                            [type]="getInputType(variablesFormArray.at(i).get('type')?.value || 'TEXT')"
-                            class="form-control variable-input"
-                            [ngClass]="{'is-invalid': variablesFormArray.at(i).get('value')?.invalid && variablesFormArray.at(i).get('value')?.touched}"
-                            formControlName="value"
-                            [placeholder]="'Nhập ' + (variablesFormArray.at(i).get('label')?.value || '').toLowerCase()">
-                          <div *ngIf="variablesFormArray.at(i).get('value')?.invalid && variablesFormArray.at(i).get('value')?.touched"
-                               class="text-danger small mt-1">
-                            Trường này là bắt buộc.
-                          </div>
-                        </div>
-                      </div>
-                      <div class="col-md-6">
-                        <small class="text-muted">
-                          <i class="fas fa-info-circle me-1"></i>
-                          Kiểu dữ liệu: {{ getTypeLabel(variablesFormArray.at(i).get('type')?.value || 'TEXT') }}
-                          <span *ngIf="variablesFormArray.at(i).get('value')?.errors?.['required']"> | Bắt buộc</span>
-                          <span *ngIf="!variablesFormArray.at(i).get('value')?.errors?.['required']"> | Không bắt buộc</span>
-                        </small>
-                      </div>
+                <div class="variable-section mb-4 p-3 border rounded"
+                    *ngFor="let variableGroup of variablesFormArray.controls; let i = index;"
+                    [formGroupName]="i">
+                  
+                  <!-- Hiển thị tên biến và thông tin -->
+                  <div class="variable-header mb-3">
+                    <h6 class="mb-1">{{ variableGroup.get('name')?.value }}</h6>
+                    <div class="d-flex justify-content-between align-items-center">
+                      <small class="text-muted">
+                        <i class="fas fa-tag me-1"></i>
+                        {{ getTypeLabel(variableGroup.get('varType')?.value) }}
+                        <span *ngIf="variableGroup.get('required')?.value" class="text-danger ms-2">* Bắt buộc</span>
+                        <span *ngIf="!variableGroup.get('required')?.value" class="text-muted ms-2">(Tùy chọn)</span>
+                      </small>
+                      <small class="text-muted">
+                        Biến: {{ variableGroup.get('varName')?.value }}
+                      </small>
                     </div>
-                  </ng-container>
+                  </div>
+
+                  <!-- Text Field (STRING) -->
+                  <div *ngIf="isTextField(variableGroup) && variableGroup.get('varType')?.value === 'STRING'" class="form-group">
+                    <label class="form-label">
+                      Giá trị
+                    </label>
+                    <input type="text"
+                          class="form-control"
+                          formControlName="value"
+                          [placeholder]="'Nhập giá trị cho ' + variableGroup.get('name')?.value"
+                          [ngClass]="{'is-invalid': variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched}">
+                    <div *ngIf="variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched" class="text-danger small mt-1">
+                      <span *ngIf="variableGroup.get('value')?.errors?.['required']">Trường này là bắt buộc</span>
+                    </div>
+                  </div>
+
+                  <!-- Textarea Field (TEXTAREA) -->
+                  <div *ngIf="isTextField(variableGroup) && variableGroup.get('varType')?.value === 'TEXTAREA'" class="form-group">
+                    <label class="form-label">
+                      Giá trị
+                    </label>
+                    <textarea class="form-control"
+                              formControlName="value"
+                              [rows]="getTextareaRows(variableGroup)"
+                              [placeholder]="'Nhập giá trị cho ' + variableGroup.get('name')?.value"
+                              [ngClass]="{'is-invalid': variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched}"></textarea>
+                    <div *ngIf="variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched" class="text-danger small mt-1">
+                      <span *ngIf="variableGroup.get('value')?.errors?.['required']">Trường này là bắt buộc</span>
+                    </div>
+                  </div>
+
+                  <!-- Number Field -->
+                  <div *ngIf="isNumberField(variableGroup)" class="form-group">
+                    <label class="form-label">
+                      Giá trị
+                    </label>
+                    <input type="number"
+                          class="form-control"
+                          formControlName="value"
+                          [placeholder]="'Nhập số cho ' + variableGroup.get('name')?.value"
+                          [min]="variableGroup.get('config')?.value?.min || 0"
+                          [max]="variableGroup.get('config')?.value?.max || 1000000"
+                          [ngClass]="{'is-invalid': variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched}">
+                    <div *ngIf="variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched" class="text-danger small mt-1">
+                      <span *ngIf="variableGroup.get('value')?.errors?.['required']">Trường này là bắt buộc</span>
+                      <span *ngIf="variableGroup.get('value')?.errors?.['min']">Giá trị phải lớn hơn hoặc bằng {{ variableGroup.get('config')?.value?.min }}</span>
+                      <span *ngIf="variableGroup.get('value')?.errors?.['max']">Giá trị phải nhỏ hơn hoặc bằng {{ variableGroup.get('config')?.value?.max }}</span>
+                      <span *ngIf="variableGroup.get('value')?.errors?.['pattern']">Vui lòng nhập số hợp lệ</span>
+                    </div>
+                  </div>
+
+                  <!-- Date Field -->
+                  <div *ngIf="isDateField(variableGroup)" class="form-group">
+                    <label class="form-label">
+                      Giá trị
+                    </label>
+                    <input type="date"
+                          class="form-control"
+                          formControlName="value"
+                          [ngClass]="{'is-invalid': variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched}">
+                    <div *ngIf="variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched" class="text-danger small mt-1">
+                      <span *ngIf="variableGroup.get('value')?.errors?.['required']">Trường này là bắt buộc</span>
+                    </div>
+                  </div>
+
+                  <!-- Boolean Field -->
+                  <div *ngIf="isBooleanField(variableGroup)" class="form-group">
+                    <label class="form-label">
+                      Giá trị
+                    </label>
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" formControlName="value" [value]="true" [id]="'bool_true_' + i">
+                      <label class="form-check-label" [for]="'bool_true_' + i">
+                        {{ getBooleanLabels(variableGroup).trueLabel }}
+                      </label>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" formControlName="value" [value]="false" [id]="'bool_false_' + i">
+                      <label class="form-check-label" [for]="'bool_false_' + i">
+                        {{ getBooleanLabels(variableGroup).falseLabel }}
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- Dropdown Field -->
+                  <div *ngIf="isDropdownField(variableGroup)" class="form-group">
+                    <label class="form-label">
+                      Giá trị
+                    </label>
+                    <select class="form-control"
+                            formControlName="value"
+                            [ngClass]="{'is-invalid': variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched}">
+                      <option value="">-- Chọn giá trị --</option>
+                      <option *ngFor="let option of getDropdownOptions(variableGroup)" [value]="option">
+                        {{ option }}
+                      </option>
+                    </select>
+                    <div *ngIf="variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched" class="text-danger small mt-1">
+                      <span *ngIf="variableGroup.get('value')?.errors?.['required']">Trường này là bắt buộc</span>
+                    </div>
+                  </div>
+
+                  <!-- List Field -->
+                  <div *ngIf="isListField(variableGroup)" class="form-group">
+                    <label class="form-label">
+                      Giá trị
+                    </label>
+                    <select class="form-control"
+                            formControlName="value"
+                            [ngClass]="{'is-invalid': variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched}">
+                      <option value="">-- Chọn giá trị --</option>
+                      <option *ngFor="let item of getListItems(variableGroup)" [value]="item">
+                        {{ item }}
+                      </option>
+                    </select>
+                    <div *ngIf="variableGroup.get('value')?.invalid && variableGroup.get('value')?.touched" class="text-danger small mt-1">
+                      <span *ngIf="variableGroup.get('value')?.errors?.['required']">Trường này là bắt buộc</span>
+                    </div>
+                  </div>
+
+                  <!-- Table Field - Tạm thời ẩn hoặc đơn giản hóa -->
+                  <div *ngIf="isTableField(variableGroup)" class="form-group">
+                    <label class="form-label">
+                      {{ variableGroup.get('name')?.value }}
+                    </label>
+                    <div class="alert alert-info">
+                      <i class="fas fa-info-circle me-2"></i>
+                      Chức năng nhập dữ liệu bảng tạm thời chưa khả dụng. Dữ liệu bảng sẽ được nhập sau khi tạo hợp đồng.
+                    </div>
+                    <!-- Để trống giá trị cho table -->
+                    <input type="hidden" formControlName="value">
+                  </div>
+
                 </div>
+              </div>
+
+              <div *ngIf="variablesFormArray.length === 0" class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Template này không có biến nào cần nhập giá trị.
               </div>
             </div>
 

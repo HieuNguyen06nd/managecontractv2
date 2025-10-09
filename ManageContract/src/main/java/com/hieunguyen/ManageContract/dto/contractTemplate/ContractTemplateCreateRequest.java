@@ -10,5 +10,6 @@ public class ContractTemplateCreateRequest {
     private String name;
     private String description;
     private String tempFileName;
+    private Long categoryId;
     private List<TemplateVariableRequest> variables;
 }

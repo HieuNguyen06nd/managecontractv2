@@ -45,16 +45,20 @@ export interface AuthProfileResponse {
   fullName: string;
   phone: string;
   email: string;
-  signatureImage?: string;
-  department?: string;
-  position?: string;
-  status: StatusUser;
-  roles: RoleResponse[];
+  avatarImage?: string;      // Cập nhật thành avatarImage thay vì signatureImage
+  signatureImage?: string;   // Chữ ký
+  department?: string;       // Phòng ban
+  position?: string;         // Chức vụ
+  status: StatusUser;        // Trạng thái người dùng
+  roles: RoleResponse[];     // Danh sách vai trò người dùng
+  lastLogin?: string;        // Ngày giờ đăng nhập cuối cùng, nếu có
+  dateCreated: string;       // Ngày tạo tài khoản
+  passwordChangedAt?: string; // Thời gian đổi mật khẩu (nếu có)
 }
 
 export enum StatusUser {
-    ACTIVE='ACTIVE',
+    ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',
     LOCKED = 'LOCKED',
-    PENDING= 'PENDING'
+    PENDING = 'PENDING'
 }

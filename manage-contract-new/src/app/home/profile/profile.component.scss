@@ -403,6 +403,126 @@
             background: #fadbd8;
             color: #c0392b;
         }
+
+// Avatar actions
+.avatar-actions {
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 5px;
+    
+    .btn-sm {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+}
+
+// Upload preview styles
+.upload-preview {
+    margin-top: 20px;
+    text-align: center;
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+    
+    h6 {
+        margin-bottom: 10px;
+        color: #2c3e50;
+    }
+    
+    .preview-image {
+        max-width: 300px;
+        max-height: 150px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin-bottom: 15px;
+    }
+    
+    .preview-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+    }
+}
+
+// Drawing section
+.drawing-section {
+    .drawing-instruction {
+        text-align: center;
+        color: #7f8c8d;
+        margin-bottom: 15px;
+        font-style: italic;
+    }
+}
+
+// Button styles
+.btn {
+    &.btn-success {
+        background-color: #28a745;
+        color: white;
+        
+        &:hover {
+            background-color: #218838;
+        }
+    }
+    
+    &.btn-sm {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+    
+    &.btn-outline {
+        background-color: transparent;
+        border: 1px solid #ddd;
+        color: #7f8c8d;
+        
+        &:hover {
+            background-color: #f8f9fa;
+        }
+    }
+    
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+// Responsive
+@media (max-width: 768px) {
+    .avatar-actions {
+        position: static;
+        transform: none;
+        justify-content: center;
+        margin-top: 10px;
+    }
+    
+    .preview-actions {
+        flex-direction: column;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         
         @media (max-width: 768px) {
             .main-content {

@@ -1,365 +1,271 @@
-
-    <!-- Main Content -->
-    <main class="main-content">
-        <h1 class="page-title">
-            <i class="fas fa-user-circle"></i>
-            Thông tin cá nhân
-        </h1>
-        
-        <div class="profile-container">
-            <div class="profile-header">
-                <div class="profile-avatar">
-                    <img src="https://via.placeholder.com/120" alt="Avatar" class="avatar-image" id="avatarImage">
-                    <div class="avatar-upload" onclick="document.getElementById('avatarInput').click()">
-                        <i class="fas fa-camera"></i>
-                    </div>
-                    <input type="file" id="avatarInput" accept="image/*" style="display: none;" onchange="handleAvatarUpload(event)">
-                </div>
-                <div class="user-name">Nguyễn Văn A</div>
-                <div class="user-role">Nhân viên - Phòng Kinh doanh</div>
-            </div>
-            
-            <div class="profile-body">
-                <div class="profile-tabs">
-                    <div class="profile-tab active" data-tab="info">Thông tin cá nhân</div>
-                    <div class="profile-tab" data-tab="signature">Chữ ký</div>
-                    <div class="profile-tab" data-tab="activity">Hoạt động</div>
+<main class="main-content">
+    <h1 class="page-title">
+        <i class="fas fa-user-circle"></i>
+        Thông tin cá nhân
+    </h1>
+    
+    <div class="profile-container">
+        <div class="profile-header">
+            <div class="profile-avatar">
+                <!-- Hiển thị avatar tạm thời hoặc avatar hiện tại -->
+                <img 
+                    [src]="tempAvatarImage || getFullImageUrl(profile.avatarImage)" 
+                    alt="Avatar" 
+                    class="avatar-image">
+                <div class="avatar-upload" (click)="triggerAvatarUpload()">
+                    <i class="fas fa-camera"></i>
                 </div>
                 
-                <!-- Tab Thông tin cá nhân -->
-                <div class="tab-content active" id="info-tab">
-                    <div class="form-section">
-                        <div class="section-title">
-                            <i class="fas fa-user"></i>
-                            Thông tin cơ bản
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Họ và tên</label>
-                                <input type="text" class="form-control" value="Nguyễn Văn A">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Email</label>
-                                <input type="email" class="form-control" value="nguyenvana@company.com">
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Số điện thoại</label>
-                                <input type="tel" class="form-control" value="0912345678">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Chức vụ</label>
-                                <input type="text" class="form-control" value="Nhân viên Kinh doanh">
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Phòng ban</label>
-                                <select class="form-select">
-                                    <option>Phòng Kinh doanh</option>
-                                    <option>Phòng Nhân sự</option>
-                                    <option>Phòng Kế toán</option>
-                                    <option>Phòng Kỹ thuật</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Ngày vào công ty</label>
-                                <input type="date" class="form-control" value="2023-01-15">
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="form-section">
-                        <div class="section-title">
-                            <i class="fas fa-lock"></i>
-                            Bảo mật
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Mật khẩu hiện tại</label>
-                                <input type="password" class="form-control" placeholder="Nhập mật khẩu hiện tại">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Mật khẩu mới</label>
-                                <input type="password" class="form-control" placeholder="Nhập mật khẩu mới">
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Xác nhận mật khẩu mới</label>
-                            <input type="password" class="form-control" placeholder="Xác nhận mật khẩu mới">
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Tab Chữ ký -->
-                <div class="tab-content" id="signature-tab">
-                    <div class="form-section">
-                        <div class="section-title">
-                            <i class="fas fa-signature"></i>
-                            Quản lý chữ ký
-                        </div>
-                        
-                        <div class="signature-section">
-                            <div class="signature-preview">
-                                <h4>Chữ ký hiện tại</h4>
-                                <img src="https://via.placeholder.com/300x100?text=Chữ+ký+hiện+tại" alt="Chữ ký" class="signature-image" id="signaturePreview">
-                                <div class="signature-actions">
-                                    <button class="btn btn-secondary" onclick="clearSignature()">
-                                        <i class="fas fa-trash"></i> Xóa chữ ký
-                                    </button>
-                                    <button class="btn btn-primary" onclick="downloadSignature()">
-                                        <i class="fas fa-download"></i> Tải xuống
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="signature-methods">
-                                <div class="signature-method" onclick="selectSignatureMethod('upload')">
-                                    <div class="method-icon">
-                                        <i class="fas fa-upload"></i>
-                                    </div>
-                                    <div class="method-title">Tải lên ảnh</div>
-                                    <div class="method-description">Tải lên ảnh chữ ký có sẵn</div>
-                                </div>
-                                
-                                <div class="signature-method" onclick="selectSignatureMethod('draw')">
-                                    <div class="method-icon">
-                                        <i class="fas fa-pen"></i>
-                                    </div>
-                                    <div class="method-title">Vẽ chữ ký</div>
-                                    <div class="method-description">Vẽ chữ ký trực tiếp</div>
-                                </div>
-                            </div>
-                            
-                            <div id="upload-signature" class="signature-canvas-container" style="display: none;">
-                                <div class="upload-area" onclick="document.getElementById('signatureInput').click()">
-                                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
-                                    <div>Click để tải lên ảnh chữ ký</div>
-                                    <div style="color: #7f8c8d; font-size: 14px; margin-top: 5px;">(Hỗ trợ: JPG, PNG, GIF)</div>
-                                </div>
-                                <input type="file" id="signatureInput" accept="image/*" style="display: none;" onchange="handleSignatureUpload(event)">
-                            </div>
-                            
-                            <div id="draw-signature" class="signature-canvas-container" style="display: none;">
-                                <canvas id="signatureCanvas" class="signature-canvas"></canvas>
-                                <div class="canvas-actions">
-                                    <button class="btn btn-secondary" onclick="clearCanvas()">
-                                        <i class="fas fa-eraser"></i> Xóa
-                                    </button>
-                                    <button class="btn btn-primary" onclick="saveSignature()">
-                                        <i class="fas fa-save"></i> Lưu chữ ký
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Tab Hoạt động -->
-                <div class="tab-content" id="activity-tab">
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-value">24</div>
-                            <div class="stat-label">Hợp đồng đã tạo</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">18</div>
-                            <div class="stat-label">Hợp đồng đã ký</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">6</div>
-                            <div class="stat-label">Hợp đồng chờ duyệt</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">15</div>
-                            <div class="stat-label">Hợp đồng đã duyệt</div>
-                        </div>
-                    </div>
-                    
-                    <div class="recent-contracts">
-                        <div class="section-title">
-                            <i class="fas fa-file-contract"></i>
-                            Hợp đồng gần đây
-                        </div>
-                        
-                        <table class="contracts-table">
-                            <thead>
-                                <tr>
-                                    <th>Mã hợp đồng</th>
-                                    <th>Tên hợp đồng</th>
-                                    <th>Ngày tạo</th>
-                                    <th>Trạng thái</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>HD-2023-024</td>
-                                    <td>Hợp đồng lao động - Nguyễn Văn B</td>
-                                    <td>15/11/2023</td>
-                                    <td><span class="status-badge status-approved">Đã duyệt</span></td>
-                                </tr>
-                                <tr>
-                                    <td>HD-2023-023</td>
-                                    <td>Hợp đồng mua bán thiết bị</td>
-                                    <td>12/11/2023</td>
-                                    <td><span class="status-badge status-pending">Chờ duyệt</span></td>
-                                </tr>
-                                <tr>
-                                    <td>HD-2023-022</td>
-                                    <td>Hợp đồng dịch vụ bảo trì</td>
-                                    <td>10/11/2023</td>
-                                    <td><span class="status-badge status-approved">Đã duyệt</span></td>
-                                </tr>
-                                <tr>
-                                    <td>HD-2023-021</td>
-                                    <td>Hợp đồng hợp tác kinh doanh</td>
-                                    <td>08/11/2023</td>
-                                    <td><span class="status-badge status-rejected">Từ chối</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                
-                <div class="action-buttons">
-                    <button class="btn btn-secondary">
+                <!-- Nút lưu/hủy khi có avatar tạm thời -->
+                <div *ngIf="tempAvatarImage" class="avatar-actions">
+                    <button class="btn btn-sm btn-success" (click)="saveAvatar()" [disabled]="isUploadingAvatar">
+                        <i class="fas fa-check"></i> 
+                        {{ isUploadingAvatar ? 'Đang lưu...' : 'Lưu' }}
+                    </button>
+                    <button class="btn btn-sm btn-secondary" (click)="cancelAvatarChange()">
                         <i class="fas fa-times"></i> Hủy
                     </button>
-                    <button class="btn btn-primary">
-                        <i class="fas fa-save"></i> Lưu thay đổi
-                    </button>
                 </div>
             </div>
+            <div class="user-name">{{ profile.fullName }}</div>
+            <div class="user-role">{{ getUserRole() }} - {{ getUserDepartment() }}</div>
         </div>
-    </main>
+        
+        <div class="profile-body">
+            <div class="profile-tabs">
+                <div 
+                    class="profile-tab" 
+                    [class.active]="activeTab === 'info'"
+                    (click)="switchTab('info')">
+                    Thông tin cá nhân
+                </div>
+                <div 
+                    class="profile-tab" 
+                    [class.active]="activeTab === 'signature'"
+                    (click)="switchTab('signature')">
+                    Chữ ký
+                </div>
+                <div 
+                    class="profile-tab" 
+                    [class.active]="activeTab === 'activity'"
+                    (click)="switchTab('activity')">
+                    Hoạt động
+                </div>
+            </div>
+            
+            <!-- Tab Thông tin cá nhân -->
+            <div class="tab-content" [class.active]="activeTab === 'info'">
+                <div class="form-section">
+                    <div class="section-title">
+                        <i class="fas fa-user"></i>
+                        Thông tin cơ bản
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Họ và tên</label>
+                            <input 
+                                type="text" 
+                                class="form-control" 
+                                [(ngModel)]="formData.fullName">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Email</label>
+                            <input 
+                                type="email" 
+                                class="form-control" 
+                                [(ngModel)]="formData.email">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Số điện thoại</label>
+                            <input 
+                                type="tel" 
+                                class="form-control" 
+                                [(ngModel)]="formData.phone">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Chức vụ</label>
+                            <input 
+                                type="text" 
+                                class="form-control" 
+                                [(ngModel)]="formData.position">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Phòng ban</label>
+                            <select class="form-select" [(ngModel)]="formData.department">
+                                <option>Phòng Kinh doanh</option>
+                                <option>Phòng Nhân sự</option>
+                                <option>Phòng Kế toán</option>
+                                <option>Phòng Kỹ thuật</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Ngày vào công ty</label>
+                            <input 
+                                type="date" 
+                                class="form-control" 
+                                [(ngModel)]="formData.joinDate">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-section">
+                    <div class="section-title">
+                        <i class="fas fa-lock"></i>
+                        Đổi mật khẩu
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Mật khẩu hiện tại</label>
+                            <input 
+                                type="password" 
+                                class="form-control" 
+                                placeholder="Nhập mật khẩu hiện tại"
+                                [(ngModel)]="formData.currentPassword">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Mật khẩu mới</label>
+                            <input 
+                                type="password" 
+                                class="form-control" 
+                                placeholder="Nhập mật khẩu mới"
+                                [(ngModel)]="formData.newPassword">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Xác nhận mật khẩu mới</label>
+                        <input 
+                            type="password" 
+                            class="form-control" 
+                            placeholder="Xác nhận mật khẩu mới"
+                            [(ngModel)]="formData.confirmPassword">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tab Chữ ký -->
+            <div class="tab-content" [class.active]="activeTab === 'signature'">
+                <div class="form-section">
+                    <div class="section-title">
+                        <i class="fas fa-signature"></i>
+                        Quản lý chữ ký
+                    </div>
+                    
+                    <div class="signature-section">
+                        <div class="signature-preview">
+                            <h4>Chữ ký hiện tại</h4>
+                            <!-- Hiển thị chữ ký tạm thời hoặc chữ ký hiện tại -->
+                            <img 
+                                [src]="tempSignatureImage || getFullImageUrl(profile.signatureImage)" 
+                                alt="Chữ ký" 
+                                class="signature-image">
+                            <div class="signature-actions">
+                                <button class="btn btn-primary" (click)="downloadSignature()">
+                                    <i class="fas fa-download"></i> Tải xuống
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="signature-methods">
+                            <div 
+                                class="signature-method" 
+                                (click)="selectSignatureMethod('upload')"
+                                [class.active]="selectedSignatureMethod === 'upload'">
+                                <div class="method-icon">
+                                    <i class="fas fa-upload"></i>
+                                </div>
+                                <div class="method-title">Tải lên ảnh</div>
+                                <div class="method-description">Tải lên ảnh chữ ký có sẵn</div>
+                            </div>
+                            
+                            <div 
+                                class="signature-method" 
+                                (click)="selectSignatureMethod('draw')"
+                                [class.active]="selectedSignatureMethod === 'draw'">
+                                <div class="method-icon">
+                                    <i class="fas fa-pen"></i>
+                                </div>
+                                <div class="method-title">Vẽ chữ ký</div>
+                                <div class="method-description">Vẽ chữ ký trực tiếp</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Form upload ảnh chữ ký -->
+                        <div 
+                            class="signature-canvas-container" 
+                            *ngIf="selectedSignatureMethod === 'upload'">
+                            <div class="upload-section">
+                                <div class="upload-area" (click)="triggerSignatureUpload()">
+                                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                                    <div>Click để tải lên ảnh chữ ký</div>
+                                    <div style="color: #7f8c8d; font-size: 14px; margin-top: 5px;">
+                                        (Hỗ trợ: JPG, PNG, GIF, tối đa 5MB)
+                                    </div>
+                                </div>
 
-    <script>
-        // Xử lý chuyển tab
-        document.querySelectorAll('.profile-tab').forEach(tab => {
-            tab.addEventListener('click', function() {
-                const tabId = this.getAttribute('data-tab');
-                
-                // Xóa active của tất cả tabs
-                document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                
-                // Thêm active cho tab được chọn
-                this.classList.add('active');
-                document.getElementById(`${tabId}-tab`).classList.add('active');
-            });
-        });
-        
-        // Xử lý upload avatar
-        function handleAvatarUpload(event) {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById('avatarImage').src = e.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        }
-        
-        // Chọn phương thức tạo chữ ký
-        function selectSignatureMethod(method) {
-            document.getElementById('upload-signature').style.display = 'none';
-            document.getElementById('draw-signature').style.display = 'none';
+                                <!-- Preview và nút lưu/hủy cho chữ ký upload -->
+                                <div *ngIf="tempSignatureImage" class="upload-preview">
+                                    <h6>Preview chữ ký:</h6>
+                                    <img [src]="tempSignatureImage" alt="Preview chữ ký" class="preview-image">
+                                    <div class="preview-actions">
+                                        <button class="btn btn-secondary" (click)="cancelSignatureUpload()">
+                                            <i class="fas fa-times"></i> Hủy
+                                        </button>
+                                        <button class="btn btn-primary" (click)="saveUploadedSignature()" [disabled]="isUploadingSignature">
+                                            <i class="fas fa-save"></i> 
+                                            {{ isUploadingSignature ? 'Đang lưu...' : 'Lưu chữ ký' }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Form vẽ chữ ký -->
+                        <div 
+                            class="signature-canvas-container" 
+                            *ngIf="selectedSignatureMethod === 'draw'">
+                            <div class="drawing-section">
+                                <p class="drawing-instruction">Vẽ chữ ký của bạn vào khung bên dưới:</p>
+                                <canvas #signatureCanvas class="signature-canvas"></canvas>
+                                <div class="canvas-actions">
+                                    <button class="btn btn-secondary" (click)="clearCanvas()">
+                                        <i class="fas fa-eraser"></i> Xóa
+                                    </button>
+                                    <button class="btn btn-primary" (click)="saveSignature()">
+                                        <i class="fas fa-save"></i> Lưu chữ ký
+                                    </button>
+                                    <button class="btn btn-outline" (click)="cancelSignatureUpload()">
+                                        <i class="fas fa-times"></i> Hủy
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
-            if (method === 'upload') {
-                document.getElementById('upload-signature').style.display = 'block';
-            } else if (method === 'draw') {
-                document.getElementById('draw-signature').style.display = 'block';
-                initCanvas();
-            }
-        }
-        
-        // Xử lý upload chữ ký
-        function handleSignatureUpload(event) {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById('signaturePreview').src = e.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        }
-        
-        // Khởi tạo canvas cho chữ ký vẽ tay
-        function initCanvas() {
-            const canvas = document.getElementById('signatureCanvas');
-            const ctx = canvas.getContext('2d');
-            let isDrawing = false;
-            let lastX = 0;
-            let lastY = 0;
+            <!-- Tab Hoạt động -->
+            <div class="tab-content" [class.active]="activeTab === 'activity'">
+                <!-- ... existing activity content ... -->
+            </div>
             
-            // Set canvas size
-            canvas.width = canvas.offsetWidth;
-            canvas.height = canvas.offsetHeight;
-            
-            // Styles
-            ctx.lineWidth = 2;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.strokeStyle = '#000';
-            
-            // Drawing functions
-            canvas.addEventListener('mousedown', startDrawing);
-            canvas.addEventListener('mousemove', draw);
-            canvas.addEventListener('mouseup', stopDrawing);
-            canvas.addEventListener('mouseout', stopDrawing);
-            
-            function startDrawing(e) {
-                isDrawing = true;
-                [lastX, lastY] = [e.offsetX, e.offsetY];
-            }
-            
-            function draw(e) {
-                if (!isDrawing) return;
-                ctx.beginPath();
-                ctx.moveTo(lastX, lastY);
-                ctx.lineTo(e.offsetX, e.offsetY);
-                ctx.stroke();
-                [lastX, lastY] = [e.offsetX, e.offsetY];
-            }
-            
-            function stopDrawing() {
-                isDrawing = false;
-            }
-        }
-        
-        // Xóa canvas
-        function clearCanvas() {
-            const canvas = document.getElementById('signatureCanvas');
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-        
-        // Lưu chữ ký
-        function saveSignature() {
-            const canvas = document.getElementById('signatureCanvas');
-            const dataURL = canvas.toDataURL('image/png');
-            document.getElementById('signaturePreview').src = dataURL;
-            alert('Chữ ký đã được lưu thành công!');
-        }
-        
-        // Xóa chữ ký
-        function clearSignature() {
-            if (confirm('Bạn có chắc chắn muốn xóa chữ ký hiện tại?')) {
-                document.getElementById('signaturePreview').src = 'https://via.placeholder.com/300x100?text=Chưa+có+chữ+ký';
-                clearCanvas();
-            }
-        }
-        
-        // Tải xuống chữ ký
-        function downloadSignature() {
-            alert('Chức năng tải xuống chữ ký sẽ được triển khai ở đây');
-        }
-    </script>
+            <div class="action-buttons">
+                <button class="btn btn-secondary" (click)="cancelChanges()">
+                    <i class="fas fa-times"></i> Hủy
+                </button>
+                <button class="btn btn-primary" (click)="saveChanges()" [disabled]="isSavingProfile">
+                    <i class="fas fa-save"></i> 
+                    {{ isSavingProfile ? 'Đang lưu...' : 'Lưu thay đổi' }}
+                </button>
+            </div>
+        </div>
+    </div>
+</main>

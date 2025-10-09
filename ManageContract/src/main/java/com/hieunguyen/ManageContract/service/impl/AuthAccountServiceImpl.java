@@ -81,7 +81,7 @@ public class AuthAccountServiceImpl implements AuthAccountService {
                 .email(account.getEmail())
                 .status(account.getStatus())
                 .signatureImage(user.getSignatureImage())
-                // FE của bạn hiển thị được cả string và object, nên trả về tên là đủ:
+                .avatarImage(user.getAvatarImage())
                 .department(user.getDepartment() != null ? user.getDepartment().getName() : null)
                 .position(user.getPosition() != null ? user.getPosition().getName() : null)
                 .roles(roleResponses)

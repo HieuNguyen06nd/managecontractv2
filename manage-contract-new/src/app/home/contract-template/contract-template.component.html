@@ -22,6 +22,7 @@
 
   <!-- Bước 1: Upload -->
   <div *ngIf="currentStep === 1" class="upload-container">
+    <!-- Giữ nguyên phần upload từ file và link -->
     <div class="tabs">
       <div class="tab" [class.active]="activeTab === 'file'" (click)="setActiveTab('file')">
         Tải lên từ file
@@ -111,14 +112,32 @@
     </div>
 
     <div class="variables-body">
-      <div class="form-group">
-        <label class="form-label required-field">Tên Template</label>
-        <input type="text"
-               class="form-control"
-               [(ngModel)]="templateName"
-               placeholder="Tên hợp đồng" />
-        <div *ngIf="!templateName" class="text-danger small mt-1">
-          Tên template là bắt buộc.
+      <div class="row">
+        <div class="col-md-6">
+          <div class="form-group">
+            <label class="form-label required-field">Tên Template</label>
+            <input type="text"
+                  class="form-control"
+                  [(ngModel)]="templateName"
+                  placeholder="Nhập tên template" />
+            <div *ngIf="!templateName" class="text-danger small mt-1">
+              Tên template là bắt buộc.
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="form-group">
+            <label class="form-label">Danh mục</label>
+            <select class="form-control" [(ngModel)]="selectedCategoryId">
+              <option [ngValue]="null">-- Chọn danh mục --</option>
+              <option *ngFor="let category of categories" [ngValue]="category.id">
+                {{ category.name }}
+              </option>
+            </select>
+            <div *ngIf="isLoadingCategories" class="text-muted small mt-1">
+              <i class="fas fa-spinner fa-spin"></i> Đang tải danh mục...
+            </div>
+          </div>
         </div>
       </div>
 
@@ -126,33 +145,53 @@
         <label class="form-label">Mô tả</label>
         <textarea class="form-control"
                   [(ngModel)]="templateDescription"
-                  rows="2"></textarea>
+                  rows="2"
+                  placeholder="Nhập mô tả ngắn về template..."></textarea>
+      </div>
+
+      <!-- Hiển thị thông tin category đã chọn -->
+      <div class="category-info mb-3" *ngIf="selectedCategoryId">
+        <small class="text-muted">
+          <i class="fas fa-info-circle"></i>
+          Đã chọn danh mục: <strong>{{ getCategoryName(selectedCategoryId) }}</strong>
+        </small>
+      </div>
+
+      <div class="category-info mb-3" *ngIf="!selectedCategoryId">
+        <small class="text-warning">
+          <i class="fas fa-exclamation-triangle"></i>
+          Chưa chọn danh mục. Template sẽ được lưu không phân loại.
+        </small>
       </div>
 
       <table class="variables-table" *ngIf="extractedVariables.length > 0">
         <thead>
           <tr>
-            <th width="30%">Tên trường</th>
-            <th width="40%">Tên biến</th>
-            <th width="30%">Kiểu dữ liệu</th>
+            <th width="25%">Tên trường</th>
+            <th width="20%">Tên biến</th>
+            <th width="15%">Kiểu dữ liệu</th>
             <th width="10%">Bắt buộc</th>
+            <th width="30%">Cấu hình</th>
           </tr>
         </thead>
         <tbody>
           <tr *ngFor="let variable of extractedVariables; let i = index">
-            <!-- Cho phép sửa tên biến -->
             <td>
               <input type="text" 
                     class="form-control" 
                     [(ngModel)]="variable.name" 
                     placeholder="Nhập tên trường" 
-                    [required]="true" />
+                    [class.is-invalid]="!variable.name.trim()" />
+              <div *ngIf="!variable.name.trim()" class="text-danger small mt-1">
+                Tên trường là bắt buộc
+              </div>
             </td>
             <td>
               <input type="text" class="form-control" [value]="variable.varName" readonly />
+              <small class="text-muted">Biến gốc từ template</small>
             </td>
             <td>
-              <select class="form-control" [(ngModel)]="variable.varType">
+              <select class="form-control" [(ngModel)]="variable.varType" (change)="onVariableTypeChange(variable)">
                 <option value="STRING">Văn bản ngắn</option>
                 <option value="NUMBER">Số</option>
                 <option value="DATE">Ngày tháng</option>
@@ -160,10 +199,141 @@
                 <option value="TEXTAREA">Văn bản dài</option>
                 <option value="LIST">Danh sách</option>
                 <option value="DROPDOWN">Dropdown</option>
+                <option value="TABLE">Bảng</option>
               </select>
             </td>
-            <td>
+            <td class="text-center">
               <input type="checkbox" [(ngModel)]="variable.required" />
+            </td>
+            <td>
+              <!-- Cấu hình cho Boolean -->
+              <div *ngIf="variable.varType === 'BOOLEAN'" class="config-panel">
+                <div class="row">
+                  <div class="col-6">
+                    <label>Nhãn True:</label>
+                    <input #trueLabelInput type="text" class="form-control form-control-sm" 
+                          [value]="variable.config.trueLabel || 'Có'"
+                          (input)="variable.config.trueLabel = trueLabelInput.value"
+                          placeholder="Có">
+                  </div>
+                  <div class="col-6">
+                    <label>Nhãn False:</label>
+                    <input #falseLabelInput type="text" class="form-control form-control-sm"
+                          [value]="variable.config.falseLabel || 'Không'"
+                          (input)="variable.config.falseLabel = falseLabelInput.value"
+                          placeholder="Không">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cấu hình cho Dropdown -->
+              <div *ngIf="variable.varType === 'DROPDOWN'" class="config-panel">
+                <label>Danh sách lựa chọn:</label>
+                <div *ngFor="let option of variable.config.options || []; let i = index" class="option-item">
+                  <div class="input-group input-group-sm mb-1">
+                    <input #optionInput type="text" class="form-control" 
+                          [value]="option"
+                          (input)="variable.config.options![i] = optionInput.value"
+                          placeholder="Option {{i + 1}}">
+                    <button class="btn btn-outline-danger" type="button" 
+                            (click)="removeOption(variable, i)" 
+                            [disabled]="(variable.config.options || []).length <= 1">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" (click)="addOption(variable)">
+                  <i class="fas fa-plus"></i> Thêm option
+                </button>
+              </div>
+
+              <!-- Cấu hình cho Table -->
+              <div *ngIf="variable.varType === 'TABLE'" class="config-panel">
+                <label>Tên bảng:</label>
+                <input #tableNameInput type="text" class="form-control form-control-sm mb-2"
+                      [value]="variable.config.tableName || ''"
+                      (input)="variable.config.tableName = tableNameInput.value"
+                      placeholder="products, items, etc.">
+                
+                <label>Columns:</label>
+                <div *ngFor="let column of variable.config.columns || []; let i = index" class="column-item mb-2 p-2 border">
+                  <div class="row">
+                    <div class="col-5">
+                      <input #columnNameInput type="text" class="form-control form-control-sm"
+                            [value]="column.name"
+                            (input)="column.name = columnNameInput.value"
+                            placeholder="Tên cột">
+                    </div>
+                    <div class="col-4">
+                      <select #columnTypeSelect class="form-control form-control-sm" 
+                              [value]="column.type || 'STRING'"
+                              (change)="column.type = columnTypeSelect.value">
+                        <option value="STRING">Text</option>
+                        <option value="NUMBER">Số</option>
+                        <option value="DATE">Ngày</option>
+                      </select>
+                    </div>
+                    <div class="col-3">
+                      <button class="btn btn-sm btn-outline-danger" 
+                              (click)="removeColumn(variable, i)" 
+                              [disabled]="(variable.config.columns || []).length <= 1">
+                        <i class="fas fa-times"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" (click)="addColumn(variable)">
+                  <i class="fas fa-plus"></i> Thêm cột
+                </button>
+              </div>
+
+              <!-- Cấu hình cho List -->
+              <div *ngIf="variable.varType === 'LIST'" class="config-panel">
+                <label>Danh sách giá trị:</label>
+                <div *ngFor="let item of variable.config.items || []; let i = index" class="option-item">
+                  <div class="input-group input-group-sm mb-1">
+                    <input #itemInput type="text" class="form-control" 
+                          [value]="item"
+                          (input)="variable.config.items![i] = itemInput.value"
+                          placeholder="Giá trị {{i + 1}}">
+                    <button class="btn btn-outline-danger" type="button" 
+                            (click)="removeListItem(variable, i)" 
+                            [disabled]="(variable.config.items || []).length <= 1">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" (click)="addListItem(variable)">
+                  <i class="fas fa-plus"></i> Thêm giá trị
+                </button>
+              </div>
+
+              <!-- Cấu hình cho Textarea -->
+              <div *ngIf="variable.varType === 'TEXTAREA'" class="config-panel">
+                <label>Số dòng:</label>
+                <input #rowsInput type="number" class="form-control form-control-sm"
+                      [value]="variable.config.rows || 4"
+                      (input)="variable.config.rows = +rowsInput.value"
+                      min="2" max="10">
+              </div>
+
+              <!-- Cấu hình cho Number -->
+              <div *ngIf="variable.varType === 'NUMBER'" class="config-panel">
+                <div class="row">
+                  <div class="col-6">
+                    <label>Min:</label>
+                    <input #minInput type="number" class="form-control form-control-sm"
+                          [value]="variable.config.min || 0"
+                          (input)="variable.config.min = +minInput.value">
+                  </div>
+                  <div class="col-6">
+                    <label>Max:</label>
+                    <input #maxInput type="number" class="form-control form-control-sm"
+                          [value]="variable.config.max || 1000000"
+                          (input)="variable.config.max = +maxInput.value">
+                  </div>
+                </div>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -176,11 +346,15 @@
       <div class="buttons">
         <button class="btn btn-primary"
                 (click)="onCreateOrUpdateTemplate()"
-                [disabled]="isLoading || !templateName">
+                [disabled]="isLoading || !templateName || !isFieldNameValid()">
           <i class="fas" [ngClass]="finalizedTemplate ? 'fa-save' : 'fa-plus'"></i>
           <span>
-            {{ finalizedTemplate ? 'Cập nhật kiểu biến' : 'Tạo template và lưu' }}
+            {{ finalizedTemplate ? 'Cập nhật template' : 'Tạo template' }}
           </span>
+        </button>
+        
+        <button class="btn btn-outline-secondary ms-2" (click)="currentStep = 1">
+          <i class="fas fa-arrow-left"></i> Quay lại
         </button>
       </div>
     </div>

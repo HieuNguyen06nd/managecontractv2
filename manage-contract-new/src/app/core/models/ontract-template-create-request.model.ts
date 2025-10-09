@@ -4,6 +4,7 @@ export interface ContractTemplateCreateRequest {
   tempFileName: string;
   name?: string;
   description?: string;
+  categoryId?: number | null;
   variables: TemplateVariableCreateRequest[];
 }
 

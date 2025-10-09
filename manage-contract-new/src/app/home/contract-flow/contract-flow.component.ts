@@ -30,8 +30,8 @@ import {
 
 import {
   EmployeeService,
-  AuthProfileResponse
 } from '../../core/services/employee.service';
+import { AuthProfileResponse } from '../../core/models/auth.model';
 
 type ApproverTypeUI = 'USER' | 'POSITION';
 type ApprovalActionUI = 'APPROVE_ONLY' | 'SIGN_ONLY' | 'SIGN_THEN_APPROVE';

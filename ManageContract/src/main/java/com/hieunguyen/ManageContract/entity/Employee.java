@@ -26,6 +26,7 @@ public class Employee {
 
     private String fullName;
     private String phone;
+    private String avatarImage;
     private String signatureImage;
 
     @Column

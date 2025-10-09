@@ -6,4 +6,5 @@ import lombok.Data;
 public class ContractTemplateUpdateRequest {
     private String name;
     private String description;
+    private Long categoryId;
 }

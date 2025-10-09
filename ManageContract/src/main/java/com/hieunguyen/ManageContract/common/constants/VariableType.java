@@ -5,8 +5,9 @@ public enum VariableType {
     NUMBER,
     DATE,
     BOOLEAN,
-    TEXTAREA,   // nhập văn bản dài,
+    TEXTAREA,
     LIST,
-    DROPDOWN    // chọn từ danh sách
+    DROPDOWN,
+    TABLE
 }
 

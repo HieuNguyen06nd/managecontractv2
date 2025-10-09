@@ -10,14 +10,19 @@
       <div class="user-name">{{ userName }}</div>
       <div class="user-role">{{ userRole }}</div>
     </div>
-    <div class="user-avatar">
+    
+    <!-- Avatar clickable để đi đến profile -->
+    <div class="user-avatar" (click)="goToProfile()" title="Xem thông tin cá nhân">
       <ng-container *ngIf="avatarUrl; else defaultAvatar">
-        <img [src]="avatarUrl" alt="avatar" />
+        <img [src]="avatarUrl" alt="avatar" class="avatar-img" />
       </ng-container>
       <ng-template #defaultAvatar>
         <i class="fas fa-user"></i>
       </ng-template>
     </div>
-     <button class="logout-btn" (click)="logout()">Đăng xuất</button>
+    
+    <button class="logout-btn" (click)="logout()">
+      <i class="fas fa-sign-out-alt"></i> Đăng xuất
+    </button>
   </div>
 </header>

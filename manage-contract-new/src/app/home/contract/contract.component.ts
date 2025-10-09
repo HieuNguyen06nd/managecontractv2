@@ -1,8 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, FormArray, Validators, ReactiveFormsModule } from '@angular/forms';
+import { FormBuilder, FormGroup, FormArray, Validators, ReactiveFormsModule, AbstractControl } from '@angular/forms';
 import { Observable, of } from 'rxjs';
-import { map, switchMap, catchError, finalize, tap, delay } from 'rxjs/operators';
+import { map, switchMap, catchError, finalize, tap } from 'rxjs/operators';
 import { ToastrService } from 'ngx-toastr';
 import { ContractTemplateService } from '../../core/services/contract-template.service';
 import { ContractTemplateResponse, TemplateVariable } from '../../core/models/contract-template-response.model';
@@ -11,12 +11,19 @@ import { ApprovalFlowService, ApprovalFlowRequest, ApprovalStepRequest,
 
 import { DepartmentService, DepartmentResponse } from '../../core/services/department.service';
 import { PositionService, PositionResponse } from '../../core/services/position.service';
-import { EmployeeService, AuthProfileResponse } from '../../core/services/employee.service';
+import { EmployeeService } from '../../core/services/employee.service';
+import { AuthProfileResponse } from '../../core/models/auth.model';
 import {ContractService} from '../../core/services/contract.service';
 import { CreateContractRequest,VariableValueRequest } from '../../core/models/contract.model';
 import { ContractResponse } from '../../core/models/contract.model';
 import { ContractApprovalService } from '../../core/services/contract-approval.service';
 
+// Extended interface để hỗ trợ các thuộc tính mở rộng
+interface ExtendedTemplateVariable extends TemplateVariable {
+  name?: string;
+  config?: any;
+  allowedValues?: string[];
+}
 
 enum NewApproverType {
   USER = 'USER',
@@ -47,7 +54,6 @@ export class ContractComponent implements OnInit {
   pageSize = 4;
   currentPage = 1;
 
-
   selectedTemplate: ContractTemplateResponse | null = null;
   contractForm: FormGroup;
   templates: ContractTemplateResponse[] = [];
@@ -63,12 +69,11 @@ export class ContractComponent implements OnInit {
 
   positionsBySigner = new Map<number, PositionResponse[]>();
 
-
   constructor(
     private fb: FormBuilder,
     private contractTemplateService: ContractTemplateService,
     private approvalFlowService: ApprovalFlowService,
-    private contractService: ContractService ,
+    private contractService: ContractService,
     private departmentService: DepartmentService,
     private positionService: PositionService,
     private employeeService: EmployeeService,
@@ -79,11 +84,9 @@ export class ContractComponent implements OnInit {
       contractName: ['', Validators.required],
       contractNumber: [{ value: 'Tự động sinh', disabled: true }],
       contractDescription: [''],
-
       variables: this.fb.array([]),
-
       signatureConfig: this.fb.group({
-        flowOption: ['', Validators.required], // 'default' | 'new' | 'existing'
+        flowOption: ['', Validators.required],
         deadline: [''],
         flowName: [''],
         flowDescription: [''],
@@ -94,8 +97,6 @@ export class ContractComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadTemplates();
-
-    // 👇 NEW: tải dữ liệu tham chiếu
     this.loadReferences();
 
     const sigCfg = this.contractForm.get('signatureConfig')!;
@@ -151,21 +152,21 @@ export class ContractComponent implements OnInit {
   }
 
   // Load Templates
-loadTemplates(): void {
-  this.contractTemplateService.getAllTemplates().subscribe({
-    next: (data) => {
-      this.templates = data;
-      this.currentPage = 1;
-      if (this.templates.length > 0) {
-        this.selectTemplate(this.templates[0]);
+  loadTemplates(): void {
+    this.contractTemplateService.getAllTemplates().subscribe({
+      next: (data) => {
+        this.templates = data;
+        this.currentPage = 1;
+        if (this.templates.length > 0) {
+          this.selectTemplate(this.templates[0]);
+        }
+      },
+      error: (err) => {
+        console.error('Lỗi khi tải templates:', err);
+        this.errorMessage = 'Không thể tải danh sách template.';
       }
-    },
-    error: (err) => {
-      console.error('Lỗi khi tải templates:', err);
-      this.errorMessage = 'Không thể tải danh sách template.';
-    }
-  });
-}
+    });
+  }
 
   loadDefaultFlowForTemplate(templateId: number): void {
     this.contractTemplateService.getDefaultFlowByTemplate(templateId).subscribe({
@@ -188,16 +189,64 @@ loadTemplates(): void {
     this.loadDefaultFlowForSelectedTemplate(); 
   }
 
-  // Step 2
+  // Step 2 - Load variables form với đầy đủ thông tin từ template
   loadVariablesForm(template: ContractTemplateResponse): void {
     this.variablesFormArray.clear();
-    template.variables?.forEach(v => {
-      this.variablesFormArray.push(this.fb.group({
-        name: [v.varName],
-        label: [v.varName],
-        type: [(v as any).type ?? (v as any).dataType ?? 'TEXT'],
-        value: ['', v.required ? Validators.required : null]
-      }));
+    
+    template.variables?.forEach((variable, index) => {
+      const variableGroup = this.buildVariableFormGroup(variable);
+      this.variablesFormArray.push(variableGroup);
+    });
+  }
+
+  private buildVariableFormGroup(variable: TemplateVariable): FormGroup {
+    // Cast variable để truy cập các thuộc tính mở rộng
+    const extendedVar = variable as ExtendedTemplateVariable;
+    
+    let defaultValue: any = '';
+    let validators = variable.required ? [Validators.required] : [];
+
+    switch (variable.varType) {
+      case 'BOOLEAN':
+        defaultValue = false;
+        break;
+      case 'NUMBER':
+        defaultValue = null;
+        validators.push(Validators.pattern(/^-?\d*\.?\d+$/));
+        if (extendedVar.config?.min !== undefined) {
+          validators.push(Validators.min(extendedVar.config.min));
+        }
+        if (extendedVar.config?.max !== undefined) {
+          validators.push(Validators.max(extendedVar.config.max));
+        }
+        break;
+      case 'DATE':
+        defaultValue = '';
+        break;
+      case 'DROPDOWN':
+        defaultValue = extendedVar.config?.options?.[0] || '';
+        break;
+      case 'LIST':
+        defaultValue = extendedVar.config?.items?.[0] || '';
+        break;
+      case 'TABLE':
+        defaultValue = [];
+        break;
+      case 'TEXTAREA':
+        defaultValue = '';
+        break;
+      default: // STRING và các kiểu khác
+        defaultValue = '';
+    }
+
+    return this.fb.group({
+      varName: [variable.varName],
+      name: [extendedVar.name || variable.varName],
+      varType: [variable.varType],
+      required: [variable.required],
+      config: [extendedVar.config || {}],
+      allowedValues: [extendedVar.allowedValues || []],
+      value: [defaultValue, validators]
     });
   }
 
@@ -205,39 +254,42 @@ loadTemplates(): void {
   addSigner(): void {
     this.newSignersFormArray.push(this.buildNewSignerGroup());
   }
+  
   removeSigner(index: number): void {
     this.newSignersFormArray.removeAt(index);
   }
 
   buildNewSignerGroup(): FormGroup {
     const g = this.fb.group({
-      approverType: ['USER', Validators.required],   // USER | POSITION
-      employeeId: [null],                             // required khi USER
-      positionId: [null],                             // required khi POSITION
-      departmentId: [null],                           // required khi POSITION
+      approverType: ['USER', Validators.required],
+      employeeId: [null],
+      positionId: [null],
+      departmentId: [null],
       required: [true, Validators.required],
       isFinalStep: [false, Validators.required],
-      action: ['APPROVE_ONLY', Validators.required],  // APPROVE_ONLY | SIGN_ONLY | SIGN_THEN_APPROVE
+      action: ['APPROVE_ONLY', Validators.required],
       signaturePlaceholder: ['']
     });
 
     // 1) Switch validators theo approverType
-      g.get('approverType')!.valueChanges.subscribe((val: string | null) => {
-        const type = (val as 'USER' | 'POSITION') ?? 'USER';
-        const emp = g.get('employeeId')!;
-        const pos = g.get('positionId')!;
-        const dep = g.get('departmentId')!;
+    g.get('approverType')!.valueChanges.subscribe((val: string | null) => {
+      const type = (val as 'USER' | 'POSITION') ?? 'USER';
+      const emp = g.get('employeeId')!;
+      const pos = g.get('positionId')!;
+      const dep = g.get('departmentId')!;
 
       if (type === 'USER') {
         emp.setValidators(Validators.required);
-        pos.clearValidators(); pos.setValue(null, { emitEvent: false });
-        dep.clearValidators(); dep.setValue(null, { emitEvent: false });
+        pos.clearValidators(); 
+        pos.setValue(null, { emitEvent: false });
+        dep.clearValidators(); 
+        dep.setValue(null, { emitEvent: false });
       } else {
-        emp.clearValidators(); emp.setValue(null, { emitEvent: false });
+        emp.clearValidators(); 
+        emp.setValue(null, { emitEvent: false });
         dep.setValidators(Validators.required);
         pos.setValidators(Validators.required);
 
-        // nếu có department sẵn thì nạp vị trí
         const idx = this.newSignersFormArray.controls.indexOf(g);
         const deptId = Number(dep.value);
         if (idx > -1 && deptId) this.loadPositionsForSigner(idx, deptId, Number(pos.value));
@@ -307,7 +359,6 @@ loadTemplates(): void {
     });
   }
 
-
   validateStep(step: number): boolean {
     if (step === 1 && !this.selectedTemplate) {
       this.errorMessage = 'Vui lòng chọn một template để tiếp tục.';
@@ -351,106 +402,194 @@ loadTemplates(): void {
 
   // Step 4 - Tạo hợp đồng
   createContract(submitNow: boolean): void {
-  if (!this.validateStep(4)) return;
+    if (!this.validateStep(4)) return;
 
-  this.isSaving = true;
-  this.errorMessage = '';
-  this.successMessage = '';
+    this.isSaving = true;
+    this.errorMessage = '';
+    this.successMessage = '';
 
-  const sigCfg = this.contractForm.get('signatureConfig')!.value;
-  let createFlow$: Observable<unknown> = of(null);
-  this.lastCreatedFlowId = null;
+    const sigCfg = this.contractForm.get('signatureConfig')!.value;
+    let createFlow$: Observable<unknown> = of(null);
+    this.lastCreatedFlowId = null;
 
-  // Kiểm tra nếu chọn 'new' tạo flow mới
-  if (sigCfg.flowOption === 'new') {
-    const steps: ApprovalStepRequest[] = this.newSignersFormArray.controls.map((ctrl, idx) => {
-      const v = ctrl.value;
-      const approverType: ApproverType = (v.approverType === 'POSITION') ? ApproverType.POSITION : ApproverType.USER;
-      const action: ApprovalAction =
-        (v.action === 'SIGN_ONLY') ? ApprovalAction.SIGN_ONLY
-        : (v.action === 'SIGN_THEN_APPROVE') ? ApprovalAction.SIGN_THEN_APPROVE
-        : ApprovalAction.APPROVE_ONLY;
+    // Kiểm tra nếu chọn 'new' tạo flow mới
+    if (sigCfg.flowOption === 'new') {
+      const steps: ApprovalStepRequest[] = this.newSignersFormArray.controls.map((ctrl, idx) => {
+        const v = ctrl.value;
+        const approverType: ApproverType = (v.approverType === 'POSITION') ? ApproverType.POSITION : ApproverType.USER;
+        const action: ApprovalAction =
+          (v.action === 'SIGN_ONLY') ? ApprovalAction.SIGN_ONLY
+          : (v.action === 'SIGN_THEN_APPROVE') ? ApprovalAction.SIGN_THEN_APPROVE
+          : ApprovalAction.APPROVE_ONLY;
 
-      const needsSign = action !== ApprovalAction.APPROVE_ONLY;
+        const needsSign = action !== ApprovalAction.APPROVE_ONLY;
 
-      return {
-        stepOrder: idx + 1,
-        required: !!v.required,
-        isFinalStep: !!v.isFinalStep,
-        approverType,
-        action,
-        employeeId: approverType === ApproverType.USER ? v.employeeId : undefined,
-        positionId: approverType === ApproverType.POSITION ? v.positionId : undefined,
-        departmentId: approverType === ApproverType.POSITION ? v.departmentId : undefined,
-        signaturePlaceholder: needsSign ? (v.signaturePlaceholder || 'SIGN') : undefined
+        return {
+          stepOrder: idx + 1,
+          required: !!v.required,
+          isFinalStep: !!v.isFinalStep,
+          approverType,
+          action,
+          employeeId: approverType === ApproverType.USER ? v.employeeId : undefined,
+          positionId: approverType === ApproverType.POSITION ? v.positionId : undefined,
+          departmentId: approverType === ApproverType.POSITION ? v.departmentId : undefined,
+          signaturePlaceholder: needsSign ? (v.signaturePlaceholder || 'SIGN') : undefined
+        };
+      });
+
+      const flowReq: ApprovalFlowRequest = {
+        name: (sigCfg.flowName || `Flow phê duyệt - ${this.contractForm.get('contractName')?.value || 'Không tên'}`).trim(),
+        description: sigCfg.flowDescription || '',
+        templateId: this.selectedTemplate?.id as number,
+        steps
       };
-    });
 
-    const flowReq: ApprovalFlowRequest = {
-      name: (sigCfg.flowName || `Flow phê duyệt - ${this.contractForm.get('contractName')?.value || 'Không tên'}`).trim(),
-      description: sigCfg.flowDescription || '',
-      templateId: this.selectedTemplate?.id as number, // gắn template đang chọn
-      steps
-    };
+      createFlow$ = this.approvalFlowService.createFlow(flowReq).pipe(
+        tap(res => {
+          const id = res?.data?.id;
+          this.lastCreatedFlowId = typeof id === 'number' ? id : null;
+        })
+      );
+    }
 
-    createFlow$ = this.approvalFlowService.createFlow(flowReq).pipe(
-      tap(res => {
-        const id = res?.data?.id;
-        this.lastCreatedFlowId = typeof id === 'number' ? id : null;
-      })
-    );
-  }
+    // Kiểm tra flowOption là 'default', lấy flow từ template
+    if (sigCfg.flowOption === 'default' && this.selectedTemplate?.defaultFlowId) {
+      this.loadDefaultFlowForTemplate(this.selectedTemplate.defaultFlowId);  
+    }
 
-  // Kiểm tra flowOption là 'default', lấy flow từ template
-  if (sigCfg.flowOption === 'default' && this.selectedTemplate?.defaultFlowId) {
-    this.loadDefaultFlowForTemplate(this.selectedTemplate.defaultFlowId);  
-  }
+    // Tạo hợp đồng → (nếu submitNow) gọi trình ký ngay
+    createFlow$
+      .pipe(
+        switchMap(() => {
+          const req = this.buildCreateRequest(this.lastCreatedFlowId);
+          return this.contractService.createContract(req);
+        }),
+        switchMap((res) => {
+          const contractId = res?.data?.id as number | undefined;
+          if (!submitNow || !contractId) return of(res);
 
-  // Tạo hợp đồng → (nếu submitNow) gọi trình ký ngay
-  createFlow$
-    .pipe(
-      switchMap(() => {
-        const req = this.buildCreateRequest(this.lastCreatedFlowId); // Gửi yêu cầu tạo hợp đồng
-        return this.contractService.createContract(req); // Gửi hợp đồng
-      }),
-      switchMap((res) => {
-        const contractId = res?.data?.id as number | undefined;
-        if (!submitNow || !contractId) return of(res);
+          const flowIdForSubmit =
+            sigCfg.flowOption === 'new' ? (this.lastCreatedFlowId ?? null) : null;
 
-        // Xác định flowId để submit: 'new' dùng flow vừa tạo, 'default' / 'existing' → null để BE tự chọn
-        const flowIdForSubmit =
-          sigCfg.flowOption === 'new' ? (this.lastCreatedFlowId ?? null) : null;
-
-        return this.contractApprovalService
-          .submitForApproval(contractId, flowIdForSubmit ?? undefined) // Gọi submit nếu cần
-          .pipe(map(() => res));
-      }),
-      finalize(() => (this.isSaving = false)) // Kết thúc
-    )
-    .subscribe({
-      next: () => {
-        if (submitNow) {
-          this.successMessage = '🎉 Đã tạo hợp đồng và trình ký thành công!';
-        } else {
-          this.successMessage = '💾 Đã lưu nháp hợp đồng thành công!';
+          return this.contractApprovalService
+            .submitForApproval(contractId, flowIdForSubmit ?? undefined)
+            .pipe(map(() => res));
+        }),
+        finalize(() => (this.isSaving = false))
+      )
+      .subscribe({
+        next: () => {
+          if (submitNow) {
+            this.successMessage = '🎉 Đã tạo hợp đồng và trình ký thành công!';
+          } else {
+            this.successMessage = '💾 Đã lưu nháp hợp đồng thành công!';
+          }
+          this.toastr.success(this.successMessage);
+          this.currentStep = 1;
+          this.selectedTemplate && this.loadVariablesForm(this.selectedTemplate);
+        },
+        error: (err) => {
+          console.error('Create/Submit error:', err);
+          this.errorMessage = submitNow
+            ? 'Không thể tạo hoặc trình ký hợp đồng. Vui lòng thử lại.'
+            : 'Không thể lưu nháp hợp đồng. Vui lòng thử lại.';
+          this.toastr.error(this.errorMessage);
         }
-        this.toastr.success(this.successMessage);
-        this.currentStep = 1;
-        this.selectedTemplate && this.loadVariablesForm(this.selectedTemplate);
-      },
-      error: (err) => {
-        console.error('Create/Submit error:', err);
-        this.errorMessage = submitNow
-          ? 'Không thể tạo hoặc trình ký hợp đồng. Vui lòng thử lại.'
-          : 'Không thể lưu nháp hợp đồng. Vui lòng thử lại.';
-        this.toastr.error(this.errorMessage);
-      }
-    }); 
-}
+      }); 
+  }
 
+  // Helper methods để render các control khác nhau
+  isTextField(control: AbstractControl): boolean {
+    const variableGroup = control as FormGroup;
+    const type = variableGroup.get('varType')?.value;
+    return type === 'STRING' || type === 'TEXTAREA';
+  }
 
+  isNumberField(control: AbstractControl): boolean {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('varType')?.value === 'NUMBER';
+  }
 
-  // contract.component.ts (helper ngắn)
+  isDateField(control: AbstractControl): boolean {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('varType')?.value === 'DATE';
+  }
+
+  isBooleanField(control: AbstractControl): boolean {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('varType')?.value === 'BOOLEAN';
+  }
+
+  isDropdownField(control: AbstractControl): boolean {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('varType')?.value === 'DROPDOWN';
+  }
+
+  isListField(control: AbstractControl): boolean {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('varType')?.value === 'LIST';
+  }
+
+  isTableField(control: AbstractControl): boolean {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('varType')?.value === 'TABLE';
+  }
+
+  getDropdownOptions(control: AbstractControl): string[] {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('config')?.value?.options || [];
+  }
+
+  getListItems(control: AbstractControl): string[] {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('config')?.value?.items || [];
+  }
+
+  getTableColumns(control: AbstractControl): any[] {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('config')?.value?.columns || [];
+  }
+
+  getBooleanLabels(control: AbstractControl): { trueLabel: string; falseLabel: string } {
+    const variableGroup = control as FormGroup;
+    const config = variableGroup.get('config')?.value || {};
+    return {
+      trueLabel: config.trueLabel || 'Có',
+      falseLabel: config.falseLabel || 'Không'
+    };
+  }
+
+  getTextareaRows(control: AbstractControl): number {
+    const variableGroup = control as FormGroup;
+    return variableGroup.get('config')?.value?.rows || 4;
+  }
+
+  // Xử lý table data
+  addTableRow(control: AbstractControl): void {
+    const variableGroup = control as FormGroup;
+    const currentValue = variableGroup.get('value')?.value || [];
+    const newRow = this.createEmptyTableRow(variableGroup);
+    variableGroup.get('value')?.setValue([...currentValue, newRow]);
+  }
+
+  removeTableRow(control: AbstractControl, index: number): void {
+    const variableGroup = control as FormGroup;
+    const currentValue = variableGroup.get('value')?.value || [];
+    currentValue.splice(index, 1);
+    variableGroup.get('value')?.setValue([...currentValue]);
+  }
+
+  private createEmptyTableRow(control: AbstractControl): any {
+    const variableGroup = control as FormGroup;
+    const columns = this.getTableColumns(variableGroup);
+    const row: any = {};
+    columns.forEach((column: any) => {
+      row[column.name] = '';
+    });
+    return row;
+  }
+
+  // Helper methods khác
   getCategoryLabelFromTemplate(t: ContractTemplateResponse): string {
     if (t.categoryName) return t.categoryName;
     const code = (t.categoryCode || '').toUpperCase();
@@ -473,137 +612,166 @@ loadTemplates(): void {
     return t.categoryId ? (byId[t.categoryId] || 'Khác') : 'Khác';
   }
 
-
   goToPage(p: number): void {
     if (p < 1 || p > this.totalPages) return;
     this.currentPage = p;
   }
+  
   prevPage(): void {
     this.goToPage(this.currentPage - 1);
   }
+  
   nextPage(): void {
     this.goToPage(this.currentPage + 1);
   }
+  
   onChangePageSize(size: number | string): void {
     const n = Number(size) || this.pageSize;
     this.pageSize = n;
-    this.currentPage = 1; // reset về trang 1 khi đổi page size
+    this.currentPage = 1;
   }
 
-
-
-  // Helpers
   getInputType(variableType: string): string {
     const types: any = { 'TEXT': 'text', 'NUMBER': 'number', 'DATE': 'date' };
     return types[variableType] || 'text';
   }
+  
   getCategoryLabel(category: string): string {
     const labels: any = { 'labor': 'Lao động', 'sale': 'Mua bán', 'rental': 'Thuê nhà', 'service': 'Dịch vụ' };
     return labels[category] || category;
   }
+  
   getTypeLabel(type: string): string {
-    const labels: any = { 'TEXT': 'Text', 'NUMBER': 'Số', 'DATE': 'Ngày' };
+    const labels: any = { 
+      'STRING': 'Văn bản', 
+      'TEXTAREA': 'Văn bản dài', 
+      'NUMBER': 'Số', 
+      'DATE': 'Ngày tháng',
+      'BOOLEAN': 'True/False',
+      'DROPDOWN': 'Dropdown',
+      'LIST': 'Danh sách',
+      'TABLE': 'Bảng'
+    };
     return labels[type] || type;
   }
 
   get totalTemplates(): number {
-  return this.templates.length;
+    return this.templates.length;
   }
+  
   get totalPages(): number {
     return Math.max(1, Math.ceil(this.totalTemplates / this.pageSize));
   }
+  
   get pages(): number[] {
     return Array.from({ length: this.totalPages }, (_, i) => i + 1);
   }
+  
   get pagedTemplates() {
     const start = (this.currentPage - 1) * this.pageSize;
     return this.templates.slice(start, start + this.pageSize);
   }
 
   /** Map FormArray -> VariableValueRequest[] cho BE */
-    private buildVariablePayload(): VariableValueRequest[] {
-      return this.variablesFormArray.controls.map(ctrl => {
-        const v = ctrl.value;
-        return {
-          varName: v.name,
-          varValue: v.value ?? ''
-        } as VariableValueRequest;
-      });
-    }
-
-    /** Tạo payload Preview (không bắt buộc flowId) */
-    private buildPreviewRequest(): CreateContractRequest {
-      return {
-        templateId: this.selectedTemplate?.id as number,
-        title: this.contractForm.get('contractName')?.value ?? '',
-        variables: this.buildVariablePayload(),
-        // Không cần flowId cho preview
-        allowChangeFlow: true
-      };
-    }
-
-    /** Tạo payload Create (có thể kèm flowId nếu có) */
-    private buildCreateRequest(flowId?: number|null): CreateContractRequest {
-      return {
-        templateId: this.selectedTemplate?.id as number,
-        title: this.contractForm.get('contractName')?.value ?? '',
-        variables: this.buildVariablePayload(),
-        flowId: flowId ?? null,
-        allowChangeFlow: true
-      };
-    }
-// load flow default
-    private loadDefaultFlowForSelectedTemplate(): void {
-      this.defaultFlow = null;
-      this.defaultFlowError = '';
-      if (!this.selectedTemplate?.id) return;
-
-      this.defaultFlowLoading = true;
-      this.approvalFlowService.getDefaultFlowByTemplate(this.selectedTemplate.id)
-        .pipe(finalize(() => (this.defaultFlowLoading = false)))
-        .subscribe({
-          next: (res) => {
-            this.defaultFlow = res?.data ?? null;
-            // chuẩn hóa thứ tự bước (nếu có)
-            if (this.defaultFlow?.steps?.length) {
-              this.defaultFlow.steps = [...this.defaultFlow.steps].sort(
-                (a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0)
-              );
-            }
-          },
-          error: (err) => {
-            console.error('Lỗi load default flow:', err);
-            this.defaultFlow = null;
-            this.defaultFlowError = 'Không tìm thấy luồng ký mặc định cho template này.';
-          }
-        });
-    }
-
-    private loadPositionsForSigner(signerIndex: number, deptId: number, keepPositionId?: number | null) {
-      if (!deptId) {
-        this.positionsBySigner.set(signerIndex, []);
-        this.newSignersFormArray.at(signerIndex)?.get('positionId')?.setValue(null, { emitEvent: false });
-        return;
+  private buildVariablePayload(): VariableValueRequest[] {
+    return this.variablesFormArray.controls.map(ctrl => {
+      const v = (ctrl as FormGroup).value;
+      let varValue: any = v.value;
+      
+      // Xử lý đặc biệt cho các kiểu dữ liệu
+      switch (v.varType) {
+        case 'BOOLEAN':
+          varValue = v.value ? 'true' : 'false';
+          break;
+        case 'TABLE':
+          varValue = Array.isArray(v.value) ? JSON.stringify(v.value) : '[]';
+          break;
+        case 'NUMBER':
+          varValue = v.value !== null && v.value !== '' ? v.value.toString() : '';
+          break;
+        default:
+          varValue = v.value !== null && v.value !== undefined ? v.value.toString() : '';
       }
+      
+      return {
+        varName: v.varName,
+        varValue: varValue
+      } as VariableValueRequest;
+    });
+  }
 
-      this.positionService.getPositionsByDepartment(deptId).subscribe({
-        next: res => {
-          const list = res?.data ?? [];
-          this.positionsBySigner.set(signerIndex, list);
+  /** Tạo payload Preview (không bắt buộc flowId) */
+  private buildPreviewRequest(): CreateContractRequest {
+    return {
+      templateId: this.selectedTemplate?.id as number,
+      title: this.contractForm.get('contractName')?.value ?? '',
+      variables: this.buildVariablePayload(),
+      allowChangeFlow: true
+    };
+  }
 
-          if (keepPositionId != null) {
-            const exists = list.some(p => Number(p.id) === Number(keepPositionId));
-            if (!exists) {
-              this.newSignersFormArray.at(signerIndex)?.get('positionId')?.setValue(null, { emitEvent: false });
-            }
+  /** Tạo payload Create (có thể kèm flowId nếu có) */
+  private buildCreateRequest(flowId?: number|null): CreateContractRequest {
+    return {
+      templateId: this.selectedTemplate?.id as number,
+      title: this.contractForm.get('contractName')?.value ?? '',
+      variables: this.buildVariablePayload(),
+      flowId: flowId ?? null,
+      allowChangeFlow: true
+    };
+  }
+
+  // Load flow default
+  private loadDefaultFlowForSelectedTemplate(): void {
+    this.defaultFlow = null;
+    this.defaultFlowError = '';
+    if (!this.selectedTemplate?.id) return;
+
+    this.defaultFlowLoading = true;
+    this.approvalFlowService.getDefaultFlowByTemplate(this.selectedTemplate.id)
+      .pipe(finalize(() => (this.defaultFlowLoading = false)))
+      .subscribe({
+        next: (res) => {
+          this.defaultFlow = res?.data ?? null;
+          if (this.defaultFlow?.steps?.length) {
+            this.defaultFlow.steps = [...this.defaultFlow.steps].sort(
+              (a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0)
+            );
           }
         },
-        error: _ => {
-          this.positionsBySigner.set(signerIndex, []);
-          this.newSignersFormArray.at(signerIndex)?.get('positionId')?.setValue(null, { emitEvent: false });
+        error: (err) => {
+          console.error('Lỗi load default flow:', err);
+          this.defaultFlow = null;
+          this.defaultFlowError = 'Không tìm thấy luồng ký mặc định cho template này.';
         }
       });
+  }
+
+  private loadPositionsForSigner(signerIndex: number, deptId: number, keepPositionId?: number | null) {
+    if (!deptId) {
+      this.positionsBySigner.set(signerIndex, []);
+      this.newSignersFormArray.at(signerIndex)?.get('positionId')?.setValue(null, { emitEvent: false });
+      return;
     }
+
+    this.positionService.getPositionsByDepartment(deptId).subscribe({
+      next: res => {
+        const list = res?.data ?? [];
+        this.positionsBySigner.set(signerIndex, list);
+
+        if (keepPositionId != null) {
+          const exists = list.some(p => Number(p.id) === Number(keepPositionId));
+          if (!exists) {
+            this.newSignersFormArray.at(signerIndex)?.get('positionId')?.setValue(null, { emitEvent: false });
+          }
+        }
+      },
+      error: _ => {
+        this.positionsBySigner.set(signerIndex, []);
+        this.newSignersFormArray.at(signerIndex)?.get('positionId')?.setValue(null, { emitEvent: false });
+      }
+    });
+  }
 
   trackByTemplateId = (_: number, t: ContractTemplateResponse) => t?.id;
   trackByIndex = (index: number) => index;
