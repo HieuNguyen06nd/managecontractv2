@@ -47,7 +47,7 @@ public class ContractTemplate {
     private Boolean allowOverrideFlow = true;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", length = 20)
     private Status status =Status.ACTIVE;
 
 }

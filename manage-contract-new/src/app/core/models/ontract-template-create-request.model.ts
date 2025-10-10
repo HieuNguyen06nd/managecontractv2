@@ -1,11 +1,11 @@
-import { TemplateVariable } from './contract-template-response.model';
+import { VariableType, TemplateVariableRequest } from './template-preview-response.model';
 
 export interface ContractTemplateCreateRequest {
   tempFileName: string;
-  name?: string;
+  name: string;
   description?: string;
-  categoryId?: number | null;
-  variables: TemplateVariableCreateRequest[];
+  categoryId?: number;
+  variables: TemplateVariableRequest[];
 }
 
 export interface TemplateVariableCreateRequest {

@@ -26,6 +26,7 @@ public interface ContractApprovalService {
     List<ContractResponse> getMyPendingContracts();
 
     ContractResponse getApprovalProgressOrPreview(Long contractId, Long flowId);
+    String getEmployeeSignature(Long employeeId);
 
 }
 

@@ -191,15 +191,15 @@
               <small class="text-muted">Biến gốc từ template</small>
             </td>
             <td>
-              <select class="form-control" [(ngModel)]="variable.varType" (change)="onVariableTypeChange(variable)">
-                <option value="STRING">Văn bản ngắn</option>
-                <option value="NUMBER">Số</option>
-                <option value="DATE">Ngày tháng</option>
-                <option value="BOOLEAN">True/False</option>
-                <option value="TEXTAREA">Văn bản dài</option>
-                <option value="LIST">Danh sách</option>
-                <option value="DROPDOWN">Dropdown</option>
-                <option value="TABLE">Bảng</option>
+              <select [(ngModel)]="variable.varType" (change)="onVariableTypeChange(variable)" class="form-control">
+                <option [value]="VariableType.TEXT">Văn bản</option>
+                <option [value]="VariableType.NUMBER">Số</option>
+                <option [value]="VariableType.DATE">Ngày tháng</option>
+                <option [value]="VariableType.BOOLEAN">Boolean</option>
+                <option [value]="VariableType.DROPDOWN">Dropdown</option>
+                <option [value]="VariableType.LIST">Danh sách</option>
+                <option [value]="VariableType.TABLE">Bảng</option>
+                <option [value]="VariableType.TEXTAREA">Văn bản dài</option>
               </select>
             </td>
             <td class="text-center">
@@ -207,37 +207,37 @@
             </td>
             <td>
               <!-- Cấu hình cho Boolean -->
-              <div *ngIf="variable.varType === 'BOOLEAN'" class="config-panel">
+              <div *ngIf="variable.varType === VariableType.BOOLEAN" class="config-panel">
                 <div class="row">
                   <div class="col-6">
                     <label>Nhãn True:</label>
-                    <input #trueLabelInput type="text" class="form-control form-control-sm" 
-                          [value]="variable.config.trueLabel || 'Có'"
-                          (input)="variable.config.trueLabel = trueLabelInput.value"
-                          placeholder="Có">
+                    <input type="text" class="form-control form-control-sm" 
+                          [(ngModel)]="variable.config.trueLabel"
+                          [placeholder]="getBooleanConfig(variable).trueLabel">
                   </div>
                   <div class="col-6">
                     <label>Nhãn False:</label>
-                    <input #falseLabelInput type="text" class="form-control form-control-sm"
-                          [value]="variable.config.falseLabel || 'Không'"
-                          (input)="variable.config.falseLabel = falseLabelInput.value"
-                          placeholder="Không">
+                    <input type="text" class="form-control form-control-sm"
+                          [(ngModel)]="variable.config.falseLabel"
+                          [placeholder]="getBooleanConfig(variable).falseLabel">
                   </div>
                 </div>
               </div>
 
               <!-- Cấu hình cho Dropdown -->
-              <div *ngIf="variable.varType === 'DROPDOWN'" class="config-panel">
+              <div *ngIf="variable.varType === VariableType.DROPDOWN" class="config-panel">
                 <label>Danh sách lựa chọn:</label>
-                <div *ngFor="let option of variable.config.options || []; let i = index" class="option-item">
+                
+                <!-- ĐẢM BẢO: Sử dụng getter method để lấy options -->
+                <div *ngFor="let option of getDropdownOptions(variable); let i = index" class="option-item">
                   <div class="input-group input-group-sm mb-1">
-                    <input #optionInput type="text" class="form-control" 
-                          [value]="option"
-                          (input)="variable.config.options![i] = optionInput.value"
-                          placeholder="Option {{i + 1}}">
+                    <input type="text" class="form-control" 
+                          [(ngModel)]="getDropdownOptions(variable)[i]"
+                          (ngModelChange)="onDropdownOptionChange(variable, i, $event)"
+                          [placeholder]="'Option ' + (i + 1)">
                     <button class="btn btn-outline-danger" type="button" 
                             (click)="removeOption(variable, i)" 
-                            [disabled]="(variable.config.options || []).length <= 1">
+                            [disabled]="getDropdownOptions(variable).length <= 1">
                       <i class="fas fa-times"></i>
                     </button>
                   </div>
@@ -248,35 +248,33 @@
               </div>
 
               <!-- Cấu hình cho Table -->
-              <div *ngIf="variable.varType === 'TABLE'" class="config-panel">
+              <div *ngIf="variable.varType === VariableType.TABLE" class="config-panel">
                 <label>Tên bảng:</label>
-                <input #tableNameInput type="text" class="form-control form-control-sm mb-2"
-                      [value]="variable.config.tableName || ''"
-                      (input)="variable.config.tableName = tableNameInput.value"
-                      placeholder="products, items, etc.">
+                <input type="text" class="form-control form-control-sm mb-2"
+                      [(ngModel)]="variable.config.tableName"
+                      [placeholder]="getTableConfig(variable).tableName">
                 
                 <label>Columns:</label>
-                <div *ngFor="let column of variable.config.columns || []; let i = index" class="column-item mb-2 p-2 border">
+                <div *ngFor="let column of getTableConfig(variable).columns; let i = index" class="column-item mb-2 p-2 border">
                   <div class="row">
                     <div class="col-5">
-                      <input #columnNameInput type="text" class="form-control form-control-sm"
-                            [value]="column.name"
-                            (input)="column.name = columnNameInput.value"
+                      <input type="text" class="form-control form-control-sm"
+                            [(ngModel)]="column.name"
                             placeholder="Tên cột">
                     </div>
                     <div class="col-4">
-                      <select #columnTypeSelect class="form-control form-control-sm" 
-                              [value]="column.type || 'STRING'"
-                              (change)="column.type = columnTypeSelect.value">
-                        <option value="STRING">Text</option>
-                        <option value="NUMBER">Số</option>
-                        <option value="DATE">Ngày</option>
+                      <select class="form-control form-control-sm" 
+                              [(ngModel)]="column.type"
+                              (ngModelChange)="onColumnTypeChange(column)">
+                        <option [value]="VariableType.TEXT">Text</option>
+                        <option [value]="VariableType.NUMBER">Số</option>
+                        <option [value]="VariableType.DATE">Ngày</option>
                       </select>
                     </div>
                     <div class="col-3">
                       <button class="btn btn-sm btn-outline-danger" 
                               (click)="removeColumn(variable, i)" 
-                              [disabled]="(variable.config.columns || []).length <= 1">
+                              [disabled]="getTableConfig(variable).columns.length <= 1">
                         <i class="fas fa-times"></i>
                       </button>
                     </div>
@@ -288,17 +286,19 @@
               </div>
 
               <!-- Cấu hình cho List -->
-              <div *ngIf="variable.varType === 'LIST'" class="config-panel">
+              <div *ngIf="variable.varType === VariableType.LIST" class="config-panel">
                 <label>Danh sách giá trị:</label>
-                <div *ngFor="let item of variable.config.items || []; let i = index" class="option-item">
+                
+                <!-- ĐẢM BẢO: Sử dụng getter method để lấy items -->
+                <div *ngFor="let item of getListItems(variable); let i = index" class="option-item">
                   <div class="input-group input-group-sm mb-1">
-                    <input #itemInput type="text" class="form-control" 
-                          [value]="item"
-                          (input)="variable.config.items![i] = itemInput.value"
-                          placeholder="Giá trị {{i + 1}}">
+                    <input type="text" class="form-control" 
+                          [(ngModel)]="getListItems(variable)[i]"
+                          (ngModelChange)="onListItemChange(variable, i, $event)"
+                          [placeholder]="'Giá trị ' + (i + 1)">
                     <button class="btn btn-outline-danger" type="button" 
                             (click)="removeListItem(variable, i)" 
-                            [disabled]="(variable.config.items || []).length <= 1">
+                            [disabled]="getListItems(variable).length <= 1">
                       <i class="fas fa-times"></i>
                     </button>
                   </div>
@@ -309,28 +309,28 @@
               </div>
 
               <!-- Cấu hình cho Textarea -->
-              <div *ngIf="variable.varType === 'TEXTAREA'" class="config-panel">
+              <div *ngIf="variable.varType === VariableType.TEXTAREA" class="config-panel">
                 <label>Số dòng:</label>
-                <input #rowsInput type="number" class="form-control form-control-sm"
-                      [value]="variable.config.rows || 4"
-                      (input)="variable.config.rows = +rowsInput.value"
+                <input type="number" class="form-control form-control-sm"
+                      [(ngModel)]="variable.config.rows"
+                      [placeholder]="getTextareaConfig(variable).rows.toString()"
                       min="2" max="10">
               </div>
 
               <!-- Cấu hình cho Number -->
-              <div *ngIf="variable.varType === 'NUMBER'" class="config-panel">
+              <div *ngIf="variable.varType === VariableType.NUMBER" class="config-panel">
                 <div class="row">
                   <div class="col-6">
                     <label>Min:</label>
-                    <input #minInput type="number" class="form-control form-control-sm"
-                          [value]="variable.config.min || 0"
-                          (input)="variable.config.min = +minInput.value">
+                    <input type="number" class="form-control form-control-sm"
+                          [(ngModel)]="variable.config.min"
+                          [placeholder]="getNumberConfig(variable).min.toString()">
                   </div>
                   <div class="col-6">
                     <label>Max:</label>
-                    <input #maxInput type="number" class="form-control form-control-sm"
-                          [value]="variable.config.max || 1000000"
-                          (input)="variable.config.max = +maxInput.value">
+                    <input type="number" class="form-control form-control-sm"
+                          [(ngModel)]="variable.config.max"
+                          [placeholder]="getNumberConfig(variable).max.toString()">
                   </div>
                 </div>
               </div>

@@ -1,3 +1,4 @@
+<!-- src/app/home/contact-sign/contact-sign.component.html -->
 <main class="main-content container py-4">
   <!-- Header -->
   <div class="d-flex justify-content-between align-items-center mb-4">
@@ -71,6 +72,10 @@
               </b>
             </span>
           </div>
+          <div class="meta-item" *ngIf="c.currentStepSignaturePlaceholder">
+            <i class="fas fa-map-pin"></i>
+            <span>Vị trí ký: <b>{{ c.currentStepSignaturePlaceholder }}</b></span>
+          </div>
         </div>
       </div>
 
@@ -85,17 +90,19 @@
             <i class="fas fa-eye me-1"></i> Xem trước
           </button>
 
-          <button class="btn btn-sign" *ngIf="canSign(c)" (click)="openSign(c)">
-            <i class="fas fa-signature me-1"></i> Ký trên PDF
+          <!-- Nút KÝ - chỉ hiện khi có thể ký -->
+          <button class="btn btn-sign" *ngIf="canSign(c)" (click)="sign(c)">
+            <i class="fas fa-signature me-1"></i> Ký
           </button>
 
+          <!-- Nút PHÊ DUYỆT -->
           <button class="btn btn-approve"
                   *ngIf="canApproveVisible(c)"
-                  [disabled]="approveDisabled(c)"
                   (click)="openApprove(c)">
             <i class="fas fa-check me-1"></i> Phê duyệt
           </button>
 
+          <!-- Nút TỪ CHỐI -->
           <button class="btn btn-reject" *ngIf="canReject(c)" (click)="openReject(c)">
             <i class="fas fa-times me-1"></i> Từ chối
           </button>
@@ -118,13 +125,20 @@
         <p *ngIf="current">
           Xác nhận phê duyệt hợp đồng: <strong>{{ current.title || current.contractNumber }}</strong>
         </p>
-        <div class="alert alert-warning" *ngIf="current?.currentStepAction==='SIGN_THEN_APPROVE' && !current?.currentStepSigned">
+        <div class="alert alert-info" *ngIf="current?.currentStepAction==='APPROVE_ONLY'">
+          <i class="fas fa-info-circle me-2"></i> Bước này chỉ yêu cầu phê duyệt.
+        </div>
+        <div class="alert alert-warning" *ngIf="current?.currentStepAction==='SIGN_THEN_APPROVE'">
           <i class="fas fa-exclamation-triangle me-2"></i> Bước này yêu cầu <b>ký trước</b> khi phê duyệt.
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" (click)="closeModals()">Hủy</button>
-        <button class="btn btn-success" [disabled]="!current" (click)="approve(current!)">Xác nhận Phê duyệt</button>
+        <button class="btn btn-success" [disabled]="loading" (click)="approve(current!)">
+          <i class="fas fa-check me-1" *ngIf="!loading"></i>
+          <i class="fas fa-spinner fa-spin me-1" *ngIf="loading"></i>
+          {{ loading ? 'Đang xử lý...' : 'Xác nhận Phê duyệt' }}
+        </button>
       </div>
     </div>
   </div>
@@ -160,7 +174,8 @@
 
         <div class="mb-2">
           <label class="form-label fw-semibold">Mô tả chi tiết *</label>
-          <textarea class="form-control" rows="4" [(ngModel)]="rejectComment" placeholder="Mô tả cụ thể lý do từ chối..." required></textarea>
+          <textarea class="form-control" rows="4" [(ngModel)]="rejectComment" 
+                    placeholder="Mô tả cụ thể lý do từ chối..." required></textarea>
         </div>
 
         <div class="form-check mt-2">
@@ -170,7 +185,12 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" (click)="closeModals()">Hủy</button>
-        <button class="btn btn-danger" [disabled]="!current" (click)="reject(current!)">Xác nhận Từ chối</button>
+        <button class="btn btn-danger" [disabled]="!rejectReasonCode || !rejectComment.trim() || loading" 
+                (click)="reject(current!)">
+          <i class="fas fa-times me-1" *ngIf="!loading"></i>
+          <i class="fas fa-spinner fa-spin me-1" *ngIf="loading"></i>
+          {{ loading ? 'Đang xử lý...' : 'Xác nhận Từ chối' }}
+        </button>
       </div>
     </div>
   </div>
@@ -193,6 +213,9 @@
             {{ ((current?.status || 'PENDING_APPROVAL').split('_').join(' ')) | uppercase }}
           </span>
           <span class="text-muted" *ngIf="current?.contractNumber">#{{ current?.contractNumber }}</span>
+          <span class="text-info" *ngIf="current?.currentStepSignaturePlaceholder">
+            Vị trí ký: {{ current?.currentStepSignaturePlaceholder }}
+          </span>
         </div>
 
         <div class="right d-flex align-items-center gap-2">
@@ -200,15 +223,11 @@
             <i class="fas fa-rotate me-1"></i> Tải lại
           </button>
 
-          <!-- Tải ảnh chữ ký & bật đặt -->
-          <label class="btn btn-outline-primary mb-0">
-            <input type="file" class="d-none" accept="image/png,image/jpeg"
-                   (change)="onUploadSignatureFile($event)" />
-            <i class="fas fa-upload me-1"></i> Tải ảnh chữ ký
-          </label>
-
-          <button class="btn btn-outline-primary" (click)="startPlaceSignature()">
-            <i class="fas fa-pen-nib me-1"></i> Bật đặt chữ ký
+          <!-- Nút KÝ trong preview -->
+          <button class="btn btn-success" *ngIf="current && canSign(current)" 
+                  (click)="sign(current)" [disabled]="loading">
+            <i class="fas fa-signature me-1"></i> 
+            {{ loading ? 'Đang ký...' : 'Ký' }}
           </button>
 
           <a class="btn btn-outline-primary" *ngIf="previewDownloadUrl"
@@ -243,40 +262,8 @@
             [showDownloadButton]="false"
             [handTool]="false"
             [zoom]="'page-width'"
-            (pagesLoaded)="computePdfHostRectAndPages()"
-            (pageRendered)="computePdfHostRectAndPages()"
             [filenameForDownload]="current?.contractNumber || 'contract.pdf'">
           </ngx-extended-pdf-viewer>
-
-          <!-- GHOST ảnh chữ ký (kéo thả/đổi size) -->
-          <div
-            *ngIf="sigGhostVisible && sigImgSrc"
-            class="sig-ghost"
-            [ngStyle]="{
-              left: (sig.left - scroll.left) + 'px',
-              top:  (sig.top  - scroll.top)  + 'px',
-              width:  sig.width + 'px',
-              height: sig.height + 'px'
-            }"
-            (mousedown)="startDrag($event)"
-          >
-            <img [src]="sigImgSrc" draggable="false" />
-            <div class="resize-handle" (mousedown)="startResize($event)"></div>
-          </div>
-
-
-        </div>
-
-        <div class="sign-toolbar" *ngIf="placingMode">
-          <span class="me-2"><i class="fas fa-signature"></i> Chế độ đặt chữ ký</span>
-          <button class="btn btn-sm btn-outline-secondary" (click)="computePdfHostRectAndPages()">Căn lại</button>
-          <button class="btn btn-sm btn-outline-secondary" (click)="sigGhostVisible = !sigGhostVisible">
-            {{ sigGhostVisible ? 'Ẩn' : 'Hiện' }} chữ ký
-          </button>
-          <button class="btn btn-sm btn-outline-danger" (click)="placingMode=false; sigGhostVisible=false">Thoát đặt</button>
-          <button class="btn btn-sm btn-success ms-auto" (click)="confirmDragSign()">
-            <i class="fas fa-check"></i> Xác nhận ký
-          </button>
         </div>
       </div>
     </div>

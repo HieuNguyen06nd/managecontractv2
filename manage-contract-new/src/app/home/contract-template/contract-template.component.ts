@@ -7,7 +7,8 @@ import {
   TemplatePreviewResponse, 
   TemplateVariablePreview,
   TemplateVariableRequest,
-  VariableConfig 
+  VariableConfig,
+  VariableType // Import enum
 } from '../../core/models/template-preview-response.model';
 import { ContractTemplateResponse } from '../../core/models/contract-template-response.model';
 import { VariableUpdateRequest } from '../../core/models/variable-update-request.model';
@@ -21,7 +22,6 @@ interface VariableDraft extends TemplateVariablePreview {
   name: string;
   config: VariableConfig;
 }
-
 
 @Component({
   selector: 'app-contract-template',
@@ -63,6 +63,9 @@ export class ContractTemplateComponent implements OnInit {
   currentStep = 1;
   successMessage = '';
   errorMessage = '';
+
+  // Thêm enum để sử dụng trong template
+  VariableType = VariableType;
 
   constructor(
     private contractTemplateService: ContractTemplateService,
@@ -193,14 +196,14 @@ export class ContractTemplateComponent implements OnInit {
 
     this.previewResponse = response;
     
-    // Đảm bảo config luôn được khởi tạo
+    // Đảm bảo config luôn được khởi tạo - SỬA: Sử dụng enum
     this.extractedVariables = (response.variables || []).map((v) => {
       const defaultConfig = this.getDefaultConfig(v.varType);
       return {
         ...v,
-        varType: v.varType || 'STRING',
-        required: false, // Giá trị mặc định
-        name: '', // Giá trị mặc định
+        varType: v.varType || VariableType.TEXT, // Sử dụng enum
+        required: v.required || false, // Giá trị mặc định
+        name: v.name || this.generateDisplayName(v.varName), // Tạo tên mặc định
         config: v.config || defaultConfig,
         allowedValues: v.allowedValues || this.getAllowedValuesFromConfig(v.varType, defaultConfig)
       };
@@ -216,39 +219,51 @@ export class ContractTemplateComponent implements OnInit {
     }
   }
 
-  private getAllowedValuesFromConfig(varType: string, config: VariableConfig): string[] {
+  // Helper để tạo tên hiển thị mặc định từ varName
+  private generateDisplayName(varName: string): string {
+    // Chuyển "table_employee_info" thành "Employee Info"
+    // Hoặc "customer_name" thành "Customer Name"
+    const cleanName = varName.replace(/^table_/, '');
+    return cleanName.split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  private getAllowedValuesFromConfig(varType: VariableType, config: VariableConfig): string[] {
     switch (varType) {
-      case 'DROPDOWN':
+      case VariableType.DROPDOWN:
         return config.options ? [...config.options] : [];
-      case 'LIST':
+      case VariableType.LIST:
         return config.items ? [...config.items] : [];
       default:
         return [];
     }
   }
 
-  // Lấy config mặc định theo kiểu biến
-  private getDefaultConfig(varType: string): VariableConfig {
+  // Lấy config mặc định theo kiểu biến - SỬA: Sử dụng enum
+  private getDefaultConfig(varType: VariableType): VariableConfig {
     switch (varType) {
-      case 'BOOLEAN':
+      case VariableType.BOOLEAN:
         return { trueLabel: 'Có', falseLabel: 'Không' };
-      case 'DROPDOWN':
+      case VariableType.DROPDOWN:
         return { options: ['Option 1', 'Option 2'] };
-      case 'LIST':
+      case VariableType.LIST:
         return { items: ['Item 1', 'Item 2'] };
-      case 'TABLE':
+      case VariableType.TABLE:
         return { 
           tableName: 'table_data',
           columns: [
-            { name: 'column_1', type: 'STRING' },
-            { name: 'column_2', type: 'STRING' }
+            { name: 'column_1', type: VariableType.TEXT }, // Sử dụng enum
+            { name: 'column_2', type: VariableType.TEXT }  // Sử dụng enum
           ]
         };
-      case 'TEXTAREA':
+      case VariableType.TEXTAREA:
         return { rows: 4 };
-      case 'NUMBER':
+      case VariableType.NUMBER:
         return { min: 0, max: 1000000 };
-      default:
+      case VariableType.DATE:
+        return { format: 'dd/MM/yyyy' };
+      default: // VariableType.TEXT và các type khác
         return {};
     }
   }
@@ -258,9 +273,9 @@ export class ContractTemplateComponent implements OnInit {
     variable.config = this.getDefaultConfig(variable.varType);
     variable.allowedValues = [];
     
-    if (variable.varType === 'DROPDOWN' && variable.config.options) {
+    if (variable.varType === VariableType.DROPDOWN && variable.config.options) {
       variable.allowedValues = [...variable.config.options];
-    } else if (variable.varType === 'LIST' && variable.config.items) {
+    } else if (variable.varType === VariableType.LIST && variable.config.items) {
       variable.allowedValues = [...variable.config.items];
     }
   }
@@ -271,6 +286,7 @@ export class ContractTemplateComponent implements OnInit {
       falseLabel: variable.config?.falseLabel || 'Không'
     };
   }
+
   getDropdownConfig(variable: VariableDraft) {
     return {
       options: variable.config?.options || ['Option 1', 'Option 2']
@@ -281,8 +297,8 @@ export class ContractTemplateComponent implements OnInit {
     return {
       tableName: variable.config?.tableName || 'table_data',
       columns: variable.config?.columns || [
-        { name: 'column_1', type: 'STRING' },
-        { name: 'column_2', type: 'STRING' }
+        { name: 'column_1', type: VariableType.TEXT }, // Sử dụng enum
+        { name: 'column_2', type: VariableType.TEXT }  // Sử dụng enum
       ]
     };
   }
@@ -338,14 +354,14 @@ export class ContractTemplateComponent implements OnInit {
     }
   }
 
-  // Quản lý columns cho Table
+  // Quản lý columns cho Table - SỬA: Sử dụng enum
   addColumn(variable: VariableDraft) {
     if (!variable.config.columns) {
       variable.config.columns = [];
     }
     variable.config.columns.push({ 
       name: `column_${variable.config.columns.length + 1}`, 
-      type: 'STRING' 
+      type: VariableType.TEXT // Sử dụng enum
     });
   }
 
@@ -353,6 +369,12 @@ export class ContractTemplateComponent implements OnInit {
     if (variable.config.columns && variable.config.columns.length > 1) {
       variable.config.columns.splice(index, 1);
     }
+  }
+
+  // Thay đổi kiểu của column - SỬA: Sử dụng enum
+  onColumnTypeChange(column: any) {
+    // Có thể thêm xử lý đặc biệt khi thay đổi kiểu column nếu cần
+    console.log('Column type changed:', column);
   }
 
   isFieldNameValid(): boolean {
@@ -375,18 +397,21 @@ export class ContractTemplateComponent implements OnInit {
     const variables: TemplateVariableRequest[] = this.extractedVariables.map(v => ({
       varName: v.varName,
       varType: v.varType,
-      required: v.required,
+      required: v.required || false,
       name: v.name.trim(),
       orderIndex: v.orderIndex,
       config: v.config,
       allowedValues: v.allowedValues
     }));
 
+    // FIX: Xử lý categoryId - chuyển null thành undefined
+    const categoryId = this.selectedCategoryId !== null ? this.selectedCategoryId : undefined;
+
     const request: ContractTemplateCreateRequest = {
       tempFileName: this.previewResponse?.tempFileName || '',
       name: this.templateName,
       description: this.templateDescription,
-      categoryId: this.selectedCategoryId,
+      categoryId: categoryId, // Sử dụng biến đã xử lý
       variables: variables
     };
 
@@ -439,5 +464,83 @@ export class ContractTemplateComponent implements OnInit {
   getCategoryName(categoryId: number): string {
     const category = this.categories.find(c => c.id === categoryId);
     return category ? category.name : 'Không phân loại';
+  }
+
+  // Helper để hiển thị tên kiểu biến
+  getVariableTypeDisplayName(varType: VariableType): string {
+    const typeNames: { [key in VariableType]: string } = {
+      [VariableType.TEXT]: 'Văn bản',
+      [VariableType.NUMBER]: 'Số',
+      [VariableType.DATE]: 'Ngày tháng',
+      [VariableType.BOOLEAN]: 'Boolean',
+      [VariableType.DROPDOWN]: 'Dropdown',
+      [VariableType.LIST]: 'Danh sách',
+      [VariableType.TABLE]: 'Bảng',
+      [VariableType.TEXTAREA]: 'Văn bản dài'
+    };
+    return typeNames[varType] || varType;
+  }
+
+  getVariableConfig(variable: VariableDraft): VariableConfig {
+    return variable.config || this.getDefaultConfig(variable.varType);
+  }
+  ensureDropdownConfig(variable: VariableDraft): void {
+    if (!variable.config) {
+      variable.config = this.getDefaultConfig(VariableType.DROPDOWN);
+    }
+    if (!variable.config.options) {
+      variable.config.options = ['Option 1', 'Option 2'];
+    }
+    if (!variable.allowedValues) {
+      variable.allowedValues = [...variable.config.options];
+    }
+  }
+  // Đảm bảo config.items luôn tồn tại cho list
+  ensureListConfig(variable: VariableDraft): void {
+    if (!variable.config) {
+      variable.config = this.getDefaultConfig(VariableType.LIST);
+    }
+    if (!variable.config.items) {
+      variable.config.items = ['Item 1', 'Item 2'];
+    }
+    if (!variable.allowedValues) {
+      variable.allowedValues = [...variable.config.items];
+    }
+  }
+
+  // Đảm bảo config.columns luôn tồn tại cho table
+  ensureTableConfig(variable: VariableDraft): void {
+    if (!variable.config) {
+      variable.config = this.getDefaultConfig(VariableType.TABLE);
+    }
+    if (!variable.config.columns) {
+      variable.config.columns = [
+        { name: 'column_1', type: VariableType.TEXT },
+        { name: 'column_2', type: VariableType.TEXT }
+      ];
+    }
+    if (!variable.config.tableName) {
+      variable.config.tableName = 'table_data';
+    }
+  }
+
+  getListItems(variable: VariableDraft): string[] {
+    this.ensureListConfig(variable);
+    return variable.config!.items!;
+  }
+  onListItemChange(variable: VariableDraft, index: number, value: string): void {
+    this.ensureListConfig(variable);
+    variable.config!.items![index] = value;
+    variable.allowedValues = [...variable.config!.items!];
+  }
+
+  getDropdownOptions(variable: VariableDraft): string[] {
+    this.ensureDropdownConfig(variable);
+    return variable.config!.options!;
+  }
+  onDropdownOptionChange(variable: VariableDraft, index: number, value: string): void {
+    this.ensureDropdownConfig(variable);
+    variable.config!.options![index] = value;
+    variable.allowedValues = [...variable.config!.options!];
   }
 }

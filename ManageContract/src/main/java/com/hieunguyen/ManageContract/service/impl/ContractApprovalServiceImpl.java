@@ -11,7 +11,6 @@ import com.hieunguyen.ManageContract.repository.*;
 import com.hieunguyen.ManageContract.security.jwt.SecurityUtil;
 import com.hieunguyen.ManageContract.service.ContractApprovalService;
 import com.hieunguyen.ManageContract.service.ContractFileService;
-import com.hieunguyen.ManageContract.service.SignatureStorageService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,12 +25,11 @@ import java.util.Optional;
 public class ContractApprovalServiceImpl implements ContractApprovalService {
 
     private final ContractRepository contractRepository;
-    private final UserRepository userRepository; // repo của Employee
+    private final UserRepository userRepository;
     private final ApprovalFlowRepository flowRepository;
     private final ContractApprovalRepository contractApprovalRepository;
     private final ContractSignatureRepository contractSignatureRepository;
     private final ContractFileService contractFileService;
-    private final SignatureStorageService signatureStorage;
     private final SecurityUtil securityUtils;
 
     @Transactional
@@ -48,13 +46,12 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
             throw new RuntimeException("Contract already has an approval flow");
         }
 
-        // Chọn flow: ưu tiên tham số flowId, nếu không có thì lấy theo template
+        // Chọn flow
         ApprovalFlow flow;
         if (flowId != null) {
             flow = flowRepository.findById(flowId)
                     .orElseThrow(() -> new RuntimeException("Flow not found"));
         } else {
-            // Lấy flow mặc định của template
             flow = Optional.ofNullable(contract.getTemplate().getDefaultFlow())
                     .orElseThrow(() -> new RuntimeException("No default approval flow set for this template"));
         }
@@ -71,7 +68,6 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                         .stepOrder(step.getStepOrder())
                         .required(step.getRequired())
                         .isFinalStep(step.getIsFinalStep())
-                        // chỉ snapshot department/position nếu step là POSITION
                         .department(step.getApproverType() == ApproverType.POSITION ? step.getDepartment() : null)
                         .position(step.getApproverType() == ApproverType.POSITION ? step.getPosition() : null)
                         .isCurrent(step.getStepOrder() == 1)
@@ -81,11 +77,13 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
 
         contractApprovalRepository.saveAll(approvals);
 
+        // Tạo file PDF từ template
         contract.setFilePath(contractFileService.generateContractFile(contract));
         contract.setStatus(ContractStatus.PENDING_APPROVAL);
 
         return ContractMapper.toResponse(contractRepository.save(contract));
     }
+
     @Transactional
     @Override
     public ContractResponse signStep(Long contractId, Long stepId, SignStepRequest req) {
@@ -111,7 +109,7 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         Employee me = userRepository.findByAccount_Email(email)
                 .orElseThrow(() -> new RuntimeException("Employee not found: " + email));
 
-        // 2) Kiểm tra quyền theo approverType (giữ nguyên như bạn đã làm)
+        // 2) Kiểm tra quyền theo approverType
         switch (approval.getStep().getApproverType()) {
             case USER -> {
                 if (approval.getStep().getEmployee() == null
@@ -130,8 +128,11 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
             }
         }
 
-        // 3) Lưu ảnh chữ ký → URL
-        String signatureUrl = signatureStorage.saveBase64Png(contract.getId(), me.getId(), req.getImageBase64());
+        // 3) LẤY CHỮ KÝ TỪ EMPLOYEE
+        String signatureUrl = me.getSignatureImage();
+        if (signatureUrl == null || signatureUrl.isEmpty()) {
+            throw new RuntimeException("Bạn chưa có chữ ký số. Vui lòng upload chữ ký trước.");
+        }
 
         // 4) Lưu snapshot chữ ký
         ContractSignature signature = new ContractSignature();
@@ -141,29 +142,23 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         signature.setSignedAt(LocalDateTime.now());
         signature.setSignatureImage(signatureUrl);
         signature.setPlaceholderKey(req.getPlaceholder());
-        signature.setPage(req.getPage());
-        signature.setX(req.getX());
-        signature.setY(req.getY());
-        signature.setWidth(req.getWidth());
-        signature.setHeight(req.getHeight());
-        signature.setType(SignatureType.DRAWN); // hoặc IMAGE
+        signature.setType(SignatureType.EMPLOYEE_SIGNATURE);
         contractSignatureRepository.save(signature);
 
-        // 5) Chèn chữ ký vào file
-        String updatedPath = contractFileService.embedSignatureFromUrl(
+        // 5) Chèn chữ ký vào file THEO PLACEHOLDER
+        String updatedPath = contractFileService.embedSignature(
                 contract.getFilePath(),
                 signatureUrl,
-                req.getPage(), req.getX(), req.getY(), req.getWidth(), req.getHeight(),
-                req.getPlaceholder() // có thể null
+                req.getPlaceholder()
         );
+
         if (updatedPath != null) {
             contract.setFilePath(updatedPath);
             contractRepository.save(contract);
         }
 
-        // 6) Hoàn tất bước tuỳ theo action
+        // 6) Hoàn tất bước nếu là SIGN_ONLY
         if (action == ApprovalAction.SIGN_ONLY) {
-            // ký xong là xong bước → auto-approve
             approval.setApprover(me);
             approval.setApprovedAt(LocalDateTime.now());
             approval.setComment(req.getComment());
@@ -177,6 +172,7 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                 return ContractMapper.toResponse(contract);
             }
 
+            // Chuyển sang step tiếp theo
             contractApprovalRepository.findByContractIdAndStepOrder(
                     contract.getId(), approval.getStepOrder() + 1
             ).ifPresentOrElse(next -> {
@@ -185,15 +181,10 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                 contract.setStatus(ContractStatus.PENDING_APPROVAL);
                 contractRepository.save(contract);
             }, () -> { throw new RuntimeException("Next step not found"); });
-
-            return ContractMapper.toResponse(contract);
         }
 
-        // SIGN_THEN_APPROVE → chưa duyệt, vẫn giữ isCurrent=true
         return ContractMapper.toResponse(contract);
     }
-
-
 
     @Transactional
     @Override
@@ -205,6 +196,95 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
     @Override
     public ContractResponse rejectStep(Long stepId, StepApprovalRequest request) {
         return processStep(stepId, request, false);
+    }
+
+    private ContractResponse processStep(Long stepId, StepApprovalRequest request, boolean approved) {
+        ContractApproval approval = contractApprovalRepository.findById(stepId)
+                .orElseThrow(() -> new RuntimeException("Approval step not found"));
+
+        if (!Boolean.TRUE.equals(approval.getIsCurrent())) {
+            throw new RuntimeException("This step is not active for approval");
+        }
+
+        // Lấy Employee hiện tại
+        String email = securityUtils.getCurrentUserEmail();
+        Employee me = userRepository.findByAccount_Email(email)
+                .orElseThrow(() -> new RuntimeException("Employee not found for email: " + email));
+
+        // Kiểm tra quyền
+        ApprovalStep step = approval.getStep();
+        if (step.getApproverType() == null) {
+            throw new RuntimeException("Step approverType is not set");
+        }
+        switch (step.getApproverType()) {
+            case USER -> {
+                if (step.getEmployee() == null || !step.getEmployee().getId().equals(me.getId())) {
+                    throw new RuntimeException("Bạn không phải người được chỉ định duyệt bước này");
+                }
+            }
+            case POSITION -> {
+                if (step.getDepartment() == null || step.getPosition() == null) {
+                    throw new RuntimeException("Step thiếu department/position yêu cầu");
+                }
+                if (me.getDepartment() == null || me.getPosition() == null
+                        || !step.getDepartment().getId().equals(me.getDepartment().getId())
+                        || !step.getPosition().getId().equals(me.getPosition().getId())) {
+                    throw new RuntimeException("Bạn không đúng vị trí/phòng ban yêu cầu để duyệt bước này");
+                }
+            }
+            default -> throw new RuntimeException("approverType không hỗ trợ");
+        }
+
+        // Cập nhật kết quả duyệt
+        approval.setApprover(me);
+        approval.setApprovedAt(LocalDateTime.now());
+        approval.setComment(request.getComment());
+        approval.setIsCurrent(false);
+        approval.setStatus(approved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED);
+        contractApprovalRepository.save(approval);
+
+        Contract contract = approval.getContract();
+
+        if (!approved) {
+            contract.setStatus(ContractStatus.REJECTED);
+            contractRepository.save(contract);
+            return ContractMapper.toResponse(contract);
+        }
+
+        // Xử lý khi APPROVE: thêm thông tin phê duyệt vào PDF
+        ApprovalAction action = step.getAction();
+        if (action == ApprovalAction.APPROVE_ONLY || action == ApprovalAction.SIGN_THEN_APPROVE) {
+            String approveText = String.format(
+                    "Đã phê duyệt bởi: %s - %s - %s",
+                    me.getFullName() != null ? me.getFullName() : me.getAccount().getEmail(),
+                    me.getPhone() != null ? me.getPhone() : "Chưa cập nhật SĐT",
+                    LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+            );
+
+            // Thêm text phê duyệt vào cuối trang PDF
+            contractFileService.addApprovalText(
+                    contract.getFilePath(),
+                    approveText
+            );
+        }
+
+        if (Boolean.TRUE.equals(approval.getIsFinalStep())) {
+            contract.setStatus(ContractStatus.APPROVED);
+            contractRepository.save(contract);
+            return ContractMapper.toResponse(contract);
+        }
+
+        // Chuyển sang step tiếp theo
+        contractApprovalRepository.findByContractIdAndStepOrder(
+                contract.getId(), approval.getStepOrder() + 1
+        ).ifPresentOrElse(next -> {
+            next.setIsCurrent(true);
+            contractApprovalRepository.save(next);
+            contract.setStatus(ContractStatus.PENDING_APPROVAL);
+            contractRepository.save(contract);
+        }, () -> { throw new RuntimeException("Next step not found"); });
+
+        return ContractMapper.toResponse(contract);
     }
 
     @Override
@@ -246,7 +326,7 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                 })
                 .map(a -> {
                     ContractResponse dto = ContractMapper.toResponse(a.getContract());
-                    dto.setCurrentStepId(a.getId()); // đây chính là stepId
+                    dto.setCurrentStepId(a.getId());
                     dto.setCurrentStepName(buildCurrentStepName(a.getStep()));
                     dto.setCurrentStepAction(a.getStep().getAction().name());
                     dto.setCurrentStepSignaturePlaceholder(a.getStep().getSignaturePlaceholder());
@@ -272,101 +352,6 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         };
     }
 
-
-
-    private ContractResponse processStep(Long stepId, StepApprovalRequest request, boolean approved) {
-        ContractApproval approval = contractApprovalRepository.findById(stepId)
-                .orElseThrow(() -> new RuntimeException("Approval step not found"));
-
-        if (!Boolean.TRUE.equals(approval.getIsCurrent())) {
-            throw new RuntimeException("This step is not active for approval");
-        }
-
-        // Lấy Employee hiện tại theo email
-        String email = securityUtils.getCurrentUserEmail();
-        Employee me = userRepository.findByAccount_Email(email)
-                .orElseThrow(() -> new RuntimeException("Employee not found for email: " + email));
-
-        // ---- KIỂM TRA QUYỀN THEO LOẠI APPROVER ----
-        ApprovalStep step = approval.getStep();
-        if (step.getApproverType() == null) {
-            throw new RuntimeException("Step approverType is not set");
-        }
-        switch (step.getApproverType()) {
-            case USER -> {
-                if (step.getEmployee() == null || !step.getEmployee().getId().equals(me.getId())) {
-                    throw new RuntimeException("Bạn không phải người được chỉ định duyệt bước này");
-                }
-            }
-            case POSITION -> {
-                if (step.getDepartment() == null || step.getPosition() == null) {
-                    throw new RuntimeException("Step thiếu department/position yêu cầu");
-                }
-                if (me.getDepartment() == null || me.getPosition() == null
-                        || !step.getDepartment().getId().equals(me.getDepartment().getId())
-                        || !step.getPosition().getId().equals(me.getPosition().getId())) {
-                    throw new RuntimeException("Bạn không đúng vị trí/phòng ban yêu cầu để duyệt bước này");
-                }
-            }
-            default -> throw new RuntimeException("approverType không hỗ trợ");
-        }
-
-        // ---- CẬP NHẬT KẾT QUẢ DUYỆT ----
-        approval.setApprover(me); // ai thực sự đã duyệt
-        approval.setApprovedAt(LocalDateTime.now());
-        approval.setComment(request.getComment());
-        approval.setIsCurrent(false);
-        approval.setStatus(approved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED);
-        contractApprovalRepository.save(approval);
-
-        Contract contract = approval.getContract();
-
-        if (!approved) {
-            contract.setStatus(ContractStatus.REJECTED);
-            contractRepository.save(contract);
-            return ContractMapper.toResponse(contract);
-        }
-        if (step.getAction() == ApprovalAction.APPROVE_ONLY) {
-            String stampText = String.format(
-                    "APPROVED by %s (%s) - %s",
-                    me.getFullName() != null ? me.getFullName() : me.getAccount().getEmail(),
-                    me.getPosition() != null ? me.getPosition().getName() : "N/A",
-                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(LocalDateTime.now())
-            );
-
-            // Ưu tiên placeholder nếu có, ví dụ {{APPROVAL_STAMP}} hoặc {{SIGN:APPROVAL_STAMP}}
-            String ph = step.getSignaturePlaceholder() != null && !step.getSignaturePlaceholder().isBlank()
-                    ? step.getSignaturePlaceholder()
-                    : "APPROVAL_STAMP";
-
-            // Không cần toạ độ. Nếu không có placeholder trong file, method sẽ append xuống cuối.
-            contractFileService.embedSignatureText(
-                    contract.getFilePath(),
-                    stampText,
-                    null, null, null,   // page/x/y: không dùng
-                    10, false,          // font size, bold?
-                    ph
-            );
-        }
-
-        if (Boolean.TRUE.equals(approval.getIsFinalStep())) {
-            contract.setStatus(ContractStatus.APPROVED);
-            contractRepository.save(contract);
-            return ContractMapper.toResponse(contract);
-        }
-
-        contractApprovalRepository.findByContractIdAndStepOrder(
-                contract.getId(), approval.getStepOrder() + 1
-        ).ifPresentOrElse(next -> {
-            next.setIsCurrent(true);
-            contractApprovalRepository.save(next);
-            contract.setStatus(ContractStatus.PENDING_APPROVAL);
-            contractRepository.save(contract);
-        }, () -> { throw new RuntimeException("Next step not found"); });
-
-        return ContractMapper.toResponse(contract);
-    }
-
     @Override
     public ContractResponse getApprovalProgress(Long contractId) {
         Contract contract = contractRepository.findById(contractId)
@@ -374,7 +359,6 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
 
         ContractResponse dto = ContractMapper.toResponse(contract);
 
-        // tìm step hiện tại (nếu có) để set hiển thị
         contractApprovalRepository.findByContractIdAndIsCurrentTrue(contractId)
                 .ifPresent(a -> {
                     dto.setCurrentStepId(a.getId());
@@ -389,7 +373,6 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
 
-        // 1) Nếu đã snapshot vào ContractApproval -> trả "progress thật"
         List<ContractApproval> approvals =
                 contractApprovalRepository.findAllByContractIdOrderByStepOrderAsc(contractId);
 
@@ -404,7 +387,7 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
             List<ApprovalStepResponse> steps = approvals.stream().map(a -> {
                 ApprovalStep s = a.getStep();
                 ApprovalStepResponse r = ApprovalStepResponse.builder()
-                        .id(a.getId()) // id runtime của ContractApproval
+                        .id(a.getId())
                         .stepOrder(a.getStepOrder())
                         .required(a.getRequired())
                         .approverType(s.getApproverType())
@@ -432,7 +415,7 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
             }).toList();
 
             dto.setSteps(steps);
-            // set currentStep* cho tiện FE
+
             contractApprovalRepository.findByContractIdAndIsCurrentTrue(contractId)
                     .ifPresent(a -> {
                         dto.setCurrentStepId(a.getId());
@@ -443,7 +426,7 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
             return dto;
         }
 
-        // 2) Chưa submit -> preview theo flowId (nếu có) hoặc default của template
+        // Preview flow
         ApprovalFlow flow;
         if (flowId != null) {
             flow = flowRepository.findById(flowId)
@@ -465,7 +448,7 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         List<ApprovalStepResponse> previewSteps = flow.getSteps().stream()
                 .sorted(Comparator.comparingInt(ApprovalStep::getStepOrder))
                 .map(s -> ApprovalStepResponse.builder()
-                        .id(s.getId()) // id thiết kế (ApprovalStep)
+                        .id(s.getId())
                         .stepOrder(s.getStepOrder())
                         .required(s.getRequired())
                         .approverType(s.getApproverType())
@@ -481,7 +464,6 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                         .departmentName(s.getDepartment() != null ? s.getDepartment().getName() : null)
                         .action(s.getAction())
                         .signaturePlaceholder(s.getSignaturePlaceholder())
-                        // runtime fields để null => FE hiểu là preview
                         .build()
                 ).toList();
 
@@ -489,6 +471,15 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         return dto;
     }
 
+    @Override
+    public String getEmployeeSignature(Long employeeId) {
+        Employee employee = userRepository.findById(employeeId)
+                .orElseThrow(() -> new RuntimeException("Employee not found"));
 
+        if (employee.getSignatureImage() == null || employee.getSignatureImage().isEmpty()) {
+            throw new RuntimeException("Employee does not have a signature");
+        }
 
+        return employee.getSignatureImage();
+    }
 }

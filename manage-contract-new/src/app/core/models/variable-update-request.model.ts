@@ -19,3 +19,11 @@ export interface TemplateVariableRequest {
   config?: { [key: string]: any };
   allowedValues?: string[];
 }
+
+export interface ContractTemplateCreateRequest {
+  tempFileName: string;
+  name: string;
+  description?: string;
+  categoryId?: number;
+  variables: TemplateVariableRequest[];
+}

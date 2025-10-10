@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.dto.templateVariable;
 
+import com.hieunguyen.ManageContract.common.constants.VariableType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -11,7 +12,7 @@ import java.util.Map;
 public class TemplateVariablePreview {
     private String varName;
     private Integer orderIndex;
-    private String varType;
+    private VariableType varType;
     private Map<String, Object> config;
     private List<String> allowedValues;
 }

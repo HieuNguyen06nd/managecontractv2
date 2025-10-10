@@ -30,6 +30,9 @@ public class TemplateTableVariable {
     @JsonManagedReference
     private List<TableColumn> columns;
 
+    @Column(name = "editable")
+    private Boolean editable = true;
+
     private Integer minRows = 1;
     private Integer maxRows = 100;
     private Integer orderIndex;

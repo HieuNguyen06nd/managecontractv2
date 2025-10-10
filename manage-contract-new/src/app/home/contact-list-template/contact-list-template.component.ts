@@ -27,7 +27,7 @@ export class ContactListTemplateComponent implements OnInit {
 
   searchTerm = '';
   categoryFilter: number | null = null;
-  statusFilter: '' | 'active' | 'inactive' = '';
+  statusFilter: '' | 'ACTIVE' | 'INACTIVE' = '';
 
   pageSizeOptions: number[] = [6, 12, 24];
   pageSize = 6;
@@ -41,7 +41,7 @@ export class ContactListTemplateComponent implements OnInit {
     name: '',
     description: '',
     filePath: '',
-    status: 'active',
+    status: 'ACTIVE',
     variables: []
   };
 
@@ -93,11 +93,14 @@ export class ContactListTemplateComponent implements OnInit {
   }
 
   updateTemplateStatus(template: ContractTemplateResponse): void {
-    template.status = template.status === 'active' ? 'inactive' : 'active';
-    this.templateService.updateTemplateStatus(template.id, { status: template.status }).subscribe({
+    // Chuyển đổi từ ACTIVE/INACTIVE (BE) sang active/inactive (Service)
+    const newStatus = template.status === 'ACTIVE' ? 'inactive' : 'active';
+    
+    this.templateService.updateTemplateStatus(template.id, { status: newStatus }).subscribe({
       next: () => {
+        // Cập nhật trạng thái trong danh sách sau khi thành công
+        template.status = template.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
         this.toastr.success('Trạng thái hợp đồng đã được cập nhật');
-        this.fetchTemplates();
       },
       error: (err) => {
         this.toastr.error('Cập nhật trạng thái thất bại');
@@ -119,7 +122,7 @@ export class ContactListTemplateComponent implements OnInit {
       name: '',
       description: '',
       filePath: '',
-      status: 'active',
+      status: 'ACTIVE',
       variables: []
     };
     this.isEditMode = false; 
@@ -191,11 +194,11 @@ export class ContactListTemplateComponent implements OnInit {
   }
 
   getStatusLabel(t: ContractTemplateResponse): string {
-    return t.status === 'active' ? 'Đang hoạt động' : 'Ngừng hoạt động';
+    return t.status === 'ACTIVE' ? 'Đang hoạt động' : 'Ngừng hoạt động';
   }
 
   getStatusClass(t: ContractTemplateResponse): string {
-    return t.status === 'active' ? 'status-active' : 'status-inactive';
+    return t.status === 'ACTIVE' ? 'status-active' : 'status-inactive';
   }
 
   // Filter templates based on search and filters

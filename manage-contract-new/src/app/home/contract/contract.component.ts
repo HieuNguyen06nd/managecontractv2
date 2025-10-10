@@ -5,7 +5,8 @@ import { Observable, of } from 'rxjs';
 import { map, switchMap, catchError, finalize, tap } from 'rxjs/operators';
 import { ToastrService } from 'ngx-toastr';
 import { ContractTemplateService } from '../../core/services/contract-template.service';
-import { ContractTemplateResponse, TemplateVariable } from '../../core/models/contract-template-response.model';
+import { ContractTemplateResponse, TemplateVariable  } from '../../core/models/contract-template-response.model';
+import { VariableType } from '../../core/models/template-preview-response.model';
 import { ApprovalFlowService, ApprovalFlowRequest, ApprovalStepRequest, 
   ApproverType,ApprovalAction, ApprovalFlowResponse } from '../../core/services/contract-flow.service';
 
@@ -68,6 +69,8 @@ export class ContractComponent implements OnInit {
   defaultFlowError = '';
 
   positionsBySigner = new Map<number, PositionResponse[]>();
+
+  VariableType = VariableType;
 
   constructor(
     private fb: FormBuilder,
@@ -207,10 +210,10 @@ export class ContractComponent implements OnInit {
     let validators = variable.required ? [Validators.required] : [];
 
     switch (variable.varType) {
-      case 'BOOLEAN':
+      case VariableType.BOOLEAN:
         defaultValue = false;
         break;
-      case 'NUMBER':
+      case VariableType.NUMBER:
         defaultValue = null;
         validators.push(Validators.pattern(/^-?\d*\.?\d+$/));
         if (extendedVar.config?.min !== undefined) {
@@ -220,19 +223,19 @@ export class ContractComponent implements OnInit {
           validators.push(Validators.max(extendedVar.config.max));
         }
         break;
-      case 'DATE':
+      case VariableType.DATE:
         defaultValue = '';
         break;
-      case 'DROPDOWN':
+      case VariableType.DROPDOWN:
         defaultValue = extendedVar.config?.options?.[0] || '';
         break;
-      case 'LIST':
+      case VariableType.LIST:
         defaultValue = extendedVar.config?.items?.[0] || '';
         break;
-      case 'TABLE':
-        defaultValue = [];
+      case VariableType.TABLE:
+         defaultValue = this.initializeTableData(extendedVar.config);
         break;
-      case 'TEXTAREA':
+      case VariableType.TEXTAREA:
         defaultValue = '';
         break;
       default: // STRING và các kiểu khác
@@ -246,8 +249,33 @@ export class ContractComponent implements OnInit {
       required: [variable.required],
       config: [extendedVar.config || {}],
       allowedValues: [extendedVar.allowedValues || []],
-      value: [defaultValue, validators]
+      value: [defaultValue, validators],
+       tableData: variable.varType === VariableType.TABLE ? 
+      this.fb.array(this.initializeTableRows(extendedVar.config)) : this.fb.array([])
     });
+  }
+
+  private initializeTableData(config: any): any[] {
+    if (!config?.columns) return [];
+    
+    // Tạo một dòng mặc định với các cột
+    const defaultRow: any = {};
+    config.columns.forEach((column: any) => {
+      defaultRow[column.name] = '';
+    });
+    
+    return [defaultRow];
+  }
+
+  private initializeTableRows(config: any): FormGroup[] {
+    if (!config?.columns) return [];
+    
+    const defaultRow: any = {};
+    config.columns.forEach((column: any) => {
+      defaultRow[column.name] = '';
+    });
+    
+    return [this.fb.group(defaultRow)];
   }
 
   // Step 3
@@ -410,9 +438,9 @@ export class ContractComponent implements OnInit {
 
     const sigCfg = this.contractForm.get('signatureConfig')!.value;
     let createFlow$: Observable<unknown> = of(null);
-    this.lastCreatedFlowId = null;
+    let flowIdForContract: number | null = null; // THÊM BIẾN NÀY
 
-    // Kiểm tra nếu chọn 'new' tạo flow mới
+    // Xác định flowId dựa trên flowOption
     if (sigCfg.flowOption === 'new') {
       const steps: ApprovalStepRequest[] = this.newSignersFormArray.controls.map((ctrl, idx) => {
         const v = ctrl.value;
@@ -448,31 +476,38 @@ export class ContractComponent implements OnInit {
         tap(res => {
           const id = res?.data?.id;
           this.lastCreatedFlowId = typeof id === 'number' ? id : null;
+          flowIdForContract = this.lastCreatedFlowId; // SET FLOW ID MỚI
         })
       );
+    } else if (sigCfg.flowOption === 'default') {
+      // SỬA LỖI: Sử dụng defaultFlowId từ template
+      flowIdForContract = this.selectedTemplate?.defaultFlowId || null;
+      createFlow$ = of(null); // Không cần tạo flow mới
+    } else if (sigCfg.flowOption === 'existing') {
+      // TODO: Xử lý cho trường hợp chọn flow có sẵn
+      flowIdForContract = null;
+      createFlow$ = of(null);
     }
 
-    // Kiểm tra flowOption là 'default', lấy flow từ template
-    if (sigCfg.flowOption === 'default' && this.selectedTemplate?.defaultFlowId) {
-      this.loadDefaultFlowForTemplate(this.selectedTemplate.defaultFlowId);  
-    }
-
-    // Tạo hợp đồng → (nếu submitNow) gọi trình ký ngay
+    // Tạo hợp đồng
     createFlow$
       .pipe(
         switchMap(() => {
-          const req = this.buildCreateRequest(this.lastCreatedFlowId);
+          const req = this.buildCreateRequest(flowIdForContract); // SỬA: dùng flowIdForContract
           return this.contractService.createContract(req);
         }),
         switchMap((res) => {
           const contractId = res?.data?.id as number | undefined;
           if (!submitNow || !contractId) return of(res);
 
-          const flowIdForSubmit =
-            sigCfg.flowOption === 'new' ? (this.lastCreatedFlowId ?? null) : null;
+          // Xác định flowId cho submit
+           const flowIdForSubmit = 
+            sigCfg.flowOption === 'new' ? (this.lastCreatedFlowId ?? undefined) :
+            sigCfg.flowOption === 'default' ? (this.selectedTemplate?.defaultFlowId ?? undefined) :
+            undefined;
 
           return this.contractApprovalService
-            .submitForApproval(contractId, flowIdForSubmit ?? undefined)
+            .submitForApproval(contractId, flowIdForSubmit)
             .pipe(map(() => res));
         }),
         finalize(() => (this.isSaving = false))
@@ -502,7 +537,7 @@ export class ContractComponent implements OnInit {
   isTextField(control: AbstractControl): boolean {
     const variableGroup = control as FormGroup;
     const type = variableGroup.get('varType')?.value;
-    return type === 'STRING' || type === 'TEXTAREA';
+    return type === 'STRING' || type === 'TEXT' || type === 'TEXTAREA';
   }
 
   isNumberField(control: AbstractControl): boolean {
@@ -528,11 +563,6 @@ export class ContractComponent implements OnInit {
   isListField(control: AbstractControl): boolean {
     const variableGroup = control as FormGroup;
     return variableGroup.get('varType')?.value === 'LIST';
-  }
-
-  isTableField(control: AbstractControl): boolean {
-    const variableGroup = control as FormGroup;
-    return variableGroup.get('varType')?.value === 'TABLE';
   }
 
   getDropdownOptions(control: AbstractControl): string[] {
@@ -562,21 +592,6 @@ export class ContractComponent implements OnInit {
   getTextareaRows(control: AbstractControl): number {
     const variableGroup = control as FormGroup;
     return variableGroup.get('config')?.value?.rows || 4;
-  }
-
-  // Xử lý table data
-  addTableRow(control: AbstractControl): void {
-    const variableGroup = control as FormGroup;
-    const currentValue = variableGroup.get('value')?.value || [];
-    const newRow = this.createEmptyTableRow(variableGroup);
-    variableGroup.get('value')?.setValue([...currentValue, newRow]);
-  }
-
-  removeTableRow(control: AbstractControl, index: number): void {
-    const variableGroup = control as FormGroup;
-    const currentValue = variableGroup.get('value')?.value || [];
-    currentValue.splice(index, 1);
-    variableGroup.get('value')?.setValue([...currentValue]);
   }
 
   private createEmptyTableRow(control: AbstractControl): any {
@@ -641,16 +656,16 @@ export class ContractComponent implements OnInit {
     return labels[category] || category;
   }
   
-  getTypeLabel(type: string): string {
-    const labels: any = { 
-      'STRING': 'Văn bản', 
-      'TEXTAREA': 'Văn bản dài', 
-      'NUMBER': 'Số', 
-      'DATE': 'Ngày tháng',
-      'BOOLEAN': 'True/False',
-      'DROPDOWN': 'Dropdown',
-      'LIST': 'Danh sách',
-      'TABLE': 'Bảng'
+  getTypeLabel(type: VariableType): string {
+    const labels: { [key in VariableType]: string } = { 
+      [VariableType.TEXT]: 'Văn bản', 
+      [VariableType.TEXTAREA]: 'Văn bản dài', 
+      [VariableType.NUMBER]: 'Số', 
+      [VariableType.DATE]: 'Ngày tháng',
+      [VariableType.BOOLEAN]: 'True/False',
+      [VariableType.DROPDOWN]: 'Dropdown',
+      [VariableType.LIST]: 'Danh sách',
+      [VariableType.TABLE]: 'Bảng'
     };
     return labels[type] || type;
   }
@@ -678,15 +693,16 @@ export class ContractComponent implements OnInit {
       const v = (ctrl as FormGroup).value;
       let varValue: any = v.value;
       
-      // Xử lý đặc biệt cho các kiểu dữ liệu
       switch (v.varType) {
-        case 'BOOLEAN':
+        case VariableType.BOOLEAN:
           varValue = v.value ? 'true' : 'false';
           break;
-        case 'TABLE':
-          varValue = Array.isArray(v.value) ? JSON.stringify(v.value) : '[]';
+        case VariableType.TABLE:
+          // SỬA LỖI: Lấy dữ liệu từ tableData thay vì value
+          const tableData = ctrl.get('tableData')?.value || [];
+          varValue = JSON.stringify(tableData);
           break;
-        case 'NUMBER':
+        case VariableType.NUMBER:
           varValue = v.value !== null && v.value !== '' ? v.value.toString() : '';
           break;
         default:
@@ -773,7 +789,91 @@ export class ContractComponent implements OnInit {
     });
   }
 
-  trackByTemplateId = (_: number, t: ContractTemplateResponse) => t?.id;
-  trackByIndex = (index: number) => index;
-  trackByStepOrder = (_: number, s: { stepOrder?: number }) => s?.stepOrder ?? _;
-}
+  // ====== CÁC PHƯƠNG THỨC XỬ LÝ TABLE ======
+
+    // Lấy FormArray của table data
+    getTableData(variableGroup: AbstractControl): FormArray {
+      return variableGroup.get('tableData') as FormArray;
+    }
+
+    // Thêm dòng mới vào table
+    addTableRow(variableGroup: AbstractControl): void {
+      const tableData = this.getTableData(variableGroup);
+      const columns = this.getTableColumns(variableGroup);
+      
+      const newRow: any = {};
+      columns.forEach((column: any) => {
+        newRow[column.name] = '';
+      });
+      
+      // Sử dụng patchValue để thêm row mới mà không re-render toàn bộ
+      tableData.push(this.fb.group(newRow));
+      
+      // Cập nhật giá trị với debounce
+      this.debounceTableUpdate(variableGroup);
+    }
+
+    // Xóa dòng khỏi table
+    removeTableRow(variableGroup: AbstractControl, rowIndex: number): void {
+      const tableData = this.getTableData(variableGroup);
+      if (tableData.length > 1) {
+        tableData.removeAt(rowIndex);
+        this.updateTableValue(variableGroup); // Cập nhật ngay lập tức khi xóa
+      }
+    }
+
+    // Cập nhật giá trị table từ FormArray sang biến chính
+    updateTableValue(variableGroup: AbstractControl): void {
+      const tableData = this.getTableData(variableGroup);
+      const value = tableData.value;
+      
+      // Sử dụng patchValue thay vì setValue để tránh mất focus
+      variableGroup.patchValue({
+        value: value
+      }, { emitEvent: false }); // emitEvent: false để tránh vòng lặp
+    }
+    // Lấy danh sách các dòng table
+    getTableRows(variableGroup: AbstractControl): any[] {
+      const tableData = this.getTableData(variableGroup);
+      return tableData.controls.map(control => control.value);
+    }
+    // Kiểm tra xem có phải là table không
+    isTableField(control: AbstractControl): boolean {
+      const variableGroup = control as FormGroup;
+      return variableGroup.get('varType')?.value === VariableType.TABLE;
+    }
+
+    onTableInput(variableGroup: AbstractControl, rowIndex: number, columnName: string, event: any): void {
+      const value = event.target.value;
+      
+      // Cập nhật giá trị ngay lập tức mà không cần đợi blur
+      const tableData = this.getTableData(variableGroup);
+      const row = tableData.at(rowIndex) as FormGroup;
+      row.get(columnName)?.setValue(value, { emitEvent: false });
+      
+      // Debounce để cập nhật giá trị chính (tránh performance issues)
+      this.debounceTableUpdate(variableGroup);
+    }
+
+    // Biến để debounce
+    private tableUpdateTimeout: any;
+
+    private debounceTableUpdate(variableGroup: AbstractControl): void {
+      // Clear timeout cũ
+      if (this.tableUpdateTimeout) {
+        clearTimeout(this.tableUpdateTimeout);
+      }
+      
+      // Set timeout mới
+      this.tableUpdateTimeout = setTimeout(() => {
+        this.updateTableValue(variableGroup);
+      }, 300); // 300ms debounce
+    }
+
+      trackByTemplateId = (_: number, t: ContractTemplateResponse) => t?.id;
+      trackByIndex = (index: number) => index;
+      trackByStepOrder = (_: number, s: { stepOrder?: number }) => s?.stepOrder ?? _;
+      trackByTableRow(index: number, item: any): number {
+        return index;
+      }
+    }

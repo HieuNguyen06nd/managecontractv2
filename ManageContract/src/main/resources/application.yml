@@ -90,3 +90,7 @@ jodconverter:
 logging:
   level:
     org.jodconverter: DEBUG
+
+onlyoffice:
+  url: http://localhost:8081
+  jwt-secret: mysecret123

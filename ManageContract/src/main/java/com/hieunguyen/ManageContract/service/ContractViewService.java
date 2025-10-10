@@ -1,6 +1,8 @@
 package com.hieunguyen.ManageContract.service;
 
 import com.hieunguyen.ManageContract.dto.file.FilePayload;
+import com.hieunguyen.ManageContract.entity.Contract;
+import com.hieunguyen.ManageContract.repository.ContractRepository;
 import com.hieunguyen.ManageContract.security.jwt.SecurityUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.FileSystemResource;
@@ -15,42 +17,81 @@ import java.io.File;
 public class ContractViewService {
 
     private final ContractFileService contractFileService;
-    private final SecurityUtil securityUtil; // nếu cần check quyền
+    private final ContractRepository contractRepository;
+    private final SecurityUtil securityUtil;
 
     /**
-     * View inline PDF.
-     * - Nếu hợp đồng mới có DOCX, sẽ convert sang PDF rồi trả inline.
+     * View inline PDF - luôn trả về PDF
      */
     public FilePayload viewPdf(Long contractId) {
-        File pdf = contractFileService.getPdfOrConvert(contractId);
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new RuntimeException("Contract not found"));
 
+        File pdf = getContractPdf(contractId);
         Resource res = new FileSystemResource(pdf);
-        return new FilePayload(res, pdf.getName(), MediaType.APPLICATION_PDF, pdf.length());
+
+        return new FilePayload(res,
+                getPdfFileName(contract),
+                MediaType.APPLICATION_PDF,
+                pdf.length());
     }
 
     /**
-     * Download file gốc (DOCX nếu còn nháp, PDF nếu đã có).
+     * Download file - luôn là PDF
      */
     public FilePayload downloadOriginal(Long contractId) {
-        File file = contractFileService.getContractFile(contractId);
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new RuntimeException("Contract not found"));
 
-        MediaType mediaType = resolveMediaType(file.getName());
-        Resource res = new FileSystemResource(file);
-        return new FilePayload(res, file.getName(), mediaType, file.length());
+        File pdf = getContractPdf(contractId);
+        Resource res = new FileSystemResource(pdf);
+
+        return new FilePayload(res,
+                getPdfFileName(contract),
+                MediaType.APPLICATION_PDF,
+                pdf.length());
     }
 
-    // --------- helpers ---------
+    /**
+     * Lấy file PDF của contract
+     */
+    private File getContractPdf(Long contractId) {
+        try {
+            File pdfFile = contractFileService.getContractFile(contractId);
+            // Kiểm tra file có tồn tại và có dữ liệu không
+            if (pdfFile.exists() && pdfFile.length() > 0) {
+                return pdfFile;
+            } else {
+                throw new RuntimeException("PDF file is empty or does not exist");
+            }
+        } catch (RuntimeException e) {
+            // Nếu file chưa tồn tại, tạo mới
+            Contract contract = contractRepository.findById(contractId)
+                    .orElseThrow(() -> new RuntimeException("Contract not found"));
 
-    private MediaType resolveMediaType(String filename) {
-        String lower = filename.toLowerCase();
-        if (lower.endsWith(".pdf")) {
-            return MediaType.APPLICATION_PDF;
+            // Tạo file PDF từ template
+            String filePath = contractFileService.generateContractFile(contract);
+
+            // Kiểm tra file mới tạo
+            File newPdfFile = new File(filePath);
+            if (newPdfFile.exists() && newPdfFile.length() > 0) {
+                return newPdfFile;
+            } else {
+                throw new RuntimeException("Failed to generate PDF file");
+            }
         }
-        if (lower.endsWith(".docx")) {
-            return MediaType.parseMediaType(
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    }
+
+    /**
+     * Tạo tên file PDF
+     */
+    private String getPdfFileName(Contract contract) {
+        String baseName = "contract";
+        if (contract.getContractNumber() != null && !contract.getContractNumber().isEmpty()) {
+            baseName = contract.getContractNumber();
+        } else if (contract.getTitle() != null && !contract.getTitle().isEmpty()) {
+            baseName = contract.getTitle().replaceAll("[^a-zA-Z0-9\\-\\.]", "_");
         }
-        // fallback
-        return MediaType.APPLICATION_OCTET_STREAM;
+        return baseName + ".pdf";
     }
 }

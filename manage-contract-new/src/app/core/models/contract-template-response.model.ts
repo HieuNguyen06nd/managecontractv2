@@ -28,7 +28,7 @@ export interface ContractTemplateResponse {
   name?: string;
   description?: string;
   filePath: string;
-  status: 'active' | 'inactive'; 
+  status: 'ACTIVE' | 'INACTIVE'; 
 
   createdBy?: AuthAccountResponse;
   variables?: TemplateVariable[];

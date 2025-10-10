@@ -89,7 +89,7 @@
       <small class="text-muted">
         Tìm thấy <strong>{{ totalTemplates }}</strong> kết quả
         <span *ngIf="categoryFilter"> trong danh mục <strong>{{ getCategoryName(categoryFilter) }}</strong></span>
-        <span *ngIf="statusFilter"> với trạng thái <strong>{{ statusFilter === 'active' ? 'đang hoạt động' : 'ngừng hoạt động' }}</strong></span>
+        <span *ngIf="statusFilter"> với trạng thái <strong>{{ statusFilter === 'ACTIVE' ? 'đang hoạt động' : 'ngừng hoạt động' }}</strong></span>
       </small>
     </div>
 
@@ -122,7 +122,7 @@
                 <i class="fas fa-edit small-icon me-1"></i> Sửa
               </button>
               <button class="btn btn-outline-info btn-sm" (click)="updateTemplateStatus(t)">
-                <i class="fas fa-toggle-on small-icon me-1"></i> {{ t.status === 'active' ? 'Tắt hoạt động' : 'Bật hoạt động' }}
+                <i class="fas fa-toggle-on small-icon me-1"></i> {{ t.status === 'ACTIVE' ? 'Tắt hoạt động' : 'Bật hoạt động' }}
               </button>
             </div>
           </div>

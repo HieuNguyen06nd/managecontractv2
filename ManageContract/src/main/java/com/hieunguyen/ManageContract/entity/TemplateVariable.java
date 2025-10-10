@@ -18,6 +18,7 @@ public class TemplateVariable {
     private String varName;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "var_type", length = 50)
     private VariableType varType;
 
     private Boolean required;

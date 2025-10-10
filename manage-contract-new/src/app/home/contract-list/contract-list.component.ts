@@ -10,6 +10,7 @@ import { retryWhen, scan, delayWhen } from 'rxjs/operators';
 import { ContractApprovalService } from '../../core/services/contract-approval.service';
 import { ApprovalFlowService, ApprovalFlowResponse, ApprovalStepResponse } from '../../core/services/contract-flow.service';
 import { FormBuilder, FormGroup } from '@angular/forms'; 
+import { ResponseData } from '../../core/models/response-data.model';
 
 type UiStatus = 'all' | 'draft' | 'pending' | 'signed' | 'cancelled';
 
@@ -264,8 +265,8 @@ export class ContractListComponent implements OnInit {
     this.currentFlow.set(null);
 
     // gọi preview (BE sẽ tự quyết định: progress hay preview)
-    this.approvalService.getPreview(item.id).subscribe({
-      next: res => {
+    this.contractService.getContractById(item.id).subscribe({
+      next: (res: ResponseData<ContractResponse>) => {
         const d = res.data as any; // { hasFlow:boolean, steps:[...] }
         this.currentFlow.set({
           exists: !!d.hasFlow,  // <-- chỉ true khi đã submit

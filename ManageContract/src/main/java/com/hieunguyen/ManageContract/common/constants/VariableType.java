@@ -1,6 +1,7 @@
 package com.hieunguyen.ManageContract.common.constants;
 
 public enum VariableType {
+    TEXT,
     STRING,
     NUMBER,
     DATE,

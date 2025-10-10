@@ -58,13 +58,7 @@ export interface ContractResponse {
 
   approvals?: ContractApprovalItem[];
 }
-export interface SignStepRequest {
-  imageBase64: string;        
+export interface SignStepRequest {     
   placeholder?: string | null; 
-  page?: number | null;       
-  x?: number | null;
-  y?: number | null;
-  width?: number | null;     
-  height?: number | null;
   comment?: string | null;
 }

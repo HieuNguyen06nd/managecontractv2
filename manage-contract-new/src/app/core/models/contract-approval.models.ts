@@ -20,12 +20,6 @@ export interface StepApprovalRequest {
  * Vẫn định nghĩa để dùng khi backend bổ sung endpoint.
  */
 export interface SignStepRequest {
-  imageBase64: string;
   comment?: string | null;
   placeholder?: string | null;
-  page?: number;   // <= optional
-  x?: number;      // <= optional
-  y?: number;      // <= optional
-  width?: number;  // <= optional
-  height?: number; // <= optional
 }

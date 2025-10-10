@@ -5,16 +5,13 @@ import com.hieunguyen.ManageContract.dto.ResponseData;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.dto.contract.CreateContractRequest;
 import com.hieunguyen.ManageContract.dto.file.FilePayload;
-import com.hieunguyen.ManageContract.service.ContractFileService;
 import com.hieunguyen.ManageContract.service.ContractService;
 import com.hieunguyen.ManageContract.service.ContractViewService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.File;
 import java.util.List;
 
 @RestController
@@ -23,8 +20,7 @@ import java.util.List;
 public class ContractController {
 
     private final ContractService contractService;
-    private final ContractViewService contractViewService; // <-- inject service view PDF
-    private final ContractFileService contractFileService;
+    private final ContractViewService contractViewService;
 
     @PostMapping("/create")
     public ResponseData<ContractResponse> createContract(@RequestBody CreateContractRequest request) {
@@ -32,41 +28,34 @@ public class ContractController {
         return new ResponseData<>(200, "Tạo hợp đồng thành công", response);
     }
 
-    @GetMapping("/{id}/preview")
-    public ResponseData<String> preview(@PathVariable Long id) {
-        String html = contractService.previewContract(id);
-        return new ResponseData<>(200, "Preview file contract", html);
-    }
-
-    @PostMapping("/preview")
-    public ResponseData<String> previewTemplate(@RequestBody CreateContractRequest request) {
-        String html = contractService.previewTemplate(request);
-        return new ResponseData<>(200, "Preview template", html);
-    }
-
-    // ---------- NEW: View PDF inline ----------
-    @GetMapping("/{id}/file")
+    // ---------- XEM PDF TRÌNH DUYỆT ----------
+    @GetMapping("/{id}/view")
     public ResponseEntity<Resource> viewContractPdf(@PathVariable Long id) {
-        var pdf = contractFileService.getPdfOrConvert(id);
+        FilePayload filePayload = contractViewService.viewPdf(id);
+
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
+                .contentType(filePayload.getMediaType())
                 .cacheControl(CacheControl.noCache().mustRevalidate())
                 .header(HttpHeaders.PRAGMA, "no-cache")
                 .header(HttpHeaders.EXPIRES, "0")
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"contract.pdf\"")
-                .body(new FileSystemResource(pdf));
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + filePayload.getFilename() + "\"")
+                .body(filePayload.getResource());
     }
 
-    @GetMapping("/{id}/file/download")
+    // ---------- TẢI XUỐNG PDF ----------
+    @GetMapping("/{id}/download")
     public ResponseEntity<Resource> downloadContractFile(@PathVariable Long id) {
-        var pdf = contractFileService.getPdfOrConvert(id);
+        FilePayload filePayload = contractViewService.downloadOriginal(id);
+
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
+                .contentType(filePayload.getMediaType())
                 .cacheControl(CacheControl.noCache().mustRevalidate())
                 .header(HttpHeaders.PRAGMA, "no-cache")
                 .header(HttpHeaders.EXPIRES, "0")
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"contract.pdf\"")
-                .body(new FileSystemResource(pdf));
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + filePayload.getFilename() + "\"")
+                .body(filePayload.getResource());
     }
 
     @GetMapping("/my")
@@ -83,7 +72,7 @@ public class ContractController {
         return new ResponseData<>(200, "Cập nhật hợp đồng thành công", response);
     }
 
-    // ---------- NEW: Change Approver ----------
+    // ---------- THAY ĐỔI NGƯỜI PHÊ DUYỆT ----------
     @PutMapping("/{contractId}/approver/{stepId}")
     public ResponseData<String> changeApprover(
             @PathVariable Long contractId,
@@ -96,8 +85,7 @@ public class ContractController {
 
     @GetMapping("/{id}")
     public ResponseData<ContractResponse> getById(@PathVariable Long id) {
-        // dùng service hoặc repo đều được, miễn trả về ContractResponse
-        ContractResponse res = contractService.getById(id); // bạn thêm hàm này trong service
+        ContractResponse res = contractService.getById(id);
         return new ResponseData<>(200, "OK", res);
     }
 
@@ -114,5 +102,4 @@ public class ContractController {
         contractService.cancelContract(contractId);
         return new ResponseData<>(200, "Huỷ thành công");
     }
-
 }
