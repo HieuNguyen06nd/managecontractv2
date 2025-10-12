@@ -3,7 +3,10 @@ package com.hieunguyen.ManageContract.entity;
 import com.hieunguyen.ManageContract.common.constants.ContractStatus;
 import jakarta.persistence.*;
 import lombok.Data;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
@@ -35,5 +38,16 @@ public class Contract {
 
     @OneToMany(mappedBy = "contract", cascade = CascadeType.ALL)
     private List<ContractVariableValue> variableValues;
+
+    @CreatedDate
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @Column(name = "file_generated_at")
+    private LocalDateTime fileGeneratedAt;
 }
 

@@ -8,74 +8,73 @@ import { ContractResponse } from '../models/contract.model';
 
 @Injectable({ providedIn: 'root' })
 export class ContractApprovalService {
-  private readonly baseUrl = `${environment.apiUrl}/approval`;
-  private readonly baseUrl2 = `${environment.apiUrl}/contracts`;
+  private readonly baseUrl = `${environment.apiUrl}/contracts/approvals`;
 
   constructor(private http: HttpClient) {}
 
   // ===== CÁC PHƯƠNG THỨC PHÊ DUYỆT =====
 
   /**
-   * GET /api/approval/contracts/my-pending - Hợp đồng chờ tôi xử lý
+   * GET /api/contracts/approvals/my-pending - Hợp đồng chờ tôi xử lý
    */
   getMyPendingContracts(): Observable<ResponseData<ContractResponse[]>> {
     return this.http.get<ResponseData<ContractResponse[]>>(
-      `${this.baseUrl2}/approvals/my-pending`
+      `${this.baseUrl}/my-pending`
     );
   }
 
   /**
-   * GET /api/approval/contracts/my-handled?status= - Hợp đồng tôi đã xử lý
+   * GET /api/contracts/approvals/my-handled?status= - Hợp đồng tôi đã xử lý
    */
   getMyHandledContracts(status: string): Observable<ResponseData<ContractResponse[]>> {
     const params = new HttpParams().set('status', status);
     return this.http.get<ResponseData<ContractResponse[]>>(
-      `${this.baseUrl2}/approvals/my-handled`,
+      `${this.baseUrl}/my-handled`,
       { params }
     );
   }
 
   /**
-   * POST /api/approval/steps/{stepId}/approve - Phê duyệt bước
+   * POST /api/contracts/approvals/{contractId}/steps/{stepId}/approve - Phê duyệt bước
    */
   approveStep(contractId: number, stepId: number, body: StepApprovalRequest): Observable<ResponseData<ContractResponse>> {
     return this.http.post<ResponseData<ContractResponse>>(
-      `${this.baseUrl}/steps/${stepId}/approve`,
+      `${this.baseUrl}/${contractId}/steps/${stepId}/approve`,
       body
     );
   }
 
   /**
-   * POST /api/approval/steps/{stepId}/reject - Từ chối bước
+   * POST /api/contracts/approvals/{contractId}/steps/{stepId}/reject - Từ chối bước
    */
   rejectStep(contractId: number, stepId: number, body: StepApprovalRequest): Observable<ResponseData<ContractResponse>> {
     return this.http.post<ResponseData<ContractResponse>>(
-      `${this.baseUrl}/steps/${stepId}/reject`,
+      `${this.baseUrl}/${contractId}/steps/${stepId}/reject`,
       body
     );
   }
 
   /**
-   * POST /api/approval/contracts/{contractId}/steps/{stepId}/sign - Ký bước
+   * POST /api/contracts/approvals/{contractId}/steps/{stepId}/sign - Ký bước
    */
   signStep(contractId: number, stepId: number, body: SignStepRequest): Observable<ResponseData<ContractResponse>> {
     return this.http.post<ResponseData<ContractResponse>>(
-      `${this.baseUrl}/contracts/${contractId}/steps/${stepId}/sign`,
+      `${this.baseUrl}/${contractId}/steps/${stepId}/sign`,
       body
     );
   }
 
   /**
-   * GET /api/approval/contracts/{contractId}/progress - Tiến trình phê duyệt
+   * GET /api/contracts/approvals/{contractId}/progress - Tiến trình phê duyệt
    */
   getApprovalProgress(contractId: number): Observable<ResponseData<ContractResponse>> {
     return this.http.get<ResponseData<ContractResponse>>(
-      `${this.baseUrl}/contracts/${contractId}/progress`
+      `${this.baseUrl}/${contractId}/progress`
     );
   }
 
   /**
-   * POST /api/approval/contracts/{contractId}/submit - Gửi phê duyệt
+   * POST /api/contracts/approvals/{contractId}/submit - Gửi phê duyệt
    */
   submitForApproval(contractId: number, flowId?: number): Observable<ResponseData<ContractResponse>> {
     let params = new HttpParams();
@@ -83,8 +82,22 @@ export class ContractApprovalService {
       params = params.set('flowId', flowId.toString());
     }
     return this.http.post<ResponseData<ContractResponse>>(
-      `${this.baseUrl}/contracts/${contractId}/submit`,
+      `${this.baseUrl}/${contractId}/submit`,
       {},
+      { params }
+    );
+  }
+
+  /**
+   * GET /api/contracts/approvals/{contractId}/preview - Preview approval flow
+   */
+  previewApprovalFlow(contractId: number, flowId?: number): Observable<ResponseData<ContractResponse>> {
+    let params = new HttpParams();
+    if (flowId) {
+      params = params.set('flowId', flowId.toString());
+    }
+    return this.http.get<ResponseData<ContractResponse>>(
+      `${this.baseUrl}/${contractId}/preview`,
       { params }
     );
   }

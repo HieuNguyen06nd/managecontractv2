@@ -5,8 +5,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { map } from 'rxjs/operators';
 import { ResponseData } from '../models/response-data.model';
-import { ContractResponse, VariableValueRequest, VariableValueResponse,CreateContractRequest } from '../models/contract.model';
-
+import { ContractResponse, VariableValueRequest, VariableValueResponse, CreateContractRequest } from '../models/contract.model';
 
 function normalizeContract(c: ContractResponse): ContractResponse {
   const vs = (c as any).variables as VariableValueResponse[] | undefined;
@@ -61,35 +60,33 @@ export class ContractService {
 
   /** URL nhúng PDF vào <iframe> (Chrome/Edge viewer tham số mặc định) */
   buildPdfViewUrl(contractId: number, viewerParams = '#toolbar=1&navpanes=1&zoom=page-width'): string {
-    return `${this.baseUrl}/${contractId}/file${viewerParams || ''}`;
+    return `${this.baseUrl}/${contractId}/view${viewerParams || ''}`;
   }
 
   /** URL tải PDF trực tiếp */
-  /** URL tải PDF trực tiếp */
   buildPdfDownloadUrl(contractId: number, cacheBust?: number): string {
-    const base = `${this.baseUrl}/${contractId}/file/download`;
+    const base = `${this.baseUrl}/${contractId}/download`;
     return cacheBust ? `${base}?t=${cacheBust}` : base;
   }
 
-
   /** GET PDF dạng Blob (nếu bạn muốn tự tạo objectURL) */
   getContractPdfBlob(contractId: number, cacheBust?: number): Observable<Blob> {
-    const url = `${this.baseUrl}/${contractId}/file${cacheBust ? `?t=${cacheBust}` : ''}`;
+    const url = `${this.baseUrl}/${contractId}/view${cacheBust ? `?t=${cacheBust}` : ''}`;
     return this.http.get(url, { responseType: 'blob' });
   }
 
   /** GET PDF tải về dạng Blob */
   downloadContractPdfBlob(contractId: number, cacheBust?: number): Observable<Blob> {
-    const url = `${this.baseUrl}/${contractId}/file/download${cacheBust ? `?t=${cacheBust}` : ''}`;
+    const url = `${this.baseUrl}/${contractId}/download${cacheBust ? `?t=${cacheBust}` : ''}`;
     return this.http.get(url, { responseType: 'blob' });
   }
 
-    /** PUT /api/contracts/{id} */
+  /** PUT /api/contracts/{id} */
   updateContract(id: number, request: CreateContractRequest): Observable<ResponseData<ContractResponse>> {
     return this.http.put<ResponseData<ContractResponse>>(`${this.baseUrl}/${id}`, request);
   }
 
-  // ===== NEW: Change Approver =====
+  // ===== Change Approver =====
 
   /** PUT /api/contracts/{contractId}/approver/{stepId} */
   changeApprover(
@@ -107,16 +104,16 @@ export class ContractService {
       { params }
     );
   }
- /** PUT /api/contracts/{contractId}/cancel */
+
+  /** PUT /api/contracts/{contractId}/cancel */
   cancelContract(contractId: number): Observable<ResponseData<void>> {
     return this.http.put<ResponseData<void>>(`${this.baseUrl}/${contractId}/cancel`, {});
   }
 
-  // ===== NEW: Delete Contract =====
+  // ===== Delete Contract =====
 
   /** DELETE /api/contracts/{contractId} */
   deleteContract(contractId: number): Observable<ResponseData<void>> {
     return this.http.delete<ResponseData<void>>(`${this.baseUrl}/${contractId}`);
   }
-  
 }
