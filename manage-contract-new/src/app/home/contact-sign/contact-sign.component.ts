@@ -395,4 +395,5 @@ export class ContactSignComponent implements OnInit {
       default:                 return 'badge-secondary';
     }
   }
+  
 }

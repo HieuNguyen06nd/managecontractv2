@@ -21,7 +21,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.*;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.wml.ContentAccessor;
 import org.springframework.core.io.ClassPathResource;
@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.docx4j.wml.Text;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
@@ -38,6 +39,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -54,6 +56,7 @@ public class ContractServiceImpl implements ContractService {
     private final PositionRepository positionRepository;
     private final DepartmentRepository departmentRepository;
     private final ApprovalFlowRepository approvalFlowRepository;
+    private final OnlyOfficeConvertService onlyOfficeConvertService;
 
     @Transactional
     @Override
@@ -179,17 +182,250 @@ public class ContractServiceImpl implements ContractService {
 
     private void processDocxToPdf(Path templatePath, Path pdfPath, Contract contract) {
         try {
-            // Đọc nội dung DOCX
-            String content = extractTextFromDocx(templatePath);
+            // TẠO FILE DOCX TẠM THỜI VỚI BIẾN ĐÃ THAY THẾ
+            Path tempDocxPath = pdfPath.getParent().resolve("temp_contract_" + System.currentTimeMillis() + ".docx");
 
-            // Thay thế biến
-            String processedContent = replaceTextVariables(content, contract.getVariableValues());
+            // Copy template và thay thế biến trong DOCX gốc (giữ nguyên định dạng)
+            replaceVariablesInDocxFile(templatePath, tempDocxPath, contract.getVariableValues());
 
-            // Tạo PDF
-            createPdfFromText(processedContent, pdfPath, contract);
+            // SỬ DỤNG ONLYOFFICE ĐỂ CONVERT - NHANH VÀ GIỮ NGUYÊN ĐỊNH DẠNG
+            boolean success = onlyOfficeConvertService.convertDocxToPdf(tempDocxPath, pdfPath);
+
+            if (!success) {
+                log.warn("OnlyOffice conversion failed, falling back to improved PDFBox");
+                // Fallback to improved PDFBox conversion
+                convertWithPdfBoxImproved(tempDocxPath, pdfPath, contract);
+            } else {
+                // THÊM PLACEHOLDER CHỮ KÝ VÀO PDF ĐÃ CONVERT
+                addSignaturePlaceholdersToExistingPdf(pdfPath, contract);
+            }
+
+            // Xóa file DOCX tạm
+            Files.deleteIfExists(tempDocxPath);
+
+            log.info("✅ SUCCESS: Processed DOCX to PDF for contract {}", contract.getId());
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to process DOCX template: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Thêm placeholder chữ ký vào PDF đã được convert bằng OnlyOffice
+     */
+    private void addSignaturePlaceholdersToExistingPdf(Path pdfPath, Contract contract) {
+        if (contract.getFlow() == null || contract.getFlow().getSteps() == null) {
+            return;
+        }
+
+        try (PDDocument document = PDDocument.load(pdfPath.toFile())) {
+            PDPage lastPage = document.getPage(document.getNumberOfPages() - 1);
+            PDFont font = loadUnicodeFont(document);
+
+            // Thêm placeholder chữ ký vào cuối trang
+            try (PDPageContentStream contentStream = new PDPageContentStream(
+                    document, lastPage, PDPageContentStream.AppendMode.APPEND, true, true)) {
+
+                float pageHeight = lastPage.getMediaBox().getHeight();
+                float yPosition = 150; // Vị trí từ dưới lên
+                float margin = 50;
+
+                contentStream.setFont(font, 10);
+
+                // Thêm tiêu đề cho phần chữ ký
+                contentStream.beginText();
+                contentStream.newLineAtOffset(margin, yPosition);
+                contentStream.showText("CHỮ KÝ XÁC NHẬN:");
+                contentStream.endText();
+                yPosition -= 20;
+
+                // Thêm placeholder cho từng bước
+                for (ApprovalStep step : contract.getFlow().getSteps()) {
+                    if (step.getSignaturePlaceholder() != null && !step.getSignaturePlaceholder().isBlank()) {
+                        if (yPosition < 50) break; // Hết chỗ trên trang
+
+                        contentStream.beginText();
+                        contentStream.newLineAtOffset(margin, yPosition);
+                        contentStream.showText(step.getSignaturePlaceholder() + ": _________________________");
+                        contentStream.endText();
+
+                        yPosition -= 25;
+                    }
+                }
+            }
+
+            // Lưu PDF với placeholder đã thêm
+            Path tempPdf = pdfPath.getParent().resolve("temp_with_signatures_" + System.currentTimeMillis() + ".pdf");
+            document.save(tempPdf.toFile());
+            Files.move(tempPdf, pdfPath, StandardCopyOption.REPLACE_EXISTING);
+
+            log.info("✅ Added signature placeholders to PDF: {}", pdfPath);
+
+        } catch (Exception e) {
+            log.warn("⚠️ Could not add signature placeholders to PDF: {}", e.getMessage());
+            // Tiếp tục dù không thêm được placeholder
+        }
+    }
+
+    /**
+     * Thay thế biến trong file DOCX gốc mà vẫn giữ nguyên định dạng
+     */
+    private void replaceVariablesInDocxFile(Path sourceDocx, Path targetDocx, List<ContractVariableValue> variables) {
+        try {
+            // Copy file gốc
+            Files.copy(sourceDocx, targetDocx, StandardCopyOption.REPLACE_EXISTING);
+
+            Map<String, String> variableMap = new HashMap<>();
+            for (ContractVariableValue var : variables) {
+                variableMap.put(var.getVarName(), var.getVarValue() != null ? var.getVarValue() : "");
+            }
+
+            // Mở file DOCX và thay thế biến
+            try (XWPFDocument document = new XWPFDocument(Files.newInputStream(targetDocx))) {
+
+                // Thay thế trong paragraphs
+                for (XWPFParagraph paragraph : document.getParagraphs()) {
+                    replaceVariablesInParagraph(paragraph, variableMap);
+                }
+
+                // Thay thế trong tables
+                for (XWPFTable table : document.getTables()) {
+                    for (XWPFTableRow row : table.getRows()) {
+                        for (XWPFTableCell cell : row.getTableCells()) {
+                            for (XWPFParagraph paragraph : cell.getParagraphs()) {
+                                replaceVariablesInParagraph(paragraph, variableMap);
+                            }
+                        }
+                    }
+                }
+
+                // Thay thế trong headers
+                for (XWPFHeader header : document.getHeaderList()) {
+                    for (XWPFParagraph paragraph : header.getParagraphs()) {
+                        replaceVariablesInParagraph(paragraph, variableMap);
+                    }
+                }
+
+                // Thay thế trong footers
+                for (XWPFFooter footer : document.getFooterList()) {
+                    for (XWPFParagraph paragraph : footer.getParagraphs()) {
+                        replaceVariablesInParagraph(paragraph, variableMap);
+                    }
+                }
+
+                // Lưu document
+                try (FileOutputStream out = new FileOutputStream(targetDocx.toFile())) {
+                    document.write(out);
+                }
+            }
+
+            log.info("✅ Successfully replaced variables in DOCX: {}", targetDocx);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to replace variables in DOCX: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Thay thế biến trong paragraph giữ nguyên format
+     */
+    private void replaceVariablesInParagraph(XWPFParagraph paragraph, Map<String, String> variableMap) {
+        String paragraphText = paragraph.getText();
+        if (paragraphText == null || paragraphText.isEmpty()) return;
+
+        String newText = paragraphText;
+        for (Map.Entry<String, String> entry : variableMap.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            newText = newText.replace("${" + key + "}", value);
+            newText = newText.replace("{{" + key + "}}", value);
+        }
+
+        // Chỉ cập nhật nếu có thay đổi
+        if (!newText.equals(paragraphText)) {
+            // XÓA TẤT CẢ CÁC RUN HIỆN TẠI
+            for (int i = paragraph.getRuns().size() - 1; i >= 0; i--) {
+                paragraph.removeRun(i);
+            }
+
+            // TẠO RUN MỚI VỚI TEXT ĐÃ THAY THẾ
+            XWPFRun newRun = paragraph.createRun();
+            newRun.setText(newText);
+
+            // COPY FORMATTING TỪ RUN ĐẦU TIÊN (nếu có)
+            if (!paragraph.getRuns().isEmpty()) {
+                XWPFRun firstRun = paragraph.getRuns().get(0);
+                newRun.setBold(firstRun.isBold());
+                newRun.setItalic(firstRun.isItalic());
+                newRun.setFontSize(firstRun.getFontSize());
+                newRun.setFontFamily(firstRun.getFontFamily());
+                newRun.setColor(firstRun.getColor());
+            }
+        }
+    }
+
+    /**
+     * Fallback PDFBox conversion với layout tốt hơn (chỉ dùng khi OnlyOffice không khả dụng)
+     */
+    private void convertWithPdfBoxImproved(Path docxPath, Path pdfPath, Contract contract) {
+        try (XWPFDocument docxDocument = new XWPFDocument(Files.newInputStream(docxPath));
+             PDDocument pdfDocument = new PDDocument()) {
+
+            PDFont font = loadUnicodeFont(pdfDocument);
+            float currentY = 750;
+            float margin = 50;
+            float lineHeight = 12;
+
+            PDPage currentPage = new PDPage(PDRectangle.A4);
+            pdfDocument.addPage(currentPage);
+            PDPageContentStream contentStream = new PDPageContentStream(pdfDocument, currentPage);
+
+            contentStream.setFont(font, 10);
+            contentStream.beginText();
+            contentStream.newLineAtOffset(margin, currentY);
+
+            // Xử lý nội dung DOCX
+            for (XWPFParagraph paragraph : docxDocument.getParagraphs()) {
+                String text = paragraph.getText();
+                if (text != null && !text.trim().isEmpty()) {
+
+                    // Xử lý xuống trang nếu cần
+                    if (currentY < 100) {
+                        contentStream.endText();
+                        contentStream.close();
+
+                        currentPage = new PDPage(PDRectangle.A4);
+                        pdfDocument.addPage(currentPage);
+                        contentStream = new PDPageContentStream(pdfDocument, currentPage);
+                        currentY = 750;
+
+                        contentStream.setFont(font, 10);
+                        contentStream.beginText();
+                        contentStream.newLineAtOffset(margin, currentY);
+                    }
+
+                    // Thêm text
+                    List<String> lines = wrapText(text, font, 10, 500);
+                    for (String line : lines) {
+                        contentStream.showText(line);
+                        contentStream.newLineAtOffset(0, -lineHeight);
+                        currentY -= lineHeight;
+                    }
+                }
+            }
+
+            contentStream.endText();
+            contentStream.close();
+
+            // Thêm placeholder chữ ký
+            addSignaturePlaceholdersFromFlow(pdfDocument, currentPage, font, contract);
+
+            pdfDocument.save(pdfPath.toFile());
+
+            log.info("✅ Fallback PDFBox conversion completed: {}", pdfPath);
+
+        } catch (Exception e) {
+            throw new RuntimeException("PDFBox fallback conversion failed: " + e.getMessage(), e);
         }
     }
 
@@ -489,7 +725,6 @@ public class ContractServiceImpl implements ContractService {
         }
     }
 
-    // Các phương thức khác giữ nguyên...
     private List<ApprovalStep> createApprovalFlow(CreateContractRequest request) {
         // Tạo luồng ký mới
         ApprovalFlow newFlow = new ApprovalFlow();

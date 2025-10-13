@@ -502,7 +502,7 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         signature.setSignedAt(LocalDateTime.now());
         signature.setSignatureImage(signatureUrl);
         signature.setPlaceholderKey(approval.getSignaturePlaceholder());
-        signature.setType(SignatureType.EMPLOYEE_SIGNATURE);
+        signature.setType(SignatureType.EMPLOYEE);
         contractSignatureRepository.save(signature);
 
         // 6) Hoàn tất bước nếu là SIGN_ONLY
