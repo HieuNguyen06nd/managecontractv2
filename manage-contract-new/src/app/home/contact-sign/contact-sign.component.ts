@@ -45,6 +45,7 @@ export class ContactSignComponent implements OnInit {
 
   loading = false;
   errorMsg = '';
+  signingInProgress = false; // Thêm biến để theo dõi trạng thái ký
 
   // ===== Filters / Sort / Search =====
   filterTab: FilterTab = 'all';
@@ -175,20 +176,24 @@ export class ContactSignComponent implements OnInit {
       return;
     }
 
+    // Kiểm tra xem có placeholder không (không bắt buộc vì service đã xử lý)
     if (!contract.currentStepSignaturePlaceholder) {
-      this.toastr.info('Bước này chưa được cấu hình vị trí ký.');
-      return;
+      console.warn('Không có placeholder được định nghĩa, sử dụng placeholder từ service');
     }
 
+    // Sửa lại: Không cần truyền placeholder trong request nữa
     const body: SignStepRequest = {
-      placeholder: contract.currentStepSignaturePlaceholder,
+      placeholder: contract.currentStepSignaturePlaceholder || '', // Có thể để trống, service sẽ lấy từ approval
       comment: null
     };
 
-    this.loading = true;
+    this.signingInProgress = true;
     this.service.signStep(contract.id, contract.currentStepId, body).subscribe({
       next: () => {
-        this.toastr.success('Ký thành công');
+        this.toastr.success('Ký hợp đồng thành công');
+        this.signingInProgress = false;
+        
+        // Refresh data
         this.fetchPending();
         this.fetchHandled('APPROVED');
         
@@ -198,10 +203,22 @@ export class ContactSignComponent implements OnInit {
         }
       },
       error: (err) => {
-        this.toastr.error(err?.error?.message || 'Ký thất bại');
-        this.loading = false;
-      },
-      complete: () => (this.loading = false)
+        this.signingInProgress = false;
+        const errorMsg = err?.error?.message || 'Ký thất bại';
+        
+        // Xử lý các lỗi cụ thể
+        if (errorMsg.includes('signature placeholder')) {
+          this.toastr.error('Không tìm thấy vị trí ký trong hợp đồng. Vui lòng kiểm tra lại template.');
+        } else if (errorMsg.includes('chữ ký số')) {
+          this.toastr.error('Bạn chưa có chữ ký số. Vui lòng upload chữ ký trước khi ký hợp đồng.');
+        } else if (errorMsg.includes('quyền')) {
+          this.toastr.error('Bạn không có quyền ký bước này.');
+        } else {
+          this.toastr.error(errorMsg);
+        }
+        
+        console.error('Sign error:', err);
+      }
     });
   }
 
@@ -323,7 +340,8 @@ export class ContactSignComponent implements OnInit {
   
   canSign(c: PendingCard) { 
     return this.isPending(c) && 
-           (c.currentStepAction === 'SIGN_ONLY' || c.currentStepAction === 'SIGN_THEN_APPROVE'); 
+           (c.currentStepAction === 'SIGN_ONLY' || c.currentStepAction === 'SIGN_THEN_APPROVE') &&
+           !this.signingInProgress; // Thêm điều kiện không đang trong quá trình ký
   }
   
   canApproveVisible(c: PendingCard) { 

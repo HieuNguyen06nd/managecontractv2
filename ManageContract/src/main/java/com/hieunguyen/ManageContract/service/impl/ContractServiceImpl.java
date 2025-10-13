@@ -13,20 +13,37 @@ import com.hieunguyen.ManageContract.service.ContractService;
 import jakarta.transaction.Transactional;
 import jakarta.xml.bind.JAXBElement;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.wml.ContentAccessor;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.docx4j.wml.Text;
+
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ContractServiceImpl implements ContractService {
     private final ContractRepository contractRepository;
     private final ContractVariableValueRepository variableValueRepository;
@@ -65,14 +82,10 @@ public class ContractServiceImpl implements ContractService {
         Contract finalSavedContract = savedContract;
         List<ContractVariableValue> values = request.getVariables().stream()
                 .map(v -> {
-                    // Giữ vững rằng các biến này không thay đổi trong lambda
-                    final String varName = v.getVarName();  // Đảm bảo là final
-                    final String varValue = v.getVarValue(); // Đảm bảo là final
-
                     ContractVariableValue cv = new ContractVariableValue();
-                    cv.setContract(finalSavedContract); // Liên kết với hợp đồng
-                    cv.setVarName(varName);
-                    cv.setVarValue(varValue);
+                    cv.setContract(finalSavedContract);
+                    cv.setVarName(v.getVarName());
+                    cv.setVarValue(v.getVarValue());
                     return cv;
                 })
                 .collect(Collectors.toList());
@@ -93,11 +106,11 @@ public class ContractServiceImpl implements ContractService {
 
             // Thêm các bước ký vào luồng (dựa trên thông tin người ký từ request)
             List<ApprovalStep> steps = createApprovalFlow(request);
-            flow.setSteps(new LinkedHashSet<>(steps)); // Gán các bước ký vào luồng mới
+            flow.setSteps(new LinkedHashSet<>(steps));
 
             // Lưu luồng ký mới vào cơ sở dữ liệu
             flow = approvalFlowRepository.save(flow);
-            contract.setFlow(flow);  // Gán flow vào hợp đồng
+            contract.setFlow(flow);
         } else if ("existing".equals(request.getFlowOption()) && request.getExistingFlowId() != null) {
             // Chọn luồng ký có sẵn từ database
             flow = approvalFlowRepository.findById(request.getExistingFlowId())
@@ -108,11 +121,375 @@ public class ContractServiceImpl implements ContractService {
         // Lưu hợp đồng đã có luồng ký vào cơ sở dữ liệu
         savedContract = contractRepository.save(contract);
 
+        // TẠO FILE HỢP ĐỒNG TỪ TEMPLATE SAU KHI ĐÃ CÓ FLOW
+        try {
+            String filePath = generateContractFileFromTemplate(savedContract);
+            savedContract.setFilePath(filePath);
+            savedContract = contractRepository.save(savedContract);
+            log.info("Created contract file for contract {}: {}", savedContract.getId(), filePath);
+        } catch (Exception e) {
+            log.warn("Could not create contract file for contract {}: {}", savedContract.getId(), e.getMessage());
+            // Vẫn tiếp tục dù không tạo được file
+        }
+
         // Trả về hợp đồng đã lưu dưới dạng DTO
         return ContractMapper.toResponse(savedContract);
     }
 
-    // Hàm tạo các bước ký cho luồng ký mới
+    /**
+     * Tạo file hợp đồng từ template với các placeholder chữ ký
+     */
+    private String generateContractFileFromTemplate(Contract contract) {
+        try {
+            ContractTemplate template = contract.getTemplate();
+            if (template == null || template.getFilePath() == null) {
+                throw new RuntimeException("Template not found or template file path is null");
+            }
+
+            Path templatePath = Path.of(template.getFilePath());
+            if (!Files.exists(templatePath)) {
+                throw new RuntimeException("Template file does not exist: " + template.getFilePath());
+            }
+
+            // Tạo thư mục cho hợp đồng
+            Path contractDir = Paths.get("uploads", "contracts", String.valueOf(contract.getId()));
+            Files.createDirectories(contractDir);
+
+            Path pdfPath = contractDir.resolve("contract_" + System.currentTimeMillis() + ".pdf");
+
+            // PHÁT HIỆN VÀ XỬ LÝ ĐÚNG ĐỊNH DẠNG FILE
+            String fileName = templatePath.getFileName().toString().toLowerCase();
+
+            if (fileName.endsWith(".docx")) {
+                // XỬ LÝ DOCX BẰNG APACHE POI
+                processDocxToPdf(templatePath, pdfPath, contract);
+            } else {
+                // XỬ LÝ FILE TEXT THÔNG THƯỜNG
+                processTextToPdf(templatePath, pdfPath, contract);
+            }
+
+            log.info("Created contract file from template at: {}", pdfPath);
+            return pdfPath.toString();
+
+        } catch (Exception e) {
+            log.error("Error generating contract file from template: {}", e.getMessage());
+            throw new RuntimeException("Failed to generate contract file from template: " + e.getMessage(), e);
+        }
+    }
+
+    private void processDocxToPdf(Path templatePath, Path pdfPath, Contract contract) {
+        try {
+            // Đọc nội dung DOCX
+            String content = extractTextFromDocx(templatePath);
+
+            // Thay thế biến
+            String processedContent = replaceTextVariables(content, contract.getVariableValues());
+
+            // Tạo PDF
+            createPdfFromText(processedContent, pdfPath, contract);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process DOCX template: " + e.getMessage(), e);
+        }
+    }
+
+    private String extractTextFromDocx(Path docxPath) {
+        StringBuilder content = new StringBuilder();
+
+        try (XWPFDocument document = new XWPFDocument(Files.newInputStream(docxPath))) {
+
+            // Đọc các đoạn văn
+            for (var paragraph : document.getParagraphs()) {
+                String text = paragraph.getText();
+                if (text != null && !text.trim().isEmpty()) {
+                    content.append(text).append("\n");
+                }
+            }
+
+            // Đọc các bảng - SỬA LỖI TAB Ở ĐÂY
+            for (var table : document.getTables()) {
+                for (var row : table.getRows()) {
+                    StringBuilder rowText = new StringBuilder();
+                    for (var cell : row.getTableCells()) {
+                        String cellText = cell.getText();
+                        if (cellText != null && !cellText.trim().isEmpty()) {
+                            // THAY TAB BẰNG KHOẢNG TRẮNG
+                            String cleanCellText = cellText.replace("\t", "    ");
+                            rowText.append(cleanCellText).append(" | "); // Dùng | thay vì tab
+                        }
+                    }
+                    if (rowText.length() > 0) {
+                        // Loại bỏ dấu | cuối cùng
+                        String finalRowText = rowText.toString().trim();
+                        if (finalRowText.endsWith("|")) {
+                            finalRowText = finalRowText.substring(0, finalRowText.length() - 1).trim();
+                        }
+                        content.append(finalRowText).append("\n");
+                    }
+                }
+                content.append("\n");
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract text from DOCX: " + e.getMessage(), e);
+        }
+
+        String extractedText = content.toString();
+
+        // LOẠI BỎ TẤT CẢ KÝ TỰ TAB TRONG TOÀN BỘ VĂN BẢN
+        extractedText = extractedText.replace("\t", "    ");
+
+        log.info("Extracted {} characters from DOCX", extractedText.length());
+        return extractedText;
+    }
+
+    private void processTextToPdf(Path templatePath, Path pdfPath, Contract contract) {
+        try {
+            // Đọc file với encoding linh hoạt
+            String templateContent = readFileWithEncoding(templatePath);
+            String processedContent = replaceTextVariables(templateContent, contract.getVariableValues());
+
+            // Tạo PDF
+            createPdfFromText(processedContent, pdfPath, contract);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process text template: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Tạo PDF từ text
+     */
+    private void createPdfFromText(String content, Path pdfPath, Contract contract) {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            document.addPage(page);
+
+            PDFont font = loadUnicodeFont(document);
+
+            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+                // LÀM SẠCH NỘI DUNG TRƯỚC KHI THÊM VÀO PDF
+                String cleanContent = cleanTextForPdf(content);
+
+                // Thêm nội dung hợp đồng
+                addTextToPage(contentStream, font, cleanContent);
+
+                // Thêm các placeholder chữ ký từ flow
+                addSignaturePlaceholdersFromFlow(document, page, font, contract);
+            }
+
+            document.save(pdfPath.toFile());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create PDF: " + e.getMessage(), e);
+        }
+    }
+    private String cleanTextForPdf(String text) {
+        if (text == null) return "";
+
+        // Thay thế tab bằng khoảng trắng
+        String cleaned = text.replace("\t", "    ");
+
+        // Loại bỏ ký tự điều khiển (control characters) ngoại trừ newline và tab
+        cleaned = cleaned.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "");
+
+        // Đảm bảo encoding UTF-8
+        cleaned = new String(cleaned.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+
+        return cleaned;
+    }
+
+    /**
+     * Đọc file với encoding linh hoạt
+     */
+    private String readFileWithEncoding(Path filePath) {
+        List<Charset> charsets = Arrays.asList(
+                StandardCharsets.UTF_8,
+                StandardCharsets.ISO_8859_1,
+                Charset.forName("Windows-1252")
+        );
+
+        for (Charset charset : charsets) {
+            try {
+                return Files.readString(filePath, charset);
+            } catch (MalformedInputException e) {
+                // Thử encoding tiếp theo
+                continue;
+            } catch (IOException e) {
+                log.warn("Error reading with {}: {}", charset.name(), e.getMessage());
+            }
+        }
+
+        // Fallback
+        try {
+            byte[] bytes = Files.readAllBytes(filePath);
+            return new String(bytes, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot read file with any encoding: " + e.getMessage(), e);
+        }
+    }
+    /**
+     * Thêm các placeholder chữ ký từ approval flow
+     */
+    private void addSignaturePlaceholdersFromFlow(PDDocument document, PDPage page, PDFont font, Contract contract) throws IOException {
+        if (contract.getFlow() == null || contract.getFlow().getSteps() == null) {
+            return;
+        }
+
+        try (PDPageContentStream contentStream = new PDPageContentStream(
+                document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
+
+            int yPosition = 150;
+            contentStream.setFont(font, 10);
+
+            for (ApprovalStep step : contract.getFlow().getSteps()) {
+                if (step.getSignaturePlaceholder() != null && !step.getSignaturePlaceholder().isBlank()) {
+                    if (yPosition < 50) break; // Hết chỗ trên trang
+
+                    contentStream.beginText();
+                    contentStream.newLineAtOffset(100, yPosition);
+                    contentStream.showText(step.getSignaturePlaceholder() + ": _________________________");
+                    contentStream.endText();
+
+                    yPosition -= 30;
+                }
+            }
+        }
+    }
+
+    /**
+     * Thêm text vào trang PDF
+     */
+    private void addTextToPage(PDPageContentStream contentStream, PDFont font, String text) throws IOException {
+        // LOẠI BỎ KÝ TỰ TAB VÀ KÝ TỰ KHÔNG HỢP LỆ TRƯỚC KHI VẼ
+        String cleanText = text.replace("\t", "    ")
+                .replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "");
+
+        String[] lines = cleanText.split("\n");
+        float yPosition = 750;
+        float lineHeight = 15;
+
+        contentStream.beginText();
+        contentStream.setFont(font, 10);
+        contentStream.newLineAtOffset(50, yPosition);
+
+        for (String line : lines) {
+            if (yPosition < 50) {
+                break; // Hết trang
+            }
+
+            // Xử lý text dài (cắt thành nhiều dòng nếu cần)
+            List<String> wrappedLines = wrapText(line, font, 10, 500);
+            for (String wrappedLine : wrappedLines) {
+                if (yPosition < 50) break;
+
+                // ĐẢM BẢO TEXT KHÔNG CHỨA KÝ TỰ ĐẶC BIỆT
+                String safeLine = wrappedLine.replaceAll("[^\\x20-\\x7E\\x0A]", "?");
+
+                contentStream.showText(safeLine);
+                contentStream.newLineAtOffset(0, -lineHeight);
+                yPosition -= lineHeight;
+            }
+        }
+
+        contentStream.endText();
+    }
+
+    /**
+     * Wrap text để phù hợp với chiều rộng
+     */
+    private List<String> wrapText(String text, PDFont font, float fontSize, float maxWidth) throws IOException {
+        List<String> lines = new ArrayList<>();
+
+        // Làm sạch text trước khi wrap
+        String cleanText = text.replace("\t", "    ")
+                .replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "");
+
+        String[] words = cleanText.split(" ");
+        StringBuilder currentLine = new StringBuilder();
+
+        for (String word : words) {
+            String testLine = currentLine + (currentLine.length() > 0 ? " " : "") + word;
+
+            // Kiểm tra độ dài với font hiện tại
+            float width = 0;
+            try {
+                width = font.getStringWidth(testLine) / 1000 * fontSize;
+            } catch (IllegalArgumentException e) {
+                // Nếu có ký tự lỗi, thay thế bằng dấu ?
+                String safeTestLine = testLine.replaceAll("[^\\x20-\\x7E]", "?");
+                width = font.getStringWidth(safeTestLine) / 1000 * fontSize;
+            }
+
+            if (width > maxWidth && currentLine.length() > 0) {
+                lines.add(currentLine.toString());
+                currentLine = new StringBuilder(word);
+            } else {
+                if (currentLine.length() > 0) {
+                    currentLine.append(" ");
+                }
+                currentLine.append(word);
+            }
+        }
+
+        if (currentLine.length() > 0) {
+            lines.add(currentLine.toString());
+        }
+
+        return lines;
+    }
+
+    /**
+     * Load font Unicode cho PDF
+     */
+    private PDFont loadUnicodeFont(PDDocument document) {
+        try {
+            // Thử load font từ classpath trước
+            try {
+                ClassPathResource resource = new ClassPathResource("fonts/arial.ttf");
+                if (resource.exists()) {
+                    try (InputStream fontStream = resource.getInputStream()) {
+                        log.info("✅ SUCCESS: Loaded Arial font from classpath");
+                        return PDType0Font.load(document, fontStream);
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("Không tìm thấy font trong classpath: {}", e.getMessage());
+            }
+
+            // Thử load font từ hệ thống
+            String[] fontPaths = {
+                    "C:/Windows/Fonts/arial.ttf",
+                    "C:/Windows/Fonts/times.ttf", // Fallback font
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+                    "/Library/Fonts/Arial.ttf",
+                    "/Library/Fonts/Times New Roman.ttf"
+            };
+
+            for (String fontPath : fontPaths) {
+                File fontFile = new File(fontPath);
+                if (fontFile.exists()) {
+                    try {
+                        PDFont font = PDType0Font.load(document, fontFile);
+                        log.info("Loaded font: {}", fontPath);
+                        return font;
+                    } catch (IOException ex) {
+                        log.warn("Cannot load font from {}: {}", fontPath, ex.getMessage());
+                    }
+                }
+            }
+
+            // Fallback to standard PDF fonts (hỗ trợ tốt hơn)
+            log.warn("Không tìm thấy font Unicode, sử dụng Helvetica");
+            return PDType1Font.HELVETICA;
+
+        } catch (Exception e) {
+            log.error("Error loading font: {}", e.getMessage());
+            return PDType1Font.HELVETICA; // Luôn có fallback
+        }
+    }
+
+    // Các phương thức khác giữ nguyên...
     private List<ApprovalStep> createApprovalFlow(CreateContractRequest request) {
         // Tạo luồng ký mới
         ApprovalFlow newFlow = new ApprovalFlow();
@@ -155,20 +532,17 @@ public class ContractServiceImpl implements ContractService {
         return new ArrayList<>(steps); // Trả về danh sách các bước ký
     }
 
-
     @Override
     @Transactional
     public ContractResponse getById(Long id) {
-        // Nên fetch kèm variableValues để tránh Lazy
         Contract contract = contractRepository.findWithVarsById(id)
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
         return ContractMapper.toResponse(contract);
-
     }
+
     @Transactional
     @Override
     public String previewContract(Long contractId) {
-        // Hỗ trợ cả DOCX và HTML, thay biến theo list ContractVariableValue
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
 
@@ -183,12 +557,10 @@ public class ContractServiceImpl implements ContractService {
             List<ContractVariableValue> values = variableValueRepository.findByContract_Id(contractId);
 
             if (fileName.endsWith(".docx")) {
-                // DOCX -> thay biến -> render HTML
                 WordprocessingMLPackage pkg = WordprocessingMLPackage.load(new File(template.getFilePath()));
                 replaceDocxVariables(pkg, values);
                 return DocxToHtmlConverter.convertToHtml(pkg);
             } else {
-                // HTML/TXT -> đọc nội dung -> thay biến (hỗ trợ cả ${var} và {{var}})
                 String templateContent = Files.readString(path, StandardCharsets.UTF_8);
                 return replaceTextVariables(templateContent, values);
             }
@@ -212,7 +584,6 @@ public class ContractServiceImpl implements ContractService {
             Path path = Path.of(template.getFilePath());
             String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
 
-            // Map request variables thành ContractVariableValue “tạm” để tái dùng hàm thay biến
             List<ContractVariableValue> values = request.getVariables().stream().map(v -> {
                 ContractVariableValue cv = new ContractVariableValue();
                 cv.setVarName(v.getVarName());
@@ -234,11 +605,9 @@ public class ContractServiceImpl implements ContractService {
         }
     }
 
-
     @Override
     public List<ContractResponse> getMyContracts(ContractStatus status) {
-        String email = org.springframework.security.core.context.SecurityContextHolder
-                .getContext().getAuthentication().getName();
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
 
         List<Contract> list = (status == null)
                 ? contractRepository.findByCreatedBy_Account_Email(email)
@@ -246,7 +615,6 @@ public class ContractServiceImpl implements ContractService {
 
         return list.stream().map(ContractMapper::toResponse).toList();
     }
-
 
     /** Thay biến trong DOCX: hỗ trợ cú pháp ${var} và {{var}} */
     private void replaceDocxVariables(WordprocessingMLPackage pkg, List<ContractVariableValue> values) {
@@ -264,9 +632,7 @@ public class ContractServiceImpl implements ContractService {
                 String key = e.getKey();
                 String val = e.getValue();
 
-                // ${var}
                 s = s.replace("${" + key + "}", val);
-                // {{var}}
                 s = s.replace("{{" + key + "}}", val);
             }
             t.setValue(s);
@@ -308,7 +674,6 @@ public class ContractServiceImpl implements ContractService {
     @Transactional
     @Override
     public ContractResponse updateContract(Long contractId, CreateContractRequest request) {
-        // Lấy hợp đồng từ database
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
 
@@ -319,7 +684,6 @@ public class ContractServiceImpl implements ContractService {
 
         contract.setTitle(request.getTitle());
 
-        // Cập nhật các biến hợp đồng
         List<ContractVariableValue> updatedValues = new ArrayList<>();
         for (CreateContractRequest.VariableValueRequest variable : request.getVariables()) {
             ContractVariableValue cv = variableValueRepository
@@ -330,73 +694,59 @@ public class ContractServiceImpl implements ContractService {
             cv.setVarValue(variable.getVarValue());
             updatedValues.add(cv);
         }
-        contract.getVariableValues().clear();  // Clear the old ones
-        contract.getVariableValues().addAll(updatedValues); // Add new values
+        contract.getVariableValues().clear();
+        contract.getVariableValues().addAll(updatedValues);
 
-        // Lưu lại các biến hợp đồng đã cập nhật
         variableValueRepository.saveAll(updatedValues);
-
-        // Lưu lại hợp đồng với các thay đổi
         contractRepository.save(contract);
 
-        // Trả về DTO hợp đồng đã được cập nhật
         return ContractMapper.toResponse(contract);
     }
 
-
     @Transactional
     public void changeApprover(Long contractId, Long stepId, Long newApproverId, boolean isUserApprover) {
-        // Tìm hợp đồng
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
 
-        // Tìm bước phê duyệt cần thay đổi người ký trong bảng contract_approvals
         ContractApproval contractApproval = contractApprovalRepository.findByContract_IdAndStep_Id(contractId, stepId)
                 .orElseThrow(() -> new RuntimeException("Approval step not found"));
 
-        // Kiểm tra trạng thái của người ký, nếu đã phê duyệt hoặc bị từ chối, không cho phép thay đổi
         if (contractApproval.getStatus() == ApprovalStatus.APPROVED || contractApproval.getStatus() == ApprovalStatus.REJECTED) {
             throw new RuntimeException("Không thể thay đổi người ký vì bước phê duyệt này đã được quyết định.");
         }
 
-        // Nếu trạng thái là PENDING, bạn có thể thay đổi người ký
         if (isUserApprover) {
-            // Thay đổi từ Position sang User
             if (contractApproval.getPosition() != null) {
-                contractApproval.setPosition(null); // Xóa Position cũ
+                contractApproval.setPosition(null);
                 Employee newUser = userRepository.findById(newApproverId)
                         .orElseThrow(() -> new RuntimeException("User not found"));
-                contractApproval.setApprover(newUser); // Gán User mới
-                contractApproval.setDepartment(null); // Không cần department nữa
+                contractApproval.setApprover(newUser);
+                contractApproval.setDepartment(null);
             } else {
                 throw new RuntimeException("Current approver is not a Position, cannot change to User.");
             }
         } else {
-            // Thay đổi từ User sang Position
             if (contractApproval.getApprover() != null) {
-                contractApproval.setApprover(null); // Xóa User cũ
+                contractApproval.setApprover(null);
 
-                // Tìm Position và Department mới
                 Position newPosition = positionRepository.findById(newApproverId)
                         .orElseThrow(() -> new RuntimeException("Position not found"));
-                Department newDepartment = departmentRepository.findById(newApproverId) // Tìm department tương ứng với Position
+                Department newDepartment = departmentRepository.findById(newApproverId)
                         .orElseThrow(() -> new RuntimeException("Department not found"));
 
-                contractApproval.setPosition(newPosition); // Gán Position mới
-                contractApproval.setDepartment(newDepartment); // Gán department cho Position
+                contractApproval.setPosition(newPosition);
+                contractApproval.setDepartment(newDepartment);
             } else {
                 throw new RuntimeException("Current approver is not a User, cannot change to Position.");
             }
         }
 
-        // Lưu lại thay đổi trong ContractApproval
         contractApprovalRepository.save(contractApproval);
     }
 
     @Transactional
     @Override
     public void cancelContract(Long contractId) {
-        // Lấy hợp đồng từ database
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
 
@@ -410,29 +760,20 @@ public class ContractServiceImpl implements ContractService {
             throw new RuntimeException("Không thể hủy hợp đồng vì hợp đồng không phải trong trạng thái trình ký.");
         }
 
-        // Cập nhật trạng thái hợp đồng thành "CANCELLED"
         contract.setStatus(ContractStatus.CANCELLED);
-
-        // Lưu lại hợp đồng với trạng thái đã cập nhật
         contractRepository.save(contract);
     }
-
 
     @Transactional
     @Override
     public void deleteContract(Long contractId) {
-        // Lấy hợp đồng từ database
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
 
-        // Kiểm tra trạng thái của hợp đồng, chỉ cho phép xóa hợp đồng khi hợp đồng ở trạng thái DRAFT
         if (!contract.getStatus().equals(ContractStatus.DRAFT)) {
             throw new RuntimeException("Không thể xóa hợp đồng vì hợp đồng không ở trạng thái DRAFT.");
         }
 
-        // Xóa hợp đồng
         contractRepository.delete(contract);
     }
-
-
 }

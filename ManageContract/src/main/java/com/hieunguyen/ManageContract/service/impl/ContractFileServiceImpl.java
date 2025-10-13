@@ -1,10 +1,8 @@
 package com.hieunguyen.ManageContract.service.impl;
 
-import com.hieunguyen.ManageContract.entity.Contract;
-import com.hieunguyen.ManageContract.entity.ContractTemplate;
-import com.hieunguyen.ManageContract.entity.ContractVariableValue;
+import com.hieunguyen.ManageContract.entity.*;
 import com.hieunguyen.ManageContract.repository.ContractRepository;
-import com.hieunguyen.ManageContract.repository.ContractTemplateRepository;
+import com.hieunguyen.ManageContract.repository.ContractApprovalRepository;
 import com.hieunguyen.ManageContract.service.ContractFileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +14,8 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
@@ -26,10 +26,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
@@ -37,33 +35,22 @@ import java.util.Map;
 public class ContractFileServiceImpl implements ContractFileService {
 
     private final ContractRepository contractRepository;
-    private final ContractTemplateRepository templateRepository;
+    private final ContractApprovalRepository contractApprovalRepository;
 
     @Override
     public String generateContractFile(Contract contract) {
-        try {
-            List<ContractVariableValue> variableValues = contract.getVariableValues();
-            return generateContractFileWithVariables(contract, variableValues);
-        } catch (Exception e) {
-            throw new RuntimeException("Lỗi generate contract file", e);
+        if (contract.getFilePath() != null && Files.exists(Path.of(contract.getFilePath()))) {
+            return contract.getFilePath();
         }
+        throw new RuntimeException("Contract file not found. Please upload contract file first.");
     }
 
     @Override
     public String generateContractFileWithVariables(Contract contract, List<ContractVariableValue> variableValues) {
-        try {
-            Path contractDir = Paths.get("uploads", "contracts", String.valueOf(contract.getId()));
-            Files.createDirectories(contractDir);
-
-            Path pdfPath = contractDir.resolve("contract.pdf");
-
-            // Tạo file PDF với giá trị biến và các placeholder chữ ký
-            createPdfWithSignaturePlaceholders(pdfPath, contract, variableValues);
-
-            return pdfPath.toString();
-        } catch (Exception e) {
-            throw new RuntimeException("Lỗi generate contract file with variables", e);
+        if (contract.getFilePath() != null && Files.exists(Path.of(contract.getFilePath()))) {
+            return contract.getFilePath();
         }
+        throw new RuntimeException("Contract file not found. Please upload contract file first.");
     }
 
     @Override
@@ -72,7 +59,7 @@ public class ContractFileServiceImpl implements ContractFileService {
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
 
         if (contract.getFilePath() == null) {
-            throw new RuntimeException("Contract file not generated yet");
+            throw new RuntimeException("Contract file not found");
         }
 
         Path path = Path.of(contract.getFilePath());
@@ -100,13 +87,12 @@ public class ContractFileServiceImpl implements ContractFileService {
 
                 PDImageXObject image = PDImageXObject.createFromByteArray(document, imageBytes, "signature");
 
-                // TÌM VÀ THAY THẾ PLACEHOLDER TRONG PDF
-                boolean replaced = findAndReplacePlaceholder(document, placeholder, image);
+                // TÌM VÀ THAY THẾ PLACEHOLDER TRONG PDF DỰA TRÊN TEXT
+                boolean replaced = findAndReplacePlaceholderByText(document, placeholder, image);
 
                 if (!replaced) {
-                    log.warn("Placeholder {} not found in PDF, using default position", placeholder);
-                    // Nếu không tìm thấy placeholder, thêm vào vị trí mặc định
-                    addSignatureToDefaultPosition(document, image, placeholder);
+                    log.warn("Placeholder {} not found in PDF", placeholder);
+                    throw new RuntimeException("Signature placeholder '" + placeholder + "' not found in contract");
                 }
 
                 document.save(tempPdf.toFile());
@@ -117,6 +103,28 @@ public class ContractFileServiceImpl implements ContractFileService {
 
         } catch (Exception e) {
             throw new RuntimeException("Embed signature failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public String embedSignatureForApproval(Long contractId, String imageUrl, Long approvalId) {
+        try {
+            ContractApproval approval = contractApprovalRepository.findById(approvalId)
+                    .orElseThrow(() -> new RuntimeException("Contract approval not found"));
+
+            if (approval.getSignaturePlaceholder() == null || approval.getSignaturePlaceholder().isBlank()) {
+                throw new RuntimeException("No signature placeholder defined for this approval step");
+            }
+
+            Contract contract = approval.getContract();
+            if (contract.getFilePath() == null) {
+                throw new RuntimeException("Contract file not found");
+            }
+
+            return embedSignature(contract.getFilePath(), imageUrl, approval.getSignaturePlaceholder());
+
+        } catch (Exception e) {
+            throw new RuntimeException("Embed signature for approval failed: " + e.getMessage(), e);
         }
     }
 
@@ -142,277 +150,148 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /**
-     * Tạo PDF với các placeholder chữ ký được định nghĩa trong template/flow
-     */
-    private void createPdfWithSignaturePlaceholders(Path pdfPath, Contract contract, List<ContractVariableValue> variableValues) {
-        try (PDDocument document = new PDDocument()) {
-            PDPage page = new PDPage(PDRectangle.A4);
-            document.addPage(page);
+    @Override
+    public List<String> getSignaturePlaceholders(Long contractId) {
+        List<ContractApproval> approvals = contractApprovalRepository.findByContractId(contractId);
+        List<String> placeholders = new ArrayList<>();
 
-            PDFont unicodeFont = loadUnicodeFont(document);
-
-            Map<String, String> variableMap = new HashMap<>();
-            for (ContractVariableValue variable : variableValues) {
-                variableMap.put(variable.getVarName(), variable.getVarValue() != null ? variable.getVarValue() : "");
-            }
-
-            // Tách phần tạo content stream ra thành phương thức riêng để tránh gán lại biến
-            createDocumentContent(document, page, unicodeFont, contract, variableMap, variableValues);
-
-            document.save(pdfPath.toFile());
-            log.info("Created PDF with signature placeholders at: {}", pdfPath);
-
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create PDF with signature placeholders", e);
-        }
-    }
-
-    /**
-     * Tạo nội dung document - tách riêng để tránh lỗi reassign contentStream
-     */
-    private void createDocumentContent(PDDocument document, PDPage firstPage, PDFont unicodeFont,
-                                       Contract contract, Map<String, String> variableMap,
-                                       List<ContractVariableValue> variableValues) throws IOException {
-        PDPage currentPage = firstPage;
-
-        try (PDPageContentStream contentStream = new PDPageContentStream(document, currentPage)) {
-            // Tiêu đề hợp đồng
-            contentStream.beginText();
-            contentStream.setFont(unicodeFont, 16);
-            contentStream.newLineAtOffset(100, 750);
-            String title = "HỢP ĐỒNG: " + (contract.getTitle() != null ? contract.getTitle() : "Không có tiêu đề");
-            contentStream.showText(title);
-            contentStream.endText();
-
-            // Số hợp đồng
-            contentStream.beginText();
-            contentStream.setFont(unicodeFont, 12);
-            contentStream.newLineAtOffset(100, 720);
-            String contractNumber = "Số hợp đồng: " + (contract.getContractNumber() != null ? contract.getContractNumber() : "N/A");
-            contentStream.showText(contractNumber);
-            contentStream.endText();
-
-            // Nội dung hợp đồng với các biến
-            contentStream.beginText();
-            contentStream.setFont(unicodeFont, 12);
-            contentStream.newLineAtOffset(100, 670);
-            contentStream.showText("NỘI DUNG HỢP ĐỒNG:");
-            contentStream.endText();
-
-            // Hiển thị các biến
-            int yPosition = 640;
-            contentStream.beginText();
-            contentStream.setFont(unicodeFont, 10);
-            contentStream.newLineAtOffset(100, yPosition);
-
-            for (ContractVariableValue variable : variableValues) {
-                if (yPosition < 200) { // Dừng sớm hơn để chỗ cho chữ ký
-                    contentStream.endText();
-                    contentStream.close(); // Đóng content stream hiện tại
-
-                    // Tạo trang mới
-                    currentPage = new PDPage(PDRectangle.A4);
-                    document.addPage(currentPage);
-
-                    // Mở content stream mới cho trang mới (không gán lại biến cũ)
-                    PDPageContentStream newContentStream = new PDPageContentStream(document, currentPage);
-                    newContentStream.beginText();
-                    newContentStream.setFont(unicodeFont, 10);
-                    newContentStream.newLineAtOffset(100, 750);
-
-                    // Tiếp tục xử lý với content stream mới
-                    processVariablesOnNewPage(variableValues, variable, newContentStream, unicodeFont);
-
-                    newContentStream.endText();
-                    newContentStream.close();
-                    return; // Kết thúc sau khi xử lý trang mới
-                }
-
-                String line = "• " + variable.getVarName() + ": " + variable.getVarValue();
-                float textWidth = unicodeFont.getStringWidth(line) / 1000 * 10;
-                if (textWidth > 400) {
-                    processLongText(line, contentStream, unicodeFont);
-                } else {
-                    contentStream.showText(line);
-                    contentStream.newLineAtOffset(0, -15);
-                    yPosition -= 15;
-                }
-            }
-            contentStream.endText();
-
-        } // contentStream tự động đóng ở đây
-
-        // Thêm các placeholder chữ ký sau khi đã đóng content stream
-        addSignaturePlaceholders(document, currentPage, unicodeFont, variableMap);
-    }
-
-    /**
-     * Xử lý văn bản dài (xuống dòng)
-     */
-    private void processLongText(String text, PDPageContentStream contentStream, PDFont font) throws IOException {
-        String[] words = text.split(" ");
-        StringBuilder currentLine = new StringBuilder();
-
-        for (String word : words) {
-            String testLine = currentLine + word + " ";
-            float testWidth = font.getStringWidth(testLine) / 1000 * 10;
-
-            if (testWidth > 400 && !currentLine.isEmpty()) {
-                contentStream.showText(currentLine.toString());
-                contentStream.newLineAtOffset(0, -15);
-                currentLine = new StringBuilder(word + " ");
-            } else {
-                currentLine.append(word).append(" ");
+        for (ContractApproval approval : approvals) {
+            if (approval.getSignaturePlaceholder() != null &&
+                    !approval.getSignaturePlaceholder().isBlank()) {
+                placeholders.add(approval.getSignaturePlaceholder());
             }
         }
 
-        if (!currentLine.isEmpty()) {
-            contentStream.showText(currentLine.toString());
-            contentStream.newLineAtOffset(0, -15);
-        }
+        return placeholders;
     }
 
-    /**
-     * Xử lý các biến trên trang mới
-     */
-    private void processVariablesOnNewPage(List<ContractVariableValue> variableValues,
-                                           ContractVariableValue currentVariable,
-                                           PDPageContentStream contentStream,
-                                           PDFont font) throws IOException {
-        // Tìm vị trí của biến hiện tại trong danh sách
-        int currentIndex = variableValues.indexOf(currentVariable);
-        if (currentIndex == -1) return;
-
-        // Tiếp tục xử lý từ biến hiện tại trở đi
-        for (int i = currentIndex; i < variableValues.size(); i++) {
-            ContractVariableValue variable = variableValues.get(i);
-            String line = "• " + variable.getVarName() + ": " + variable.getVarValue();
-            float textWidth = font.getStringWidth(line) / 1000 * 10;
-
-            if (textWidth > 400) {
-                processLongText(line, contentStream, font);
-            } else {
-                contentStream.showText(line);
-                contentStream.newLineAtOffset(0, -15);
-            }
-        }
-    }
-
-    /**
-     * Thêm các placeholder chữ ký dựa trên các biến có tiền tố "SIGN_"
-     */
-    private void addSignaturePlaceholders(PDDocument document, PDPage page, PDFont font, Map<String, String> variableMap) throws IOException {
-        try (PDPageContentStream contentStream = new PDPageContentStream(
-                document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
-
-            int signatureY = 150; // Bắt đầu từ vị trí Y
-            int signatureIndex = 0;
-
-            for (Map.Entry<String, String> entry : variableMap.entrySet()) {
-                if (entry.getKey().startsWith("SIGN_")) {
-                    if (signatureY < 50) {
-                        // Nếu hết chỗ, không xử lý thêm - có thể tạo trang mới nếu cần
-                        break;
-                    }
-
-                    String placeholderName = entry.getKey();
-                    String currentValue = entry.getValue();
-
-                    // Tính vị trí X dựa trên index để phân bố đều
-                    float xPosition = (signatureIndex % 2 == 0) ? 100 : 400;
-
-                    contentStream.beginText();
-                    contentStream.setFont(font, 10);
-                    contentStream.newLineAtOffset(xPosition, signatureY);
-
-                    // Hiển thị tên placeholder và giá trị hiện tại (nếu có)
-                    String displayText = placeholderName + ": " +
-                            (currentValue.isEmpty() ? "[CHỜ KÝ]" : currentValue);
-                    contentStream.showText(displayText);
-                    contentStream.endText();
-
-                    // Vẽ khung chữ ký
-                    drawSignatureBox(contentStream, xPosition, signatureY - 20, 200, 40);
-
-                    signatureY -= 80; // Khoảng cách giữa các chữ ký
-                    signatureIndex++;
-                }
-            }
-        }
-    }
-
-    /**
-     * Vẽ khung cho chữ ký
-     */
-    private void drawSignatureBox(PDPageContentStream contentStream, float x, float y, float width, float height) throws IOException {
-        contentStream.setLineWidth(1f);
-        contentStream.addRect(x, y, width, height);
-        contentStream.stroke();
-    }
-
-    /**
-     * Tìm và thay thế placeholder bằng chữ ký
-     */
-    private boolean findAndReplacePlaceholder(PDDocument document, String placeholder, PDImageXObject image) {
+    @Override
+    public boolean validatePlaceholdersInContract(Long contractId) {
         try {
-            Map<String, float[]> placeholderPositions = getPlaceholderPositions(document);
+            Contract contract = contractRepository.findById(contractId)
+                    .orElseThrow(() -> new RuntimeException("Contract not found"));
 
-            if (placeholderPositions.containsKey(placeholder)) {
-                float[] position = placeholderPositions.get(placeholder);
-                PDPage page = document.getPage(0);
-                addImageToPage(document, page, image, position[0], position[1], 120, 60);
-                return true;
+            if (contract.getFilePath() == null) {
+                throw new RuntimeException("Contract file not found");
             }
 
-            return false;
+            List<String> placeholders = getSignaturePlaceholders(contractId);
+            if (placeholders.isEmpty()) {
+                log.warn("No signature placeholders found for contract {}", contractId);
+                return false;
+            }
+
+            try (PDDocument document = PDDocument.load(new File(contract.getFilePath()))) {
+                String pdfText = extractAllText(document);
+
+                for (String placeholder : placeholders) {
+                    if (!pdfText.contains(placeholder)) {
+                        log.warn("Placeholder '{}' not found in contract file", placeholder);
+                        return false;
+                    }
+                }
+            }
+
+            log.info("All {} placeholders validated successfully for contract {}", placeholders.size(), contractId);
+            return true;
 
         } catch (Exception e) {
-            log.error("Error finding and replacing placeholder: {}", e.getMessage());
+            log.error("Error validating placeholders for contract {}: {}", contractId, e.getMessage());
             return false;
         }
     }
 
     /**
-     * Lấy vị trí của các placeholder trong PDF
+     * Tìm và thay thế placeholder bằng chữ ký dựa trên text trong PDF
      */
-    private Map<String, float[]> getPlaceholderPositions(PDDocument document) {
-        Map<String, float[]> positions = new HashMap<>();
+    private boolean findAndReplacePlaceholderByText(PDDocument document, String placeholder, PDImageXObject image) {
+        try {
+            // Tìm tất cả các trang có chứa placeholder
+            for (int pageIndex = 0; pageIndex < document.getNumberOfPages(); pageIndex++) {
+                PDPage page = document.getPage(pageIndex);
+                Map<String, TextPosition> placeholderPositions = findTextPosition(document, page, placeholder);
 
-        // Giả sử chúng ta có các placeholder với vị trí cố định
-        positions.put("SIGN_CUSTOMER", new float[]{100, 150});
-        positions.put("SIGN_PROVIDER", new float[]{400, 150});
-        positions.put("SIGN_MANAGER", new float[]{100, 70});
-        positions.put("SIGN_DIRECTOR", new float[]{400, 70});
-        positions.put("SIGN_WITNESS1", new float[]{100, 230});
-        positions.put("SIGN_WITNESS2", new float[]{400, 230});
+                if (!placeholderPositions.isEmpty()) {
+                    for (Map.Entry<String, TextPosition> entry : placeholderPositions.entrySet()) {
+                        TextPosition pos = entry.getValue();
+                        float x = pos.getXDirAdj();
+                        float y = pos.getYDirAdj();
+                        float width = pos.getWidthDirAdj();
+                        float height = pos.getHeightDir();
+
+                        replaceTextWithImage(document, page, image, x, y, width, height);
+                    }
+                    return true;
+                }
+            }
+
+            return false;
+
+        } catch (Exception e) {
+            log.error("Error finding and replacing placeholder by text: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Tìm vị trí của text trong trang PDF
+     */
+    private Map<String, TextPosition> findTextPosition(PDDocument document, PDPage page, String searchText) throws IOException {
+        Map<String, TextPosition> positions = new HashMap<>();
+
+        PDFTextStripper stripper = new PDFTextStripper() {
+            @Override
+            protected void writeString(String text, List<TextPosition> textPositions) throws IOException {
+                for (TextPosition position : textPositions) {
+                    String textSegment = position.getUnicode();
+                    if (textSegment != null && textSegment.contains(searchText)) {
+                        positions.put(textSegment, position);
+                    }
+                }
+                super.writeString(text, textPositions);
+            }
+        };
+
+        stripper.setStartPage(document.getPages().indexOf(page) + 1);
+        stripper.setEndPage(document.getPages().indexOf(page) + 1);
+        stripper.getText(document);
 
         return positions;
     }
 
     /**
-     * Thêm chữ ký vào vị trí mặc định khi không tìm thấy placeholder
+     * Trích xuất toàn bộ text từ PDF để validate
      */
-    private void addSignatureToDefaultPosition(PDDocument document, PDImageXObject image, String placeholder) {
-        try {
-            PDPage page = document.getPage(0);
+    private String extractAllText(PDDocument document) throws IOException {
+        PDFTextStripper stripper = new PDFTextStripper();
+        return stripper.getText(document);
+    }
 
-            // Vị trí mặc định dựa trên tên placeholder
-            float x = 100, y = 100;
-            if (placeholder.contains("MANAGER")) {
-                x = 100; y = 70;
-            } else if (placeholder.contains("DIRECTOR")) {
-                x = 400; y = 70;
-            } else if (placeholder.contains("CUSTOMER")) {
-                x = 100; y = 150;
-            } else if (placeholder.contains("PROVIDER")) {
-                x = 400; y = 150;
-            }
+    /**
+     * Thay thế text bằng hình ảnh
+     */
+    private void replaceTextWithImage(PDDocument document, PDPage page, PDImageXObject image,
+                                      float x, float y, float width, float height) {
+        try (PDPageContentStream contentStream = new PDPageContentStream(
+                document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
 
-            addImageToPage(document, page, image, x, y, 120, 60);
+            // Tính toán vị trí Y (PDFBox coordinates are from bottom left)
+            float pageHeight = page.getMediaBox().getHeight();
+            float actualY = pageHeight - y - height;
 
-        } catch (Exception e) {
-            log.error("Error adding signature to default position: {}", e.getMessage());
+            // Vẽ hình chữ nhật trắng để che text cũ
+            contentStream.setNonStrokingColor(255, 255, 255);
+            contentStream.addRect(x, actualY, width + 10, height + 5);
+            contentStream.fill();
+
+            // Vẽ chữ ký với kích thước phù hợp
+            float imageWidth = Math.max(width * 2, 120); // Rộng gấp 2 lần text, tối thiểu 120
+            float imageHeight = Math.max(height * 3, 60); // Cao gấp 3 lần text, tối thiểu 60
+
+            contentStream.drawImage(image, x, actualY - 5, imageWidth, imageHeight);
+
+        } catch (IOException e) {
+            log.error("Error replacing text with image: {}", e.getMessage());
         }
     }
 
@@ -421,39 +300,35 @@ public class ContractFileServiceImpl implements ContractFileService {
      */
     private PDFont loadUnicodeFont(PDDocument document) {
         try {
-            // Thử load từ classpath
-            try {
-                ClassPathResource resource = new ClassPathResource("fonts/arial.ttf");
-                if (resource.exists()) {
-                    try (InputStream fontStream = resource.getInputStream()) {
-                        return PDType0Font.load(document, fontStream);
-                    }
-                }
-            } catch (Exception e) {
-                log.debug("Không tìm thấy font trong classpath: {}", e.getMessage());
-            }
-
-            // Thử load từ hệ thống
-            String[] fontPaths = {
-                    "C:/Windows/Fonts/arial.ttf",
-                    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-                    "/Library/Fonts/Arial.ttf"
-            };
-
-            for (String fontPath : fontPaths) {
-                File fontFile = new File(fontPath);
-                if (fontFile.exists()) {
-                    return PDType0Font.load(document, fontFile);
+            ClassPathResource resource = new ClassPathResource("fonts/arial.ttf");
+            if (resource.exists()) {
+                try (InputStream fontStream = resource.getInputStream()) {
+                    return PDType0Font.load(document, fontStream);
                 }
             }
-
-            log.warn("Không tìm thấy font Unicode, sử dụng Helvetica");
-            return PDType1Font.HELVETICA;
-
         } catch (Exception e) {
-            log.error("Lỗi khi load font Unicode: {}", e.getMessage());
-            return PDType1Font.HELVETICA;
+            log.debug("Không tìm thấy font trong classpath: {}", e.getMessage());
         }
+
+        String[] fontPaths = {
+                "C:/Windows/Fonts/arial.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+                "/Library/Fonts/Arial.ttf"
+        };
+
+        for (String fontPath : fontPaths) {
+            File fontFile = new File(fontPath);
+            if (fontFile.exists()) {
+                try {
+                    return PDType0Font.load(document, fontFile);
+                } catch (IOException ex) {
+                    log.warn("Cannot load font from {}", fontPath);
+                }
+            }
+        }
+
+        log.warn("Không tìm thấy font Unicode, sử dụng Helvetica");
+        return PDType1Font.HELVETICA;
     }
 
     private byte[] loadImageBytes(String imageUrl) {
@@ -480,16 +355,6 @@ public class ContractFileServiceImpl implements ContractFileService {
             log.error("Failed to load image: {}", e.getMessage());
         }
         return null;
-    }
-
-    private void addImageToPage(PDDocument document, PDPage page, PDImageXObject image,
-                                float x, float y, float width, float height) {
-        try (PDPageContentStream contentStream = new PDPageContentStream(
-                document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
-            contentStream.drawImage(image, x, y, width, height);
-        } catch (IOException e) {
-            log.error("Error drawing image on page: {}", e.getMessage());
-        }
     }
 
     private void addTextToPage(PDDocument document, PDPage page, PDFont font,
