@@ -15,4 +15,10 @@ public interface ContractFileService {
     void addApprovalText(String filePath, String approvalText);
     List<String> getSignaturePlaceholders(Long contractId);
     boolean validatePlaceholdersInContract(Long contractId);
+
+    // Tạo DOCX từ template + biến
+    String generateDocxFile(Contract contract);
+    // Lấy PDF nếu có, nếu chưa có thì convert từ DOCX
+    File getPdfOrConvert(Long contractId);
+
 }
