@@ -166,6 +166,7 @@
             <version>4.5.14</version>
         </dependency>
 
+
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpmime</artifactId>
@@ -195,6 +196,13 @@
             <artifactId>jodconverter-local</artifactId>
             <version>4.4.11</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.docx4j</groupId>
+            <artifactId>docx4j-JAXB-ReferenceImpl</artifactId>
+            <version>11.4.9</version>
+        </dependency>
+
 
     </dependencies>
 

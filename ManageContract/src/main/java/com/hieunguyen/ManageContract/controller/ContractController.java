@@ -102,4 +102,13 @@ public class ContractController {
         contractService.cancelContract(contractId);
         return new ResponseData<>(200, "Huỷ thành công");
     }
+
+    @PostMapping("/preview-pdf")
+    public ResponseEntity<byte[]> previewPdf(@RequestBody CreateContractRequest req) {
+        byte[] pdf = contractService.previewContractPdf(req);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=preview.pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
 }

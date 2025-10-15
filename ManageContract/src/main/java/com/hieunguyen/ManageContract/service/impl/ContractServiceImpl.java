@@ -1,5 +1,6 @@
 package com.hieunguyen.ManageContract.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hieunguyen.ManageContract.common.constants.ApprovalStatus;
 import com.hieunguyen.ManageContract.common.constants.ApproverType;
 import com.hieunguyen.ManageContract.common.constants.ContractStatus;
@@ -22,13 +23,21 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.poi.xwpf.usermodel.*;
+import org.docx4j.model.datastorage.migration.VariablePrepare;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.wml.ContentAccessor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.docx4j.wml.Text;
+import org.springframework.web.client.RestTemplate;
 
+import org.springframework.http.HttpHeaders;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -36,10 +45,7 @@ import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -57,6 +63,15 @@ public class ContractServiceImpl implements ContractService {
     private final DepartmentRepository departmentRepository;
     private final ApprovalFlowRepository approvalFlowRepository;
     private final OnlyOfficeConvertService onlyOfficeConvertService;
+
+    @Value("${app.ds.url:http://localhost:8081}")
+    private String docServer; // URL Document Server (OnlyOffice)
+
+    @Value("${app.ds.source-base:http://host.docker.internal:8080}")
+    private String hostBaseUrl;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Transactional
     @Override
@@ -137,6 +152,113 @@ public class ContractServiceImpl implements ContractService {
 
         // Trả về hợp đồng đã lưu dưới dạng DTO
         return ContractMapper.toResponse(savedContract);
+    }
+
+    @Override
+    public byte[] previewContractPdf(CreateContractRequest request) {
+        // 1) Lấy template
+        ContractTemplate template = templateRepository.findById(request.getTemplateId())
+                .orElseThrow(() -> new RuntimeException("Template not found"));
+        Path templatePath = Paths.get(template.getFilePath());
+        if (!Files.exists(templatePath)) throw new RuntimeException("Template file not found: " + templatePath);
+        if (!templatePath.getFileName().toString().toLowerCase().endsWith(".docx")) {
+            throw new RuntimeException("Only DOCX template is supported for preview");
+        }
+
+        // 2) Tạo thư mục tạm: uploads/previews/{token}/contract.docx
+        String token = UUID.randomUUID().toString();
+        Path previewDir = Paths.get("uploads", "previews", token);
+        Path docxOut   = previewDir.resolve("contract.docx");
+        try {
+            Files.createDirectories(previewDir);
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot create preview dir: " + e.getMessage(), e);
+        }
+
+        // 3) Build map biến
+        Map<String, String> vars = request.getVariables() == null ? Map.of()
+                : request.getVariables().stream()
+                .collect(Collectors.toMap(
+                        CreateContractRequest.VariableValueRequest::getVarName,
+                        v -> Optional.ofNullable(v.getVarValue()).orElse("")
+                ));
+
+        // 4) Sinh DOCX tạm từ template (docx4j giữ format)
+        try {
+            WordprocessingMLPackage pkg = WordprocessingMLPackage.load(templatePath.toFile());
+            VariablePrepare.prepare(pkg);
+            pkg.getMainDocumentPart().variableReplace(vars);
+            pkg.save(docxOut.toFile());
+        } catch (Exception e) {
+            throw new RuntimeException("Build preview DOCX failed: " + e.getMessage(), e);
+        }
+
+        // 5) Convert qua OnlyOffice ConvertService bằng URL nội bộ
+        String sourceUrl = hostBaseUrl.replaceAll("/+$","") + "/internal/previews/" + token + "/contract.docx";
+        byte[] pdfBytes = convertDocxUrlToPdf(sourceUrl);
+
+        // (tuỳ chọn) lưu lại file để debug/người dùng tải
+        try {
+            Files.write(previewDir.resolve("contract.pdf"), pdfBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException ignore) {}
+
+        return pdfBytes;
+    }
+
+    // Convert từ URL DOCX -> PDF bytes qua DS
+    private byte[] convertDocxUrlToPdf(String sourceUrl) {
+        try {
+            String base = docServer.replaceAll("/+$", "");
+            String[] endpoints = { base + "/ConvertService.ashx", base + "/ConvertService" };
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("async", false);
+            payload.put("filetype", "docx");
+            payload.put("outputtype", "pdf");
+            payload.put("key", "preview-" + System.currentTimeMillis());
+            payload.put("title", "contract.docx");
+            payload.put("url", sourceUrl);
+
+            String json = mapper.writeValueAsString(payload);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
+            ResponseEntity<String> resp = null;
+            for (String ep : endpoints) {
+                try {
+                    resp = restTemplate.postForEntity(ep, new HttpEntity<>(json, headers), String.class);
+                    if (resp.getStatusCode().is2xxSuccessful()) break;
+                } catch (Exception ignore) {}
+            }
+            if (resp == null || !resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                throw new RuntimeException("ConvertService request failed");
+            }
+
+            var root = mapper.readTree(resp.getBody());
+            int attempts = 0;
+            while (!root.path("endConvert").asBoolean(false) && attempts < 20) {
+                Thread.sleep(400);
+                resp = restTemplate.postForEntity(endpoints[0], new HttpEntity<>(json, headers), String.class);
+                if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                    throw new RuntimeException("ConvertService polling failed");
+                }
+                root = mapper.readTree(resp.getBody());
+                attempts++;
+            }
+            if (!root.path("endConvert").asBoolean(false)) {
+                throw new RuntimeException("Convert not finished (timeout)");
+            }
+
+            String fileUrl = root.path("fileUrl").asText(null);
+            if (fileUrl == null) throw new RuntimeException("ConvertService returned no fileUrl");
+            byte[] pdf = restTemplate.getForObject(fileUrl, byte[].class);
+            if (pdf == null || pdf.length == 0) throw new RuntimeException("Downloaded PDF is empty");
+            return pdf;
+        } catch (Exception e) {
+            throw new RuntimeException("Preview convert failed: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -1010,5 +1132,28 @@ public class ContractServiceImpl implements ContractService {
         }
 
         contractRepository.delete(contract);
+    }
+
+
+    @Scheduled(fixedRate = 60 * 60 * 1000) // mỗi giờ
+    public void cleanupPreviewTemp() {
+        Path root = Paths.get("uploads", "previews");
+        try {
+            if (!Files.exists(root)) return;
+            long expire = System.currentTimeMillis() - 2 * 60 * 60 * 1000; // 2h
+            try (var dir = Files.list(root)) {
+                dir.forEach(dirPath -> {
+                    try {
+                        if (Files.getLastModifiedTime(dirPath).toMillis() < expire) {
+                            Files.walk(dirPath).sorted(Comparator.reverseOrder()).forEach(p -> {
+                                try { Files.deleteIfExists(p); } catch (Exception ignore) {}
+                            });
+                        }
+                    } catch (Exception ignore) {}
+                });
+            }
+        } catch (Exception e) {
+            log.warn("cleanupPreviewTemp error: {}", e.getMessage());
+        }
     }
 }

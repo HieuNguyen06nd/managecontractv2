@@ -116,4 +116,9 @@ export class ContractService {
   deleteContract(contractId: number): Observable<ResponseData<void>> {
     return this.http.delete<ResponseData<void>>(`${this.baseUrl}/${contractId}`);
   }
+
+  previewContractPdf(payload: CreateContractRequest): Observable<Blob> {
+    return this.http.post(`${this.baseUrl}/preview-pdf`, payload, { responseType: 'blob' });
+  }
+
 }

@@ -18,6 +18,7 @@ import {ContractService} from '../../core/services/contract.service';
 import { CreateContractRequest,VariableValueRequest } from '../../core/models/contract.model';
 import { ContractResponse } from '../../core/models/contract.model';
 import { ContractApprovalService } from '../../core/services/contract-approval.service';
+import { SafeUrlPipe } from '../../shared/pipes/safe-url.pipe';
 
 // Extended interface để hỗ trợ các thuộc tính mở rộng
 interface ExtendedTemplateVariable extends TemplateVariable {
@@ -36,7 +37,7 @@ type ApprovalActionUI = 'APPROVE_ONLY' | 'SIGN_ONLY' | 'SIGN_THEN_APPROVE';
 @Component({
   selector: 'app-contract-create',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, SafeUrlPipe],
   templateUrl: './contract.component.html',
   styleUrl: './contract.component.scss'
 })
@@ -364,29 +365,58 @@ export class ContractComponent implements OnInit {
     this.currentStep = step;
 
     if (step === 4) {
-      this.previewTemplate();
+      this.previewPdf();
     }
   }
 
-  previewTemplate(): void {
-    if (!this.selectedTemplate) {
-      this.errorMessage = 'Chưa chọn template để xem trước.';
-      return;
-    }
-    const payload = this.buildPreviewRequest();
-    this.errorMessage = '';
-    this.previewHtml = '';
+  pdfLoading = false;
+  pdfBlobUrl: string | null = null;
+  previewOpen = false;
+  pdfError: string | null = null;
+  previewDownloadUrl: string | null = null;
+  private cacheBust = Date.now();
 
-    this.contractService.previewTemplate(payload).subscribe({
-      next: (res) => {
-        this.previewHtml = res?.data ?? '';
-      },
-      error: (err) => {
-        console.error('Lỗi preview template:', err);
-        this.errorMessage = 'Không thể xem trước hợp đồng.';
+  
+  previewPdf(): void {
+      if (!this.selectedTemplate) {
+        this.toastr.error('Chưa chọn template');
+        return;
       }
-    });
+      const payload = this.buildPreviewRequest();
+      this.pdfLoading = true;
+      this.pdfError = null;
+
+      this.contractService.previewContractPdf(payload).subscribe({
+        next: (blob) => {
+          try {
+            this.pdfLoading = false;
+            if (this.pdfBlobUrl) URL.revokeObjectURL(this.pdfBlobUrl);
+            // ĐẢM BẢO MIME LÀ PDF
+            const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+            this.pdfBlobUrl = URL.createObjectURL(pdfBlob);
+            this.previewOpen = true;
+          } catch (e) {
+            this.pdfLoading = false;
+            this.pdfError = 'Không hiển thị được PDF.';
+            this.toastr.error(this.pdfError);
+          }
+        },
+        error: (err) => {
+          this.pdfLoading = false;
+          this.pdfError = err?.error?.message || 'Không tạo được file xem trước';
+          this.toastr.error(this.pdfError ?? 'Không tạo được file xem trước');
+        }
+      });
+    }
+
+  closePreview(): void {
+    this.previewOpen = false;
+    if (this.pdfBlobUrl) {
+      URL.revokeObjectURL(this.pdfBlobUrl);
+      this.pdfBlobUrl = null;
+    }
   }
+
 
   validateStep(step: number): boolean {
     if (step === 1 && !this.selectedTemplate) {

@@ -19,4 +19,5 @@ public interface ContractService {
     ContractResponse updateContract(Long contractId, CreateContractRequest request);
     ContractResponse getById(Long id);
     void deleteContract(Long contractId);
+    byte[] previewContractPdf(CreateContractRequest request);
 }

@@ -16,6 +16,7 @@ public class SecurityConstants {
             "/swagger-resources/**",   // Tài nguyên Swagger
             "/webjars/**",             // Thư viện webjars
             "/favicon.ico",             // Biểu tượng
-            "/internal/files/**"
+            "/internal/files/**",
+            "/internal/previews/**"
     };
 }
