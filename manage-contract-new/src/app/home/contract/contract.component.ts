@@ -4,7 +4,7 @@ import { FormBuilder, FormGroup, FormArray, Validators, ReactiveFormsModule, Abs
 import { Observable, of } from 'rxjs';
 import { map, switchMap, catchError, finalize, tap } from 'rxjs/operators';
 import { ToastrService } from 'ngx-toastr';
-import { ContractTemplateService } from '../../core/services/contract-template.service';
+import { ContractTemplateService, Status } from '../../core/services/contract-template.service';
 import { ContractTemplateResponse, TemplateVariable  } from '../../core/models/contract-template-response.model';
 import { VariableType } from '../../core/models/template-preview-response.model';
 import { ApprovalFlowService, ApprovalFlowRequest, ApprovalStepRequest, 
@@ -43,6 +43,7 @@ type ApprovalActionUI = 'APPROVE_ONLY' | 'SIGN_ONLY' | 'SIGN_THEN_APPROVE';
 export class ContractComponent implements OnInit {
 
   readonly requiredValidator = Validators.required;
+  Status = Status;
 
   currentStep = 1;
   isSaving = false;
@@ -99,7 +100,7 @@ export class ContractComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.loadTemplates();
+     this.loadTemplates(Status.ACTIVE); 
     this.loadReferences();
 
     const sigCfg = this.contractForm.get('signatureConfig')!;
@@ -155,10 +156,10 @@ export class ContractComponent implements OnInit {
   }
 
   // Load Templates
-  loadTemplates(): void {
-    this.contractTemplateService.getAllTemplates().subscribe({
+  loadTemplates(status: Status = Status.ACTIVE): void {
+    this.contractTemplateService.getAllTemplatesByStatus(status).subscribe({
       next: (data) => {
-        this.templates = data;
+        this.templates = data || [];
         this.currentPage = 1;
         if (this.templates.length > 0) {
           this.selectTemplate(this.templates[0]);

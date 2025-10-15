@@ -27,7 +27,7 @@ export class ContactListTemplateComponent implements OnInit {
 
   searchTerm = '';
   categoryFilter: number | null = null;
-  statusFilter: '' | 'ACTIVE' | 'INACTIVE' = '';
+  statusFilter: '' | 'ACTIVE' | 'INACTIVE' | 'LOCKED' | 'PENDING' = '';
 
   pageSizeOptions: number[] = [6, 12, 24];
   pageSize = 6;
@@ -93,20 +93,23 @@ export class ContactListTemplateComponent implements OnInit {
   }
 
   updateTemplateStatus(template: ContractTemplateResponse): void {
-    // Chuyển đổi từ ACTIVE/INACTIVE (BE) sang active/inactive (Service)
-    const newStatus = template.status === 'ACTIVE' ? 'inactive' : 'active';
-    
-    this.templateService.updateTemplateStatus(template.id, { status: newStatus }).subscribe({
-      next: () => {
-        // Cập nhật trạng thái trong danh sách sau khi thành công
-        template.status = template.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-        this.toastr.success('Trạng thái hợp đồng đã được cập nhật');
-      },
-      error: (err) => {
-        this.toastr.error('Cập nhật trạng thái thất bại');
-        console.error(err);
-      }
-    });
+    // Tính trạng thái mới (UPPERCASE)
+    const newStatus: 'ACTIVE' | 'INACTIVE' =
+      template.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+
+    this.templateService
+      .updateTemplateStatus(template.id, { status: newStatus })
+      .subscribe({
+        next: (res) => {
+          // Đồng bộ theo BE trả về
+          template.status = res.status as any;
+          this.toastr.success('Trạng thái hợp đồng đã được cập nhật');
+        },
+        error: (err) => {
+          this.toastr.error('Cập nhật trạng thái thất bại');
+          console.error(err);
+        },
+      });
   }
 
   openDetail(t: ContractTemplateResponse, isEdit: boolean = false): void {
@@ -203,30 +206,28 @@ export class ContactListTemplateComponent implements OnInit {
 
   // Filter templates based on search and filters
   get filteredTemplates(): ContractTemplateResponse[] {
-    let filtered = this.templates;
+    let filtered = this.templates ?? [];
 
-    // Search filter
+    // Search
     if (this.searchTerm) {
       const term = this.searchTerm.toLowerCase();
       filtered = filtered.filter(t => {
         const name = t.name?.toLowerCase() || '';
         const description = t.description?.toLowerCase() || '';
         const categoryLabel = this.getTemplateCategoryLabel(t).toLowerCase();
-        
-        return name.includes(term) || 
-               description.includes(term) ||
-               categoryLabel.includes(term);
+        return name.includes(term) || description.includes(term) || categoryLabel.includes(term);
       });
     }
 
-    // Category filter
+    // Category
     if (this.categoryFilter) {
       filtered = filtered.filter(t => t.categoryId === this.categoryFilter);
     }
 
-    // Status filter
+    // Status (CHUẨN HOÁ HOA)
     if (this.statusFilter) {
-      filtered = filtered.filter(t => t.status === this.statusFilter);
+      const want = (this.statusFilter || '').toUpperCase();
+      filtered = filtered.filter(t => (t.status || '').toUpperCase() === want);
     }
 
     return filtered;

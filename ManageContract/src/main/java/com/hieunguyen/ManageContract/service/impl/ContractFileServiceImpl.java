@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hieunguyen.ManageContract.entity.Contract;
 import com.hieunguyen.ManageContract.entity.ContractApproval;
 import com.hieunguyen.ManageContract.entity.ContractVariableValue;
-import com.hieunguyen.ManageContract.entity.ApprovalStep;
 import com.hieunguyen.ManageContract.repository.ContractApprovalRepository;
 import com.hieunguyen.ManageContract.repository.ContractRepository;
 import com.hieunguyen.ManageContract.service.ContractFileService;
@@ -17,17 +16,14 @@ import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.openpackaging.parts.WordprocessingML.BinaryPartAbstractImage;
 import org.docx4j.wml.*;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -594,12 +590,27 @@ public class ContractFileServiceImpl implements ContractFileService {
     }
 
     private String normalizePlaceholder(String raw) {
+        if (raw == null) return "{{SIGN}}";
         String s = raw.trim();
-        // Cho phép user truyền "KEY" hoặc "{{SIGN:KEY}}" hoặc "{{KEY}}"
+
+        // đã có dạng {{...}} -> giữ nguyên
         if (s.startsWith("{{") && s.endsWith("}}")) return s;
-        if (s.startsWith("SIGN:") || s.startsWith("sign:")) return "{{" + s + "}}";
+
+        // nếu đang ở dạng [SIGN] hoặc [SIGN:...], chuyển sang {{...}}
+        if (s.startsWith("[") && s.endsWith("]")) {
+            s = s.substring(1, s.length() - 1).trim();
+        }
+
+        // chỉ "SIGN" -> {{SIGN}}
+        if (s.equalsIgnoreCase("SIGN")) return "{{SIGN}}";
+
+        // "SIGN:KEY" -> {{SIGN:KEY}}  (không ép hoa phần KEY)
+        if (s.regionMatches(true, 0, "SIGN:", 0, 5)) return "{{" + s + "}}";
+
+        // còn lại coi như KEY tuỳ ý -> {{SIGN:KEY}}
         return "{{SIGN:" + s + "}}";
     }
+
 
     private long pxToEmu(float px) { return Math.round(px * 9525f); }
 
@@ -610,43 +621,71 @@ public class ContractFileServiceImpl implements ContractFileService {
     // ========================================================================
 
     /** Hỗ trợ data: URL, http(s), file path (tuyệt đối/ tương đối), và đường dẫn trong signatureStorageDir */
-    private byte[] loadImageBytes(String imageUrlOrPath) {
-        if (imageUrlOrPath == null || imageUrlOrPath.isBlank()) return null;
+    private byte[] loadImageBytes(String ref) {
+        if (ref == null || ref.isBlank()) return null;
         try {
-            // data:image/png;base64,...
-            if (imageUrlOrPath.startsWith("data:")) {
-                int comma = imageUrlOrPath.indexOf(',');
-                if (comma > 0) {
-                    String b64 = imageUrlOrPath.substring(comma + 1);
-                    return Base64.getDecoder().decode(b64);
-                }
+            // data URL
+            if (ref.startsWith("data:image/")) {
+                int comma = ref.indexOf(',');
+                if (comma > 0) return Base64.getDecoder().decode(ref.substring(comma + 1));
                 return null;
             }
-
+            // raw base64
+            if (looksLikeBase64(ref)) {
+                return Base64.getDecoder().decode(ref);
+            }
             // http(s)
-            if (imageUrlOrPath.startsWith("http://") || imageUrlOrPath.startsWith("https://")) {
-                try (InputStream in = new java.net.URL(imageUrlOrPath).openStream();
+            if (ref.startsWith("http://") || ref.startsWith("https://")) {
+                try (InputStream in = new java.net.URL(ref).openStream();
                      ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
                     in.transferTo(bos);
                     return bos.toByteArray();
                 }
             }
 
-            // File system (absolute/relative)
-            Path p = Paths.get(imageUrlOrPath);
-            if (Files.exists(p)) return Files.readAllBytes(p);
+            // filesystem candidates
+            Path userDir = Paths.get(System.getProperty("user.dir"));
+            Path sigDirAbs = userDir.resolve(signatureStorageDir).normalize(); // vd: <user.dir>/uploads/signatures
 
-            // Thử relative với signatureStorageDir
-            Path rel = Paths.get(signatureStorageDir, imageUrlOrPath).normalize();
-            if (Files.exists(rel)) return Files.readAllBytes(rel);
+            List<Path> candidates = new ArrayList<>();
+            Path asGiven = Paths.get(ref);                        // signatures/xxx.png (tương đối)
+            candidates.add(asGiven.normalize());
+            candidates.add(userDir.resolve(asGiven).normalize()); // <user.dir>/signatures/xxx.png
+            candidates.add(sigDirAbs.resolve(ref).normalize());   // <user.dir>/uploads/signatures/signatures/xxx.png (có thể trùng, nhưng thử)
+            candidates.add(userDir.resolve("uploads").resolve(ref).normalize()); // <user.dir>/uploads/signatures/xxx.png ✅
 
-            log.error("Signature image not found at: {} or {}", p, rel);
+            // nếu ref bắt đầu bằng "/uploads/..."
+            if (ref.startsWith("/uploads/")) {
+                candidates.add(userDir.resolve(ref.substring(1)).normalize());
+            }
+
+            for (Path p : candidates) {
+                try {
+                    if (Files.exists(p)) {
+                        byte[] data = Files.readAllBytes(p);
+                        if (data.length > 0) {
+                            log.info("Loaded signature from {}", p);
+                            return data;
+                        }
+                    }
+                } catch (Exception ignore) {}
+            }
+            log.error("Signature NOT FOUND. Tried:\n{}", candidates.stream().map(Path::toString).collect(Collectors.joining("\n")));
             return null;
         } catch (Exception e) {
-            log.error("loadImageBytes fail: {}", e.getMessage(), e);
+            log.error("loadImageBytes error: {}", e.toString(), e);
             return null;
         }
     }
+
+    private boolean looksLikeBase64(String s) {
+        if (s == null || s.length() < 16 || s.length() % 4 != 0) return false;
+        for (char c : s.toCharArray()) {
+            if (!(Character.isLetterOrDigit(c) || c=='+' || c=='/' || c=='=' || c=='\n' || c=='\r')) return false;
+        }
+        try { Base64.getDecoder().decode(s); return true; } catch (IllegalArgumentException e) { return false; }
+    }
+
 
     private Long extractContractIdFromPath(Path anyPathUnderContractFolder) {
         // Expect: uploads/contracts/{id}/...

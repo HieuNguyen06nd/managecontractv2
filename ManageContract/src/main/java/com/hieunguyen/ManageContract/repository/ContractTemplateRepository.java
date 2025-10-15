@@ -1,10 +1,12 @@
 package com.hieunguyen.ManageContract.repository;
 
+import com.hieunguyen.ManageContract.common.constants.Status;
 import com.hieunguyen.ManageContract.entity.ContractTemplate;
 import io.lettuce.core.dynamic.annotation.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface ContractTemplateRepository extends JpaRepository<ContractTemplate, Long> {
@@ -16,4 +18,7 @@ public interface ContractTemplateRepository extends JpaRepository<ContractTempla
         where t.id = :id
     """)
     Optional<ContractTemplate> findByIdWithDefaultFlow(@Param("id") Long id);
+
+    List<ContractTemplate> findAllByStatus(Status status);
+
 }

@@ -249,6 +249,40 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
         }
     }
 
+    @Override
+    @Transactional
+    public ContractTemplateResponse toggleTemplateStatus(Long templateId) {
+        ContractTemplate t = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("Template không tồn tại"));
+
+        Status next = (t.getStatus() == Status.ACTIVE) ? Status.INACTIVE : Status.ACTIVE;
+        t.setStatus(next);
+        templateRepository.save(t);
+        return ContractTemplateMapper.toResponse(t);
+    }
+
+    @Override
+    @Transactional
+    public ContractTemplateResponse updateTemplateStatus(Long templateId, Status status) {
+        var t = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("Template không tồn tại"));
+        t.setStatus(status);
+        templateRepository.save(t);
+        return ContractTemplateMapper.toResponse(t);
+    }
+
+    @Override
+    public List<ContractTemplateResponse> getAllTemplatesByStatus(Status status) {
+        List<ContractTemplate> templates = (status == null)
+                ? templateRepository.findAll()
+                : templateRepository.findAllByStatus(status);
+
+        log.info("Retrieved {} templates (status={})", templates.size(), status);
+        return templates.stream()
+                .map(ContractTemplateMapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
     // Xử lý biến TABLE riêng biệt
     private List<TemplateTableVariable> processTableVariables(ContractTemplateCreateRequest request, ContractTemplate template) {
         List<TemplateTableVariable> tableVariables = new ArrayList<>();

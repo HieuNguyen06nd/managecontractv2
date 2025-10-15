@@ -1,6 +1,6 @@
 // contract-template.service.ts
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http'; 
 import { Observable, map } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
@@ -12,10 +12,12 @@ import { ContractTemplateResponse } from '../models/contract-template-response.m
 import { VariableUpdateRequest } from '../models/variable-update-request.model';
 import { ContractTemplateUpdateRequest } from '../models/contract-template-update-request.model';
 import { ContractTemplateCreateRequest } from '../models/ontract-template-create-request.model';
+
 export enum Status {
   ACTIVE = 'ACTIVE',
   INACTIVE = 'INACTIVE',
   LOCKED = 'LOCKED',
+  PENDING = 'PENDING'
 }
 
 export interface AuthAccountResponse {
@@ -116,15 +118,39 @@ export class ContractTemplateService {
       .pipe(map((res) => this.normalizeOne(res.data)));
   }
 
-  updateTemplateStatus(templateId: number, status: { status: 'active' | 'inactive' }): Observable<void> {
+  updateTemplateStatus(
+    templateId: number,
+    body: { status: 'ACTIVE' | 'INACTIVE' | 'LOCKED' | 'PENDING' }
+  ): Observable<ContractTemplateResponse> {
     return this.http
-      .put<void>(`${this.baseUrl}/${templateId}/status`, status);
+      .put<ResponseData<ContractTemplateResponse>>(
+        `${this.baseUrl}/${templateId}/status`,
+        body
+      )
+      .pipe(map((res) => this.normalizeOne(res.data)));
   }
 
   getDefaultFlowByTemplate(templateId: number): Observable<ApprovalFlowResponse> {
     return this.http
       .get<ResponseData<ApprovalFlowResponse>>(`${this.baseUrl}/${templateId}/default-flow`)
       .pipe(map((res) => res.data));
+  }
+
+  toggleTemplateStatus(templateId: number) {
+    return this.http
+      .patch<ResponseData<ContractTemplateResponse>>(
+        `${this.baseUrl}/${templateId}/status/toggle`,
+        {}
+      )
+      .pipe(map(res => this.normalizeOne(res.data)));
+  }
+
+  getAllTemplatesByStatus(status: Status) {
+    return this.http
+      .get<ResponseData<ContractTemplateResponse[]>>(
+        `${this.baseUrl}/status/${status}`
+      )
+      .pipe(map(res => this.normalizeList(res.data)));
   }
 
   /** Đảm bảo mọi TemplateVariable có định dạng đúng theo models (tránh undefined) */
@@ -143,7 +169,7 @@ export class ContractTemplateService {
   private normalizeOne(t: ContractTemplateResponse): ContractTemplateResponse {
       return {
         ...t,
-        status: t.status ?? 'inactive', // Default to 'inactive' if status is missing
+        status: (t?.status ? String(t.status).toUpperCase() : 'INACTIVE') as any,
       };
     }
 
