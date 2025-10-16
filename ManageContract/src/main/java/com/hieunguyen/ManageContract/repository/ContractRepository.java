@@ -23,4 +23,16 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
 
     @EntityGraph(attributePaths = {"variableValues", "createdBy", "template", "flow"})
     Optional<Contract> findWithVarsById(Long id);
+
+    @EntityGraph(attributePaths = {
+            "template",
+            "variableValues",
+            "flow",
+            "flow.steps",
+            "flow.steps.employee",
+            "flow.steps.position",
+            "flow.steps.department"
+    })
+    Optional<Contract> findDetailById(Long id);
+
 }

@@ -5,9 +5,12 @@ import com.hieunguyen.ManageContract.common.constants.ApprovalStatus;
 import com.hieunguyen.ManageContract.common.constants.ApproverType;
 import com.hieunguyen.ManageContract.common.constants.ContractStatus;
 import com.hieunguyen.ManageContract.common.constants.DocxToHtmlConverter;
+import com.hieunguyen.ManageContract.dto.approval.ApprovalStepResponse;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.dto.contract.CreateContractRequest;
+import com.hieunguyen.ManageContract.dto.contract.PlannedFlowResponse;
 import com.hieunguyen.ManageContract.entity.*;
+import com.hieunguyen.ManageContract.mapper.ApprovalMapper;
 import com.hieunguyen.ManageContract.mapper.ContractMapper;
 import com.hieunguyen.ManageContract.repository.*;
 import com.hieunguyen.ManageContract.service.ContractService;
@@ -801,10 +804,78 @@ public class ContractServiceImpl implements ContractService {
     @Override
     @Transactional
     public ContractResponse getById(Long id) {
-        Contract contract = contractRepository.findWithVarsById(id)
+        Contract c = contractRepository.findDetailById(id)
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
-        return ContractMapper.toResponse(contract);
+
+        // base từ mapper (để có variables…)
+        ContractResponse dto = ContractMapper.toResponse(c);
+
+        // bổ sung các field FE cần
+        dto.setTemplateId(c.getTemplate() != null ? c.getTemplate().getId() : null);
+
+        if (c.getFlow() != null) {
+            dto.setFlowId(c.getFlow().getId());
+            dto.setFlowName(c.getFlow().getName());
+            dto.setFlowSource("CONTRACT"); // có thể đổi/ghi đè tuỳ logic
+            // steps từ flow hiện tại (DRAFT cũng có)
+            List<ApprovalStepResponse> steps = c.getFlow().getSteps().stream()
+                    .sorted(Comparator.comparing(ApprovalStep::getStepOrder))
+                    .map(this::toStepResponseBasic)
+                    .toList();
+
+            // nếu đã submit → trộn trạng thái runtime
+            boolean submitted = c.getStatus() == ContractStatus.PENDING_APPROVAL
+                    || c.getStatus() == ContractStatus.APPROVED
+                    || c.getStatus() == ContractStatus.REJECTED
+                    || c.getStatus() == ContractStatus.CANCELLED;
+            dto.setHasFlow(submitted);
+
+            if (submitted) {
+                List<ContractApproval> approvals = contractApprovalRepository.findByContract(c);
+                Map<Long, ContractApproval> byStepId = approvals.stream()
+                        .collect(Collectors.toMap(a -> a.getStep().getId(), a -> a, (a,b)->a));
+
+                for (ApprovalStepResponse s : steps) {
+                    ContractApproval a = byStepId.get(s.getId());
+                    if (a != null) {
+                        s.setStatus(a.getStatus());
+                        s.setIsCurrent(a.getStatus() == ApprovalStatus.PENDING);
+                        // tên người quyết định (tuỳ entity của bạn)
+                        String decidedBy = a.getApprover() != null ? a.getApprover().getFullName()
+                                : (a.getPosition() != null ? a.getPosition().getName() : null);
+                        s.setDecidedBy(decidedBy);
+                        s.setDecidedAt(a.getUpdatedAt() != null ? a.getUpdatedAt().toString() : null);
+                    }
+                }
+            }
+
+            dto.setSteps(steps);
+        } else {
+            dto.setHasFlow(false);
+            dto.setSteps(Collections.emptyList());
+        }
+
+        return dto;
     }
+
+    private ApprovalStepResponse toStepResponseBasic(ApprovalStep s) {
+        return ApprovalStepResponse.builder()
+                .id(s.getId())
+                .stepOrder(s.getStepOrder())
+                .required(Boolean.TRUE.equals(s.getRequired()))
+                .approverType(s.getApproverType())
+                .isFinalStep(Boolean.TRUE.equals(s.getIsFinalStep()))
+                .employeeId(s.getEmployee() != null ? s.getEmployee().getId() : null)
+                .employeeName(s.getEmployee() != null ? s.getEmployee().getFullName() : null)
+                .positionId(s.getPosition() != null ? s.getPosition().getId() : null)
+                .positionName(s.getPosition() != null ? s.getPosition().getName() : null)
+                .departmentId(s.getDepartment() != null ? s.getDepartment().getId() : null)
+                .departmentName(s.getDepartment() != null ? s.getDepartment().getName() : null)
+                .action(s.getAction())
+                .signaturePlaceholder(s.getSignaturePlaceholder())
+                .build();
+    }
+
 
     @Transactional
     @Override
@@ -1082,4 +1153,46 @@ public class ContractServiceImpl implements ContractService {
             log.warn("cleanupPreviewTemp error: {}", e.getMessage());
         }
     }
+
+    @Transactional
+    @Override
+    public PlannedFlowResponse getPlannedFlow(Long contractId) {
+        Contract c = contractRepository.findById(contractId)
+                .orElseThrow(() -> new RuntimeException("Contract not found"));
+
+        PlannedFlowResponse r = new PlannedFlowResponse();
+
+        if (c.getStatus() == ContractStatus.PENDING_APPROVAL) {
+            // runtime snapshot
+            List<ContractApproval> approvals = contractApprovalRepository.findByContract(c);
+            r.setExists(true);
+            r.setSource("RUNTIME");
+            r.setFlowId(c.getFlow() != null ? c.getFlow().getId() : null);
+            r.setFlowName(c.getFlow() != null ? c.getFlow().getName() : null);
+            r.setSteps(approvals.stream()
+                    .sorted(Comparator.comparing(a -> a.getStep().getStepOrder()))
+                    .map(ApprovalMapper::fromApproval) // map status, decidedBy/At,...
+                    .toList());
+            return r;
+        }
+
+        // DRAFT ⇒ lấy flow gắn vào HĐ, nếu ko có thì default của template
+        ApprovalFlow f = (c.getFlow() != null)
+                ? c.getFlow()
+                : (c.getTemplate() != null ? c.getTemplate().getDefaultFlow() : null);
+
+        r.setExists(false);
+        r.setSource(c.getFlow() != null ? "CONTRACT" : "TEMPLATE_DEFAULT");
+
+        if (f != null) {
+            r.setFlowId(f.getId());
+            r.setFlowName(f.getName());
+            r.setSteps(f.getSteps().stream()
+                    .sorted(Comparator.comparing(ApprovalStep::getStepOrder))
+                    .map(ApprovalMapper::toResponse)
+                    .toList());
+        }
+        return r;
+    }
+
 }

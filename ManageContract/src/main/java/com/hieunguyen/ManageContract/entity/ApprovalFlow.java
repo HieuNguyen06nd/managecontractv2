@@ -25,7 +25,7 @@ public class ApprovalFlow {
     private String name;
     private String description;
 
-    private Boolean allowCustomFlow = true; // mặc định cho sửa
+    private Boolean allowCustomFlow = true;
 
     @ManyToOne @JoinColumn(name = "template_id")
     private ContractTemplate template;

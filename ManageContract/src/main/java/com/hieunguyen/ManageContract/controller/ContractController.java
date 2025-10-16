@@ -4,6 +4,7 @@ import com.hieunguyen.ManageContract.common.constants.ContractStatus;
 import com.hieunguyen.ManageContract.dto.ResponseData;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.dto.contract.CreateContractRequest;
+import com.hieunguyen.ManageContract.dto.contract.PlannedFlowResponse;
 import com.hieunguyen.ManageContract.dto.file.FilePayload;
 import com.hieunguyen.ManageContract.service.ContractService;
 import com.hieunguyen.ManageContract.service.ContractViewService;
@@ -111,4 +112,9 @@ public class ContractController {
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdf);
     }
+    @GetMapping("/{id}/planned-flow")
+    public ResponseData<PlannedFlowResponse> plannedFlow(@PathVariable Long id) {
+        return new ResponseData<>(200, "danh sách flow" ,contractService.getPlannedFlow(id));
+    }
+
 }

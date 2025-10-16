@@ -6,6 +6,7 @@ import { environment } from '../../../environments/environment';
 import { map } from 'rxjs/operators';
 import { ResponseData } from '../models/response-data.model';
 import { ContractResponse, VariableValueRequest, VariableValueResponse, CreateContractRequest } from '../models/contract.model';
+import { PlannedFlowResponse } from '../models/contrac-flow.model';
 
 function normalizeContract(c: ContractResponse): ContractResponse {
   const vs = (c as any).variables as VariableValueResponse[] | undefined;
@@ -121,11 +122,28 @@ export class ContractService {
     return this.http.post(`${this.baseUrl}/preview-pdf`, payload, { responseType: 'blob' });
   }
 
-  updateContractFlow(contractId: number, flowId: number | null) {
-  return this.http.put<ResponseData<ContractResponse>>(
-    `${this.baseUrl}/${contractId}/flow`,
-    { flowId }
-  );
-}
+  updateContractFlow(contractId: number, newFlowId: number, base: ContractResponse) {
+    // Lấy variables hiện có để không bị mất khi update
+    const srcVars: VariableValueResponse[] =
+      (base.variableValues && base.variableValues.length ? base.variableValues :
+      (base as any).variables) || [];
+
+    const body: CreateContractRequest = {
+      templateId: base.templateId!,                 // Backend đã bổ sung field này trong ContractResponse
+      title: base.title || '',                      // giữ nguyên title hiện tại
+      variables: srcVars.map(v => ({ varName: v.varName, varValue: v.varValue ?? '' })),
+      flowId: newFlowId                              // CHỈ đổi flow
+    };
+
+    return this.http.put<ResponseData<ContractResponse>>(
+      `${this.baseUrl}/${contractId}`, body
+    );
+  }
+
+  getPlannedFlow(contractId: number) {
+    return this.http.get<ResponseData<PlannedFlowResponse>>(
+      `${this.baseUrl}/${contractId}/planned-flow`
+    );
+  }
 
 }

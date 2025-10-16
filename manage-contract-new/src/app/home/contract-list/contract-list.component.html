@@ -273,157 +273,113 @@
             <button type="button" class="btn-close" aria-label="Close" (click)="closeSubmitModal()"></button>
         </div>
 
-       <div class="modal-body">
-  <!-- Thông tin cơ bản -->
-  <div class="mb-3">
-    <div class="fw-semibold mb-1">Thông tin hợp đồng</div>
-    <div class="small text-muted">
-      Tiêu đề: {{ submitTarget?.title || '-' }}<br>
-      Trạng thái: {{ statusLabel(submitTarget?.status) }}
-    </div>
-  </div>
+        <div class="modal-body">
+            <!-- Thông tin cơ bản -->
+            <div class="mb-3">
+            <div class="fw-semibold mb-1">Thông tin hợp đồng</div>
+            <div class="small text-muted">
+                Tiêu đề: {{ submitTarget?.title || '-' }}<br>
+                Trạng thái: {{ statusLabel(submitTarget?.status) }}
+            </div>
+            </div>
 
-  <!-- 1) ĐÃ TRÌNH KÝ: hiển thị tiến trình -->
-  <div *ngIf="currentFlow()?.exists" class="border rounded p-3 mb-3 bg-light">
-    <div class="fw-semibold mb-2">Luồng hiện tại</div>
+            <!-- ĐÃ có luồng (progress) -->
+            <div *ngIf="currentFlow()?.exists" class="border rounded p-3 mb-3 bg-light">
+            <div class="fw-semibold mb-2">Luồng hiện tại</div>
 
-    <div class="d-flex flex-wrap align-items-start gap-2 mt-2">
-      <ng-container *ngFor="let s of (currentFlow()?.steps || []); let last = last;">
-        <div class="card p-2"
-             [ngClass]="{
-               'border-success': s.status==='APPROVED',
-               'border-danger':  s.status==='REJECTED',
-               'border-primary': !s.status
-             }"
-             style="min-width:220px;">
-          <div class="fw-semibold">Bước {{ s.stepOrder }}</div>
-          <div>{{ s.approverName || '—' }}</div>
-          <div class="text-muted small">
-            {{ s.action || 'APPROVE_ONLY' }}
-            <span *ngIf="s.placeholderKey"> • {{ s.placeholderKey }}</span>
-          </div>
-          <div class="small mt-1" *ngIf="s.status">
-            Trạng thái: {{ s.status }}
-            <span *ngIf="s.decidedBy"> • {{ s.decidedBy }}</span>
-            <span *ngIf="s.decidedAt"> • {{ s.decidedAt }}</span>
-          </div>
+            <div class="d-flex flex-wrap align-items-start gap-2 mt-2">
+                <ng-container *ngFor="let s of (currentFlow()?.steps || []); let last = last;">
+                <div class="card p-2"
+                    [ngClass]="{
+                        'border-success': s.status==='APPROVED',
+                        'border-danger':  s.status==='REJECTED',
+                        'border-primary': !s.status
+                    }"
+                    style="min-width:220px;">
+                    <div class="fw-semibold">Bước {{ s.stepOrder }}</div>
+                    <div>{{ s.approverName || '—' }}</div>
+                    <div class="text-muted small">
+                    {{ s.action || 'APPROVE_ONLY' }}
+                    <span *ngIf="s.placeholderKey"> • {{ s.placeholderKey }}</span>
+                    </div>
+                    <div class="small mt-1" *ngIf="s.status">
+                    Trạng thái: {{ s.status }}
+                    <span *ngIf="s.decidedBy"> • {{ s.decidedBy }}</span>
+                    <span *ngIf="s.decidedAt"> • {{ s.decidedAt }}</span>
+                    </div>
+                </div>
+
+                <div *ngIf="!last" class="align-self-center">
+                    <i class="fas fa-chevron-right text-muted"></i>
+                </div>
+                </ng-container>
+            </div>
+
+            <div class="small text-muted mt-2">
+                (Hợp đồng đã có luồng phê duyệt — không thể trình lại.)
+            </div>
+            </div>
+
+            <!-- CHƯA có luồng (preview & chọn flow) -->
+            <div *ngIf="!currentFlow()?.exists" class="border rounded p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="fw-semibold">Chọn luồng trình ký</div>
+                <div class="d-flex align-items-center">
+                <select class="form-select form-select-sm me-2"
+                        style="min-width:260px"
+                        [disabled]="flowsLoading() || flows().length === 0"
+                        [ngModel]="selectedFlowId()"
+                        (ngModelChange)="selectedFlowId.set(+$event)">
+                    <option [ngValue]="null" *ngIf="flows().length === 0">Không có luồng</option>
+                    <option *ngFor="let f of flows();" [ngValue]="f.id">{{ f.name }}</option>
+                </select>
+
+                <button class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        title="Cấu hình luồng"
+                        (click)="$event.preventDefault()">
+                    Cấu hình luồng
+                </button>
+                </div>
+            </div>
+
+            <div *ngIf="flowsLoading()" class="text-muted">Đang tải luồng...</div>
+
+            <ng-container *ngIf="!flowsLoading()">
+                <div *ngIf="flows().length === 0" class="text-danger small">
+                Không tìm thấy luồng cho template này. Hãy cấu hình trước khi trình ký.
+                </div>
+
+                <div *ngIf="selectedFlowId() as fid" class="mt-2">
+                <div class="small text-muted mb-2">Xem trước các bước của luồng đã chọn:</div>
+
+                <ng-container *ngFor="let f of flows();">
+                    <ng-container *ngIf="f.id === fid">
+                    <div class="d-flex flex-wrap align-items-start gap-2">
+                        <ng-container *ngFor="let s of f.steps; let last = last; ">
+                        <div class="card p-2" style="min-width:220px;">
+                            <div class="fw-semibold">Bước {{ s.stepOrder }}</div>
+                            <div>{{ s.employeeName || (s.departmentName && s.positionName ? (s.departmentName + ' - ' + s.positionName) : '—') }}</div>
+                            <div class="text-muted small">
+                            {{ (s.action || 'APPROVE_ONLY') }}
+                            <span *ngIf="s.signaturePlaceholder"> • ô ký: {{ s.signaturePlaceholder }}</span>
+                            <span *ngIf="s.required === false"> • không bắt buộc</span>
+                            </div>
+                        </div>
+
+                        <div *ngIf="!last" class="align-self-center">
+                            <i class="fas fa-chevron-right text-muted"></i>
+                        </div>
+                        </ng-container>
+                    </div>
+                    </ng-container>
+                </ng-container>
+                </div>
+            </ng-container>
+            </div>
+
+            <div *ngIf="submitError()" class="alert alert-danger mb-0">{{ submitError() }}</div>
         </div>
-
-        <div *ngIf="!last" class="align-self-center">
-          <i class="fas fa-chevron-right text-muted"></i>
-        </div>
-      </ng-container>
-    </div>
-
-    <div class="small text-muted mt-2">
-      (Hợp đồng đã có luồng phê duyệt — không thể thay đổi.)
-    </div>
-  </div>
-
-  <!-- 2) CHƯA TRÌNH KÝ (DRAFT): cho phép xem/đổi luồng -->
-  <div *ngIf="!currentFlow()?.exists" class="border rounded p-3 mb-3">
-
-    <!-- 2.a Luồng đang gắn (nếu có) -->
-    <div *ngIf="attachedFlow()" class="mb-3">
-      <div class="fw-semibold mb-1">Luồng đang gắn với hợp đồng</div>
-      <div class="d-flex flex-wrap align-items-start gap-2 mt-2">
-        <ng-container *ngFor="let s of attachedFlow()!.steps; let last = last;">
-          <div class="card p-2" style="min-width:220px;">
-            <div class="fw-semibold">Bước {{ s.stepOrder }}</div>
-            <div>
-              {{ s.employeeName || (s.departmentName && s.positionName ? (s.departmentName + ' - ' + s.positionName) : '—') }}
-            </div>
-            <div class="text-muted small">
-              {{ s.action || 'APPROVE_ONLY' }}
-              <span *ngIf="s.signaturePlaceholder"> • ô ký: {{ s.signaturePlaceholder }}</span>
-              <span *ngIf="s.required === false"> • không bắt buộc</span>
-            </div>
-          </div>
-
-          <div *ngIf="!last" class="align-self-center">
-            <i class="fas fa-chevron-right text-muted"></i>
-          </div>
-        </ng-container>
-      </div>
-    </div>
-
-    <!-- 2.b Chọn luồng khác & Lưu thay đổi -->
-    <div class="d-flex flex-wrap align-items-center mb-2 gap-2">
-      <div class="fw-semibold me-2">Chọn luồng trình ký</div>
-
-      <select class="form-select form-select-sm"
-              style="min-width:280px"
-              [disabled]="flowsLoading() || (flows().length === 0 && !defaultFlow())"
-              [ngModel]="selectedFlowId()"
-              (ngModelChange)="onChangeFlow($event)">
-        <!-- Mặc định (nếu có) -->
-        <option *ngIf="defaultFlow()" [ngValue]="defaultFlow()!.id">
-          Mặc định: {{ defaultFlow()!.name }}
-        </option>
-        <!-- Các flow khác -->
-        <option *ngFor="let f of flowsWithoutDefault()" [ngValue]="f.id">
-          {{ f.name }}
-        </option>
-      </select>
-
-      <button class="btn btn-sm btn-outline-primary"
-              type="button"
-              title="Lưu thay đổi luồng"
-              (click)="saveFlowChangeOnly()"
-              [disabled]="updatingFlow() || !selectedFlowId() || selectedFlowId() === attachedFlowId()">
-        <span *ngIf="!updatingFlow()">Lưu thay đổi luồng</span>
-        <span *ngIf="updatingFlow()" class="spinner-border spinner-border-sm"></span>
-      </button>
-
-      <button class="btn btn-sm btn-outline-secondary ms-auto"
-              type="button"
-              title="Cấu hình luồng"
-              (click)="$event.preventDefault()">
-        Cấu hình luồng
-      </button>
-    </div>
-
-    <div *ngIf="updateFlowError()" class="alert alert-danger py-1">{{ updateFlowError() }}</div>
-
-    <div *ngIf="flowsLoading()" class="text-muted">Đang tải luồng...</div>
-
-    <!-- 2.c Xem trước luồng đang chọn -->
-    <ng-container *ngIf="!flowsLoading() && selectedFlowObj() as sel">
-      <div class="small text-muted mb-2">Xem trước luồng đang chọn:</div>
-      <div class="d-flex flex-wrap align-items-start gap-2">
-        <ng-container *ngFor="let s of sel.steps; let last = last;">
-          <div class="card p-2" style="min-width:220px;">
-            <div class="fw-semibold">Bước {{ s.stepOrder }}</div>
-            <div>
-              {{ s.employeeName || (s.departmentName && s.positionName ? (s.departmentName + ' - ' + s.positionName) : '—') }}
-            </div>
-            <div class="text-muted small">
-              {{ s.action || 'APPROVE_ONLY' }}
-              <span *ngIf="s.signaturePlaceholder"> • ô ký: {{ s.signaturePlaceholder }}</span>
-              <span *ngIf="s.required === false"> • không bắt buộc</span>
-            </div>
-          </div>
-
-          <div *ngIf="!last" class="align-self-center">
-            <i class="fas fa-chevron-right text-muted"></i>
-          </div>
-        </ng-container>
-      </div>
-
-      <div class="small text-muted mt-2" *ngIf="attachedFlowId() && attachedFlowId() === selectedFlowId()">
-        (Đây cũng là luồng đang gắn với hợp đồng)
-      </div>
-    </ng-container>
-
-    <!-- Không có flow nào -->
-    <div *ngIf="!flowsLoading() && !defaultFlow() && flows().length === 0" class="text-danger small mt-2">
-      Không tìm thấy luồng cho template này. Hãy cấu hình trước khi trình ký.
-    </div>
-  </div>
-
-  <div *ngIf="submitError()" class="alert alert-danger mb-0">{{ submitError() }}</div>
-</div>
-
 
         <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" (click)="closeSubmitModal()">Đóng</button>

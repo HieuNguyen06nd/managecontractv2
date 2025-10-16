@@ -11,6 +11,8 @@ import { ContractApprovalService } from '../../core/services/contract-approval.s
 import { ApprovalFlowService, ApprovalFlowResponse, ApprovalStepResponse } from '../../core/services/contract-flow.service';
 import { FormBuilder, FormGroup } from '@angular/forms'; 
 import { ResponseData } from '../../core/models/response-data.model';
+import { PlannedFlowResponse } from '../../core/models/contrac-flow.model';
+
 
 type UiStatus = 'all' | 'draft' | 'pending' | 'signed' | 'cancelled';
 
@@ -33,6 +35,9 @@ export class ContractListComponent implements OnInit {
   constructor(
     private router: Router
   ) {}
+
+  plannedFlow = signal<PlannedFlowResponse | null>(null);
+
 
   // data
   contracts = signal<ContractResponse[]>([]);
@@ -262,11 +267,11 @@ export class ContractListComponent implements OnInit {
     );
   }
 
-  
-  // ===== Submit (chọn/hiện flow) =====
   openSubmitModal(item: ContractResponse) {
     this.submitTarget = item;
     this.submitError.set(null);
+
+    // reset state
     this.selectedFlowId.set(null);
     this.flows.set([]);
     this.flowsLoading.set(false);
@@ -275,16 +280,17 @@ export class ContractListComponent implements OnInit {
     this.attachedFlow.set(null);
     this.defaultFlow.set(null);
     this.defaultFlowLoading.set(false);
+    this.plannedFlow.set(null);
 
+    // 1) Luôn lấy chi tiết HĐ trước
     this.contractService.getContractById(item.id).subscribe({
-      next: (res: ResponseData<ContractResponse>) => {
-        const d = res.data as any;
-
+      next: (res) => {
+        const d = res.data as ContractResponse;
         const status = (d?.status || item.status || '').toUpperCase();
 
-        // Nếu đã trình ký -> show tiến trình, không cho đổi
+        // Nếu đã trình ký -> hiển thị tiến trình runtime
         if (status === 'PENDING_APPROVAL') {
-          const steps = this.sortSteps(d?.steps || []);
+          const steps = this.sortSteps((d as any)?.steps || []); // nếu BE trả kèm steps runtime
           this.currentFlow.set({
             exists: true,
             steps: steps.map((s: any) => ({
@@ -303,28 +309,45 @@ export class ContractListComponent implements OnInit {
           return;
         }
 
-        // DRAFT -> lấy flow đang gắn nếu có
-        const attachedId = d?.flowId ?? item.flowId ?? null;
-        if (attachedId) {
-          this.loadAttachedFlow(attachedId);
-        }
+        // 2) DRAFT: gọi planned-flow để biết "luồng hiện tại" (nếu HĐ đã gắn flowId)
+        this.contractService.getPlannedFlow(item.id).subscribe({
+          next: (pfRes) => {
+            const pf = pfRes.data;
+            // sort step theo stepOrder
+            pf.steps = this.sortSteps(pf.steps);
+            this.plannedFlow.set(pf);
 
-        // luôn nạp default + list để user có thể đổi flow
-        if (item.templateId) {
-          this.loadDefaultFlowThenFlows(item.templateId);
-        }
+            // Nếu planned-flow có flowId -> coi như "luồng đang gắn"
+            if (pf.flowId) {
+              this.attachedFlowId.set(pf.flowId);
+              this.selectedFlowId.set(pf.flowId); // preselect
+            }
 
-        this.showSubmit.set(true);
+            // 3) Luôn nạp default + full list flow theo template để user có thể đổi
+            if (d.templateId) {
+              this.loadDefaultFlowThenFlows(d.templateId);
+            }
+
+            this.showSubmit.set(true);
+          },
+          error: () => {
+            // Không có planned-flow vẫn cho chọn flow theo template
+            if (d.templateId) {
+              this.loadDefaultFlowThenFlows(d.templateId);
+            }
+            this.showSubmit.set(true);
+          }
+        });
       },
       error: () => {
-        // fallback: vẫn cho chọn flow theo template
-        if (item.templateId) {
-          this.loadDefaultFlowThenFlows(item.templateId);
-        }
+        // fallback
+        if (item.templateId) this.loadDefaultFlowThenFlows(item.templateId);
         this.showSubmit.set(true);
       }
     });
   }
+
+
 
   saveFlowChangeOnly() {
     if (!this.submitTarget) return;
@@ -333,12 +356,12 @@ export class ContractListComponent implements OnInit {
       this.updateFlowError.set('Vui lòng chọn luồng.');
       return;
     }
-    if (newFlowId === this.attachedFlowId()) return; // không có gì thay đổi
+    if (newFlowId === this.attachedFlowId()) return;
 
     this.updatingFlow.set(true);
     this.updateFlowError.set(null);
 
-    this.contractService.updateContractFlow(this.submitTarget.id, newFlowId).subscribe({
+    this.contractService.updateContractFlow(this.submitTarget.id, newFlowId, this.submitTarget).subscribe({
       next: (r) => {
         // đồng bộ lại UI
         this.attachedFlowId.set(newFlowId);
@@ -411,7 +434,7 @@ export class ContractListComponent implements OnInit {
       });
 
     if (needUpdate) {
-      this.contractService.updateContractFlow(this.submitTarget!.id, sel).subscribe({
+       this.contractService.updateContractFlow(this.submitTarget!.id, sel, this.submitTarget!).subscribe({
         next: () => { this.attachedFlowId.set(sel); afterUpdate(); },
         error: () => { this.submitting.set(false); this.submitError.set('Không cập nhật được luồng trước khi trình ký.'); }
       });

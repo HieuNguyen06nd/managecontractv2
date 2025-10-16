@@ -69,4 +69,6 @@ public class ContractApproval {
     @JoinColumn(name = "department_id")
     private Department department;
 
+    private LocalDateTime updatedAt;
+
 }

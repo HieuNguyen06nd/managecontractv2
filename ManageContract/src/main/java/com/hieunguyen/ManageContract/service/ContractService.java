@@ -3,6 +3,7 @@ package com.hieunguyen.ManageContract.service;
 import com.hieunguyen.ManageContract.common.constants.ContractStatus;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.dto.contract.CreateContractRequest;
+import com.hieunguyen.ManageContract.dto.contract.PlannedFlowResponse;
 import com.hieunguyen.ManageContract.entity.Employee;
 import io.micrometer.common.lang.Nullable;
 
@@ -20,4 +21,6 @@ public interface ContractService {
     ContractResponse getById(Long id);
     void deleteContract(Long contractId);
     byte[] previewContractPdf(CreateContractRequest request);
+
+    PlannedFlowResponse getPlannedFlow(Long contractId);
 }

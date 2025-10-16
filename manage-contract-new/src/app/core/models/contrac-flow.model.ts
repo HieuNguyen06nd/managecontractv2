@@ -64,3 +64,12 @@ export interface ApprovalFlow {
   templateId: number;
   steps: ApprovalStep[];
 }
+
+export type FlowSource = 'CONTRACT' | 'TEMPLATE_DEFAULT' | 'SELECTED';
+
+export interface PlannedFlowResponse {
+  flowSource: FlowSource;
+  flowId?: number | null;
+  flowName?: string | null;
+  steps: ApprovalStepResponse[];
+}
