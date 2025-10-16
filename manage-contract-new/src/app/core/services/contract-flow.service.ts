@@ -22,9 +22,10 @@ export interface ApprovalStepRequest {
   approverType: ApproverType;
   action: ApprovalAction;
   placeholderKey?: string;
-  employeeId?: number;     // bắt buộc nếu USER
-  positionId?: number;     // bắt buộc nếu POSITION
-  departmentId?: number;   // bắt buộc nếu POSITION
+  employeeId?: number;   
+  positionId?: number;    
+  departmentId?: number;   
+  signaturePlaceholder?: string
   
 }
 

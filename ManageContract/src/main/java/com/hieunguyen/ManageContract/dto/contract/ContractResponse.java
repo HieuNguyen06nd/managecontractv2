@@ -13,6 +13,7 @@ public class ContractResponse {
     private String status;
     private String filePath;
     private String templateName;
+    private Long templateId;
     private List<VariableValueResponse> variables;
 
     private Long currentStepId;

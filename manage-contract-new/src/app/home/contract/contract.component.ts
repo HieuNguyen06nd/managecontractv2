@@ -460,109 +460,163 @@ export class ContractComponent implements OnInit {
   }
 
   // Step 4 - Tạo hợp đồng
-  createContract(submitNow: boolean): void {
-    if (!this.validateStep(4)) return;
+// THAY THẾ TOÀN BỘ HÀM NÀY
+createContract(submitNow: boolean): void {
+  if (!this.validateStep(4)) return;
 
-    this.isSaving = true;
-    this.errorMessage = '';
-    this.successMessage = '';
+  this.isSaving = true;
+  this.errorMessage = '';
+  this.successMessage = '';
 
-    const sigCfg = this.contractForm.get('signatureConfig')!.value;
-    let createFlow$: Observable<unknown> = of(null);
-    let flowIdForContract: number | null = null; // THÊM BIẾN NÀY
+  const sigCfg: any = this.contractForm.get('signatureConfig')!.value;
 
-    // Xác định flowId dựa trên flowOption
+  /** ========== LƯU NHÁP (KHÔNG SUBMIT) ========== */
+  if (!submitNow) {
     if (sigCfg.flowOption === 'new') {
-      const steps: ApprovalStepRequest[] = this.newSignersFormArray.controls.map((ctrl, idx) => {
-        const v = ctrl.value;
-        const approverType: ApproverType = (v.approverType === 'POSITION') ? ApproverType.POSITION : ApproverType.USER;
-        const action: ApprovalAction =
-          (v.action === 'SIGN_ONLY') ? ApprovalAction.SIGN_ONLY
-          : (v.action === 'SIGN_THEN_APPROVE') ? ApprovalAction.SIGN_THEN_APPROVE
-          : ApprovalAction.APPROVE_ONLY;
+      // 1) Tạo flow mới -> 2) Dùng flowId trả về để tạo hợp đồng (draft)
+      const flowReq = this.buildNewFlowRequest();
+      if (!flowReq.steps?.length) {
+        this.isSaving = false;
+        this.toastr.error('Flow mới phải có ít nhất 1 bước.');
+        return;
+      }
 
-        const needsSign = action !== ApprovalAction.APPROVE_ONLY;
-
-        return {
-          stepOrder: idx + 1,
-          required: !!v.required,
-          isFinalStep: !!v.isFinalStep,
-          approverType,
-          action,
-          employeeId: approverType === ApproverType.USER ? v.employeeId : undefined,
-          positionId: approverType === ApproverType.POSITION ? v.positionId : undefined,
-          departmentId: approverType === ApproverType.POSITION ? v.departmentId : undefined,
-          signaturePlaceholder: needsSign ? (v.signaturePlaceholder || 'SIGN') : undefined
-        };
-      });
-
-      const flowReq: ApprovalFlowRequest = {
-        name: (sigCfg.flowName || `Flow phê duyệt - ${this.contractForm.get('contractName')?.value || 'Không tên'}`).trim(),
-        description: sigCfg.flowDescription || '',
-        templateId: this.selectedTemplate?.id as number,
-        steps
-      };
-
-      createFlow$ = this.approvalFlowService.createFlow(flowReq).pipe(
-        tap(res => {
-          const id = res?.data?.id;
-          this.lastCreatedFlowId = typeof id === 'number' ? id : null;
-          flowIdForContract = this.lastCreatedFlowId; // SET FLOW ID MỚI
-        })
-      );
-    } else if (sigCfg.flowOption === 'default') {
-      // SỬA LỖI: Sử dụng defaultFlowId từ template
-      flowIdForContract = this.selectedTemplate?.defaultFlowId || null;
-      createFlow$ = of(null); // Không cần tạo flow mới
-    } else if (sigCfg.flowOption === 'existing') {
-      // TODO: Xử lý cho trường hợp chọn flow có sẵn
-      flowIdForContract = null;
-      createFlow$ = of(null);
-    }
-
-    // Tạo hợp đồng
-    createFlow$
-      .pipe(
-        switchMap(() => {
-          const req = this.buildCreateRequest(flowIdForContract); // SỬA: dùng flowIdForContract
-          return this.contractService.createContract(req);
-        }),
-        switchMap((res) => {
-          const contractId = res?.data?.id as number | undefined;
-          if (!submitNow || !contractId) return of(res);
-
-          // Xác định flowId cho submit
-           const flowIdForSubmit = 
-            sigCfg.flowOption === 'new' ? (this.lastCreatedFlowId ?? undefined) :
-            sigCfg.flowOption === 'default' ? (this.selectedTemplate?.defaultFlowId ?? undefined) :
-            undefined;
-
-          return this.contractApprovalService
-            .submitForApproval(contractId, flowIdForSubmit)
-            .pipe(map(() => res));
+      this.approvalFlowService.createFlow(flowReq).pipe(
+        map((res: any) => res?.data?.id ?? res?.id ?? null),
+        tap((id: number | null) => this.lastCreatedFlowId = id),
+        switchMap((flowId: number | null) => {
+          if (!flowId) throw new Error('Không lấy được ID luồng ký vừa tạo.');
+          return this.contractService.createContract(this.buildCreateRequest(flowId));
         }),
         finalize(() => (this.isSaving = false))
-      )
-      .subscribe({
+      ).subscribe({
         next: () => {
-          if (submitNow) {
-            this.successMessage = '🎉 Đã tạo hợp đồng và trình ký thành công!';
-          } else {
-            this.successMessage = '💾 Đã lưu nháp hợp đồng thành công!';
-          }
-          this.toastr.success(this.successMessage);
+          this.toastr.success('💾 Đã lưu nháp hợp đồng thành công!');
           this.currentStep = 1;
-          this.selectedTemplate && this.loadVariablesForm(this.selectedTemplate);
+          if (this.selectedTemplate) this.loadVariablesForm(this.selectedTemplate);
         },
         error: (err) => {
-          console.error('Create/Submit error:', err);
-          this.errorMessage = submitNow
-            ? 'Không thể tạo hoặc trình ký hợp đồng. Vui lòng thử lại.'
-            : 'Không thể lưu nháp hợp đồng. Vui lòng thử lại.';
-          this.toastr.error(this.errorMessage);
+          console.error('Save draft (new flow) error:', err);
+          this.toastr.error('Không thể lưu nháp hợp đồng. Vui lòng thử lại.');
         }
-      }); 
+      });
+      return;
+    }
+
+    // flowOption = default / existing: gắn flowId ngay, không cần tạo flow
+    const flowIdForContract =
+      sigCfg.flowOption === 'default'
+        ? ((this.defaultFlow?.id ?? this.selectedTemplate?.defaultFlowId) ?? null)
+        : (sigCfg.existingFlowId ?? null);
+
+    this.contractService.createContract(this.buildCreateRequest(flowIdForContract)).pipe(
+      finalize(() => (this.isSaving = false))
+    ).subscribe({
+      next: () => {
+        this.toastr.success('💾 Đã lưu nháp hợp đồng thành công!');
+        this.currentStep = 1;
+        if (this.selectedTemplate) this.loadVariablesForm(this.selectedTemplate);
+      },
+      error: (err) => {
+        console.error('Save draft error:', err);
+        this.toastr.error('Không thể lưu nháp hợp đồng. Vui lòng thử lại.');
+      }
+    });
+    return;
   }
+
+  /** ========== TẠO & TRÌNH KÝ ========== */
+  let submitFlowId: number | null = null;
+  let createFlowForSubmit$: Observable<number | null> = of(null);
+
+  if (sigCfg.flowOption === 'new') {
+    const flowReq = this.buildNewFlowRequest();
+    if (!flowReq.steps?.length) {
+      this.isSaving = false;
+      this.toastr.error('Flow mới phải có ít nhất 1 bước.');
+      return;
+    }
+    createFlowForSubmit$ = this.approvalFlowService.createFlow(flowReq).pipe(
+      map((res: any) => res?.data?.id ?? res?.id ?? null),
+      tap((id: number | null) => submitFlowId = id)
+    );
+  } else if (sigCfg.flowOption === 'default') {
+    if (!this.defaultFlow?.id && !this.selectedTemplate?.defaultFlowId) {
+      this.isSaving = false;
+      this.toastr.error('Template chưa có luồng ký mặc định.');
+      return;
+    }
+    if (!this.defaultFlow?.steps?.length) {
+      this.isSaving = false;
+      this.toastr.error('Luồng ký mặc định chưa có bước.');
+      return;
+    }
+    submitFlowId = this.defaultFlow?.id ?? this.selectedTemplate?.defaultFlowId ?? null;
+  } else if (sigCfg.flowOption === 'existing') {
+    if (!sigCfg.existingFlowId) {
+      this.isSaving = false;
+      this.toastr.error('Vui lòng chọn luồng ký có sẵn.');
+      return;
+    }
+    submitFlowId = sigCfg.existingFlowId;
+  }
+
+  createFlowForSubmit$.pipe(
+    switchMap(() => this.contractService.createContract(this.buildCreateRequest(submitFlowId))),
+    switchMap((res: any) => {
+      const contractId = res?.data?.id as number | undefined;
+      if (!contractId) throw new Error('Không lấy được contractId.');
+      return this.contractApprovalService
+        .submitForApproval(contractId, submitFlowId ?? undefined)
+        .pipe(map(() => res));
+    }),
+    finalize(() => (this.isSaving = false))
+  ).subscribe({
+    next: () => {
+      this.toastr.success('🎉 Đã tạo hợp đồng và trình ký thành công!');
+      this.currentStep = 1;
+      if (this.selectedTemplate) this.loadVariablesForm(this.selectedTemplate);
+    },
+    error: (err) => {
+      console.error('Create & submit error:', err);
+      this.toastr.error('Không thể tạo hoặc trình ký hợp đồng. Vui lòng thử lại.');
+    }
+  });
+}
+
+/** Build payload tạo flow từ Form (hỗ trợ signaturePlaceholder) */
+private buildNewFlowRequest(): ApprovalFlowRequest {
+  const sigCfg: any = this.contractForm.get('signatureConfig')!.value;
+
+  const steps: any[] = this.newSignersFormArray.controls.map((ctrl, idx) => {
+    const v = (ctrl as FormGroup).value;
+
+    const step: any = {
+      stepOrder: idx + 1,
+      required: !!v.required,
+      isFinalStep: !!v.isFinalStep,
+      approverType: v.approverType as ApproverType,
+      action: v.action as ApprovalAction,
+      employeeId: v.approverType === 'USER' ? v.employeeId : undefined,
+      positionId: v.approverType === 'POSITION' ? v.positionId : undefined,
+      departmentId: v.approverType === 'POSITION' ? v.departmentId : undefined
+    };
+
+    // Nếu là bước ký thì gửi kèm placeholder
+    if (v.action !== 'APPROVE_ONLY') {
+      step.signaturePlaceholder = v.signaturePlaceholder || 'SIGN';
+    }
+    return step;
+  });
+
+  return {
+    name: (sigCfg.flowName || `Flow phê duyệt - ${this.contractForm.get('contractName')?.value || 'Không tên'}`).trim(),
+    description: sigCfg.flowDescription || '',
+    templateId: this.selectedTemplate?.id as number,
+    steps
+  };
+}
+
 
   // Helper methods để render các control khác nhau
   isTextField(control: AbstractControl): boolean {

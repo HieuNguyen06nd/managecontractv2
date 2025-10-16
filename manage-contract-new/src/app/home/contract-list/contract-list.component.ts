@@ -72,6 +72,14 @@ export class ContractListComponent implements OnInit {
   deleteContract: ContractResponse | null = null;
   cancelContract: ContractResponse | null = null;
 
+  attachedFlowId = signal<number | null>(null);        // flow đang gắn với hợp đồng (khi DRAFT)
+  attachedFlow   = signal<ApprovalFlowResponse | null>(null);
+  updatingFlow   = signal<boolean>(false);
+  updateFlowError = signal<string | null>(null);
+
+  defaultFlow = signal<ApprovalFlowResponse | null>(null);
+  defaultFlowLoading = signal<boolean>(false);
+
 
   // Flow hiện trạng (nếu HĐ đã gắn)
   currentFlow = signal<{
@@ -263,58 +271,90 @@ export class ContractListComponent implements OnInit {
     this.flows.set([]);
     this.flowsLoading.set(false);
     this.currentFlow.set(null);
+    this.attachedFlowId.set(null);
+    this.attachedFlow.set(null);
+    this.defaultFlow.set(null);
+    this.defaultFlowLoading.set(false);
 
-    // gọi preview (BE sẽ tự quyết định: progress hay preview)
     this.contractService.getContractById(item.id).subscribe({
       next: (res: ResponseData<ContractResponse>) => {
-        const d = res.data as any; // { hasFlow:boolean, steps:[...] }
-        this.currentFlow.set({
-          exists: !!d.hasFlow,  // <-- chỉ true khi đã submit
-          steps: (d.steps || []).map((s: any) => ({
-            id: s.id,
-            stepOrder: s.stepOrder,
-            approverName: s.approverName,
-            action: s.action,
-            required: s.required,
-            placeholderKey: s.signaturePlaceholder,
-            status: s.status,          // chỉ có khi hasFlow=true
-            decidedBy: s.decidedBy,    // chỉ có khi hasFlow=true
-            decidedAt: s.decidedAt     // chỉ có khi hasFlow=true
-          }))
-        });
+        const d = res.data as any;
 
-        // Nếu CHƯA có flow gắn → cho phép chọn flow để submit
-        if (!d.hasFlow && item.templateId) {
-          this.flowsLoading.set(true);
-          this.flowService.listFlowsByTemplate(item.templateId).subscribe({
-            next: r => {
-              this.flows.set(r.data || []);
-              if (this.flows().length > 0) this.selectedFlowId.set(this.flows()[0].id);
-              this.flowsLoading.set(false);
-              this.showSubmit.set(true);
-            },
-            error: () => { this.flowsLoading.set(false); this.showSubmit.set(true); }
+        const status = (d?.status || item.status || '').toUpperCase();
+
+        // Nếu đã trình ký -> show tiến trình, không cho đổi
+        if (status === 'PENDING_APPROVAL') {
+          const steps = this.sortSteps(d?.steps || []);
+          this.currentFlow.set({
+            exists: true,
+            steps: steps.map((s: any) => ({
+              id: s.id,
+              stepOrder: s.stepOrder,
+              approverName: s.approverName,
+              action: s.action,
+              required: s.required,
+              placeholderKey: s.signaturePlaceholder,
+              status: s.status,
+              decidedBy: s.decidedBy,
+              decidedAt: s.decidedAt
+            }))
           });
-        } else {
-          // đã có flow → chỉ xem, không submit lại
           this.showSubmit.set(true);
+          return;
         }
+
+        // DRAFT -> lấy flow đang gắn nếu có
+        const attachedId = d?.flowId ?? item.flowId ?? null;
+        if (attachedId) {
+          this.loadAttachedFlow(attachedId);
+        }
+
+        // luôn nạp default + list để user có thể đổi flow
+        if (item.templateId) {
+          this.loadDefaultFlowThenFlows(item.templateId);
+        }
+
+        this.showSubmit.set(true);
       },
       error: () => {
-        // fallback: không lấy được preview vẫn cho chọn flow (nếu có templateId)
+        // fallback: vẫn cho chọn flow theo template
         if (item.templateId) {
-          this.flowsLoading.set(true);
-          this.flowService.listFlowsByTemplate(item.templateId).subscribe({
-            next: r => { this.flows.set(r.data || []); if (this.flows().length) this.selectedFlowId.set(this.flows()[0].id); this.flowsLoading.set(false); this.showSubmit.set(true); },
-            error: () => { this.flowsLoading.set(false); this.showSubmit.set(true); }
-          });
-        } else {
-          this.showSubmit.set(true);
+          this.loadDefaultFlowThenFlows(item.templateId);
         }
+        this.showSubmit.set(true);
       }
     });
   }
 
+  saveFlowChangeOnly() {
+    if (!this.submitTarget) return;
+    const newFlowId = this.selectedFlowId();
+    if (!newFlowId) {
+      this.updateFlowError.set('Vui lòng chọn luồng.');
+      return;
+    }
+    if (newFlowId === this.attachedFlowId()) return; // không có gì thay đổi
+
+    this.updatingFlow.set(true);
+    this.updateFlowError.set(null);
+
+    this.contractService.updateContractFlow(this.submitTarget.id, newFlowId).subscribe({
+      next: (r) => {
+        // đồng bộ lại UI
+        this.attachedFlowId.set(newFlowId);
+        this.flowService.getFlowById(newFlowId).subscribe({
+          next: rr => this.attachedFlow.set(rr?.data ?? null),
+          error: () => this.attachedFlow.set(null)
+        });
+        this.updatingFlow.set(false);
+        alert('Đã cập nhật luồng cho hợp đồng.');
+      },
+      error: () => {
+        this.updatingFlow.set(false);
+        this.updateFlowError.set('Cập nhật luồng thất bại.');
+      }
+    });
+  }
 
 
   closeSubmitModal() {
@@ -334,40 +374,52 @@ export class ContractListComponent implements OnInit {
   confirmSubmit() {
     if (!this.submitTarget) return;
 
-    // nếu đã có flow -> không gọi submit nữa
-    if (this.currentFlow()?.exists) {
-      this.submitError.set('Hợp đồng đã đang trong quy trình phê duyệt.');
+    // Nếu đang PENDING thì chặn
+    if ((this.submitTarget.status || '').toUpperCase() === 'PENDING_APPROVAL' || this.currentFlow()?.exists) {
+      this.submitError.set('Hợp đồng đã trong quy trình phê duyệt.');
       return;
     }
 
-    const flowId = this.selectedFlowId() ?? undefined;
+    const sel = this.selectedFlowId() ?? this.defaultFlow()?.id ?? null;
+    if (!sel) {
+      this.submitError.set('Chưa có luồng trình ký. Vui lòng chọn luồng.');
+      return;
+    }
+
     this.submitting.set(true);
     this.submitError.set(null);
 
-    this.approvalService.submitForApproval(this.submitTarget.id, flowId).subscribe({
-      next: (res) => {
-        // merge lại item (tránh lỗi type khi filePath có null)
-        const updated = { ...res.data, filePath: (res.data as any)?.filePath ?? undefined } as ContractResponse;
-        this.contracts.update(list => list.map(x => x.id === updated.id ? { ...x, ...updated } : x));
-        this.submitting.set(false);
-        this.showSubmit.set(false);
-        alert('Đã trình ký thành công!');
-      },
-      error: (err) => {
-        if (err?.status === 409 || (err?.error?.message || '').includes('already has an approval flow')) {
-          this.submitError.set('Hợp đồng đã có luồng trình ký. Mở “Tiến trình ký” để theo dõi.');
-          // refresh progress
-          this.approvalService.getApprovalProgress(this.submitTarget!.id).subscribe(p => {
-            const steps = (p.data as any)?.steps || [];
-            this.currentFlow.set({ exists: steps.length > 0, steps });
-          });
-        } else {
-          this.submitError.set('Trình ký thất bại. Vui lòng thử lại.');
+    const needUpdate = sel !== this.attachedFlowId();
+
+    const afterUpdate = () =>
+      this.approvalService.submitForApproval(this.submitTarget!.id, sel).subscribe({
+        next: (res) => {
+          const updated = { ...res.data, filePath: (res.data as any)?.filePath ?? undefined } as ContractResponse;
+          this.contracts.update(list => list.map(x => x.id === updated.id ? { ...x, ...updated } : x));
+          this.submitting.set(false);
+          this.showSubmit.set(false);
+          alert('Đã trình ký thành công!');
+        },
+        error: (err) => {
+          this.submitting.set(false);
+          if (err?.status === 409) {
+            this.submitError.set('Hợp đồng đã có luồng trình ký.');
+          } else {
+            this.submitError.set('Trình ký thất bại. Vui lòng thử lại.');
+          }
         }
-        this.submitting.set(false);
-      }
-    });
+      });
+
+    if (needUpdate) {
+      this.contractService.updateContractFlow(this.submitTarget!.id, sel).subscribe({
+        next: () => { this.attachedFlowId.set(sel); afterUpdate(); },
+        error: () => { this.submitting.set(false); this.submitError.set('Không cập nhật được luồng trước khi trình ký.'); }
+      });
+    } else {
+      afterUpdate();
+    }
   }
+
 
   goTrackFlow() {
     if (!this.submitTarget) return;
@@ -547,4 +599,79 @@ console.log('editVariables:', this.editVariables);
   }
 
 
+  flowsWithoutDefault(): ApprovalFlowResponse[] {
+    const df = this.defaultFlow();
+    return df ? (this.flows().filter(f => f.id !== df.id)) : this.flows();
+  }
+
+  // --- flow đang chọn (obj) ---
+  selectedFlowObj(): ApprovalFlowResponse | null {
+    const fid = this.selectedFlowId();
+    if (!fid) return null;
+    const df = this.defaultFlow();
+    if (df && df.id === fid) return df;
+    return this.flows().find(f => f.id === fid) || null;
+  }
+
+  private loadDefaultFlowThenFlows(templateId: number) {
+    this.defaultFlow.set(null);
+    this.flows.set([]);
+    this.defaultFlowLoading.set(true);
+    this.flowsLoading.set(true);
+
+    // 1) default
+    this.flowService.getDefaultFlowByTemplate(templateId).subscribe({
+      next: (r) => {
+        const df = r?.data ?? null;
+        if (df) {
+          df.steps = this.sortSteps(df.steps);
+          this.defaultFlow.set(df);
+          // chỉ preselect nếu chưa có attachedFlowId
+          if (!this.attachedFlowId()) {
+            this.selectedFlowId.set(df.id);
+          }
+        }
+        this.defaultFlowLoading.set(false);
+      },
+      error: () => { this.defaultFlowLoading.set(false); this.defaultFlow.set(null); }
+    });
+
+    // 2) all flows
+    this.flowService.listFlowsByTemplate(templateId).subscribe({
+      next: (r) => {
+        const list = (r?.data ?? []).map(f => ({ ...f, steps: this.sortSteps(f.steps) }));
+        this.flows.set(list);
+        // nếu chưa có attached & chưa có selected → chọn item đầu
+        if (!this.attachedFlowId() && !this.selectedFlowId() && list.length > 0) {
+          this.selectedFlowId.set(list[0].id);
+        }
+        this.flowsLoading.set(false);
+      },
+      error: () => { this.flowsLoading.set(false); }
+    });
+  }
+
+  private loadAttachedFlow(flowId: number) {
+    this.attachedFlowId.set(flowId);
+    this.flowService.getFlowById(flowId).subscribe({
+      next: (r) => {
+        const f = r?.data ?? null;
+        if (f) {
+          f.steps = this.sortSteps(f.steps);
+          this.attachedFlow.set(f);
+          // ưu tiên hiển thị flow đang gắn
+          this.selectedFlowId.set(flowId);
+        }
+      },
+      error: () => { this.attachedFlow.set(null); }
+    });
+  }
+
+  private sortSteps<T extends { stepOrder?: number | null }>(steps: T[] | null | undefined): T[] {
+    return [...(steps ?? [])].sort((a, b) => {
+      const aOrder = (a?.stepOrder ?? 0);
+      const bOrder = (b?.stepOrder ?? 0);
+      return aOrder - bOrder;
+    });
+  }
 }

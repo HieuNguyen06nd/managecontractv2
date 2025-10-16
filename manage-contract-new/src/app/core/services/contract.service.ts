@@ -121,4 +121,11 @@ export class ContractService {
     return this.http.post(`${this.baseUrl}/preview-pdf`, payload, { responseType: 'blob' });
   }
 
+  updateContractFlow(contractId: number, flowId: number | null) {
+  return this.http.put<ResponseData<ContractResponse>>(
+    `${this.baseUrl}/${contractId}/flow`,
+    { flowId }
+  );
+}
+
 }
