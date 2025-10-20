@@ -2,6 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -21,6 +22,8 @@
         <java.version>21</java.version>
         <docx4j.version>11.5.0</docx4j.version>
         <jjwt.version>0.11.5</jjwt.version>
+        <jaxb.version>4.0.5</jaxb.version>
+        <lombok.version>1.18.34</lombok.version>
     </properties>
 
     <dependencies>
@@ -40,7 +43,7 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-            <!-- EXCLUDE httpclient5 conflict -->
+            <!-- Tránh kéo httpclient5 nếu có lib nào phụ thuộc -->
             <exclusions>
                 <exclusion>
                     <groupId>org.apache.httpcomponents.client5</groupId>
@@ -56,25 +59,6 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Lombok -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- Testing -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-
         <!-- Redis -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -85,6 +69,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Client -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
         </dependency>
 
         <!-- OpenAPI Swagger UI -->
@@ -113,43 +103,43 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- OAuth2 Client -->
+        <!-- Lombok -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
         </dependency>
 
-        <!-- Apache POI (Excel/Word basic) -->
+        <!-- Apache POI (đọc DOCX cơ bản) -->
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>5.2.5</version>
         </dependency>
 
-        <!-- Docx4j (Core + Export + JAXB Reference Impl) - UPDATED FOR SPRING BOOT 3 -->
+        <!-- Docx4J (Jakarta JAXB RI) -->
         <dependency>
             <groupId>org.docx4j</groupId>
             <artifactId>docx4j-JAXB-ReferenceImpl</artifactId>
             <version>${docx4j.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>javax.xml.bind</groupId>
-                    <artifactId>jaxb-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.sun.xml.bind</groupId>
-                    <artifactId>jaxb-impl</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.sun.xml.bind</groupId>
-                    <artifactId>jaxb-core</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.docx4j</groupId>
             <artifactId>docx4j-export-fo</artifactId>
             <version>${docx4j.version}</version>
+        </dependency>
+
+        <!-- Jakarta JAXB (Glassfish RI cho Boot 3) -->
+        <dependency>
+            <groupId>org.glassfish.jaxb</groupId>
+            <artifactId>jaxb-runtime</artifactId>
+            <version>${jaxb.version}</version>
+        </dependency>
+        <!-- (Tuỳ chọn) API nếu muốn khai báo tường minh; có thể bỏ vì jaxb-runtime đã kéo API -->
+        <dependency>
+            <groupId>jakarta.xml.bind</groupId>
+            <artifactId>jakarta.xml.bind-api</artifactId>
         </dependency>
 
         <!-- PDFBox -->
@@ -159,51 +149,43 @@
             <version>2.0.31</version>
         </dependency>
 
-        <!-- HttpClient 4.x for OnlyOffice (COMPATIBLE WITH SPRING BOOT 3) -->
+        <!-- HttpClient 4.x cho OnlyOffice -->
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
             <version>4.5.14</version>
         </dependency>
-
-
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpmime</artifactId>
-            <version>4.5.14</version> <!-- Hoặc phiên bản mới hơn -->
+            <version>4.5.14</version>
         </dependency>
 
-
-        <!-- Jakarta XML Binding for Spring Boot 3 -->
-        <dependency>
-            <groupId>jakarta.xml.bind</groupId>
-            <artifactId>jakarta.xml.bind-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.glassfish.jaxb</groupId>
-            <artifactId>jaxb-runtime</artifactId>
-            <version>4.0.5</version>
-        </dependency>
-
-        <!-- JODConverter (optional, remove if not using) -->
+        <!-- (Tuỳ chọn) JODConverter nếu sau này dùng LibreOffice, hiện code đang dùng OnlyOffice -->
         <dependency>
             <groupId>org.jodconverter</groupId>
             <artifactId>jodconverter-core</artifactId>
             <version>4.4.11</version>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.jodconverter</groupId>
             <artifactId>jodconverter-local</artifactId>
             <version>4.4.11</version>
+            <optional>true</optional>
         </dependency>
 
+        <!-- Testing -->
         <dependency>
-            <groupId>org.docx4j</groupId>
-            <artifactId>docx4j-JAXB-ReferenceImpl</artifactId>
-            <version>11.4.9</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
-
-
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

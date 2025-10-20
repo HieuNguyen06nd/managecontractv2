@@ -146,24 +146,21 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                     Files.exists(Path.of(contract.getFilePath()));
 
             if (!fileExists) {
-                log.info("Contract file not found, generating new file for contract: {}", contract.getId());
-
-                // Tạo file mới bằng ContractService
-                String filePath = generateNewContractFile(contract);
-                contract.setFilePath(filePath);
+                // UỶ QUYỀN SANG ContractFileService
+                File pdfFile = contractFileService.getPdfOrConvert(contract.getId());
+                contract.setFilePath(pdfFile.getAbsolutePath());
                 contractRepository.save(contract);
-
-                log.info("Successfully created contract file: {}", filePath);
+                log.info("Generated/ensured contract PDF: {}", contract.getFilePath());
             } else {
                 log.info("Contract file already exists: {}", contract.getFilePath());
             }
-
         } catch (Exception e) {
-            log.error("CRITICAL: Could not create contract file for contract {}: {}",
+            log.error("CRITICAL: Could not create/ensure contract file for contract {}: {}",
                     contract.getId(), e.getMessage());
             throw new RuntimeException("Could not create contract file: " + e.getMessage(), e);
         }
     }
+
 
     private String generateNewContractFile(Contract contract) {
         try {
@@ -441,81 +438,71 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                 .orElseThrow(() -> new RuntimeException("Approval step not found"));
 
         Contract contract = approval.getContract();
-        if (!contract.getId().equals(contractId)) {
-            throw new RuntimeException("Step không thuộc hợp đồng này");
-        }
-        if (!Boolean.TRUE.equals(approval.getIsCurrent())) {
-            throw new RuntimeException("Step chưa đến lượt ký");
-        }
+        if (!contract.getId().equals(contractId)) throw new RuntimeException("Step không thuộc hợp đồng này");
+        if (!Boolean.TRUE.equals(approval.getIsCurrent())) throw new RuntimeException("Step chưa đến lượt ký");
 
-        // Kiểm tra placeholder
-        if (approval.getSignaturePlaceholder() == null || approval.getSignaturePlaceholder().isBlank()) {
-            throw new RuntimeException("No signature placeholder defined for this approval step");
-        }
-
-        // Chỉ cho phép ký khi step có yêu cầu ký
         ApprovalAction action = approval.getStep().getAction();
-        if (action == ApprovalAction.APPROVE_ONLY) {
+        if (action == ApprovalAction.APPROVE_ONLY)
             throw new RuntimeException("Bước này chỉ phê duyệt, không yêu cầu ký.");
-        }
 
-        // 1) Lấy nhân sự hiện tại
+        // 1) Người thực hiện + kiểm tra quyền
         String email = securityUtils.getCurrentUserEmail();
         Employee me = userRepository.findByAccount_Email(email)
                 .orElseThrow(() -> new RuntimeException("Employee not found: " + email));
-
-        // 2) Kiểm tra quyền theo approverType
         validateApprovalPermission(approval.getStep(), me);
 
-        // 3) LẤY CHỮ KÝ TỪ REQUEST HOẶC EMPLOYEE
-        String signatureUrl = req.getSignatureImage(); // ✅ ƯU TIÊN CHỮ KÝ TỪ REQUEST
-
-        if (signatureUrl == null || signatureUrl.isEmpty()) {
-            // Fallback: lấy từ employee
-            signatureUrl = me.getSignatureImage();
-            log.info("Using employee signature from database");
-        } else {
-            log.info("Using signature from request");
-        }
-
-        if (signatureUrl == null || signatureUrl.isEmpty()) {
+        // 2) Chữ ký ảnh (ưu tiên request, sau đó tới chữ ký đã lưu của employee)
+        String signatureUrl = Optional.ofNullable(req.getSignatureImage())
+                .filter(s -> !s.isBlank())
+                .orElse(me.getSignatureImage());
+        if (signatureUrl == null || signatureUrl.isBlank())
             throw new RuntimeException("Bạn chưa có chữ ký số. Vui lòng upload chữ ký trước.");
-        }
 
-        // 4) Chèn chữ ký vào file THEO PLACEHOLDER CỦA APPROVAL
-        String updatedPath = contractFileService.embedSignatureForApproval(
-                contract.getId(),
-                signatureUrl,
-                approval.getId()
-        );
+        // 3) Tên in để dò trong văn bản: lấy từ Employee.fullName (fallback email)
+        String printedName = (me.getFullName() != null && !me.getFullName().isBlank())
+                ? me.getFullName().trim()
+                : me.getAccount().getEmail();
+
+        String updatedPath;
+        String snapshotKey;
+
+        try {
+            // Ưu tiên ký theo tên in
+            updatedPath = contractFileService.embedSignatureByName(contract.getId(), signatureUrl, printedName);
+            snapshotKey = "PRINTED_NAME:" + printedName;
+        } catch (RuntimeException ex) {
+            // Fallback: ký theo placeholder của step
+            String ph = approval.getSignaturePlaceholder();
+            if (ph == null || ph.isBlank())
+                throw new RuntimeException("Không tìm thấy vị trí ký: không khớp tên in và step không có placeholder.");
+            updatedPath = contractFileService.embedSignatureForApproval(contract.getId(), signatureUrl, approval.getId());
+            snapshotKey = ph;
+        }
 
         if (updatedPath != null) {
             contract.setFilePath(updatedPath);
             contractRepository.save(contract);
         }
 
-        // 5) Lưu snapshot chữ ký
-        ContractSignature signature = new ContractSignature();
-        signature.setContract(contract);
-        signature.setSigner(me);
-        signature.setApprovalStep(approval);
-        signature.setSignedAt(LocalDateTime.now());
-        signature.setSignatureImage(signatureUrl);
-        signature.setPlaceholderKey(approval.getSignaturePlaceholder());
-        signature.setType(SignatureType.EMPLOYEE);
-        contractSignatureRepository.save(signature);
+        // 4) Lưu snapshot
+        ContractSignature sig = new ContractSignature();
+        sig.setContract(contract);
+        sig.setSigner(me);
+        sig.setApprovalStep(approval);
+        sig.setSignedAt(LocalDateTime.now());
+        sig.setSignatureImage(signatureUrl);
+        sig.setPlaceholderKey(snapshotKey); // "PRINTED_NAME:..." hoặc placeholder
+        sig.setType(SignatureType.EMPLOYEE);
+        contractSignatureRepository.save(sig);
 
-        // 6) Hoàn tất bước nếu là SIGN_ONLY
+        // 5) Hoàn tất nếu SIGN_ONLY
         if (action == ApprovalAction.SIGN_ONLY) {
             completeApprovalStep(approval, me, req.getComment());
-
             if (Boolean.TRUE.equals(approval.getIsFinalStep())) {
                 contract.setStatus(ContractStatus.APPROVED);
                 contractRepository.save(contract);
                 return ContractMapper.toResponse(contract);
             }
-
-            // Chuyển sang step tiếp theo
             moveToNextStep(contract, approval.getStepOrder());
         }
 

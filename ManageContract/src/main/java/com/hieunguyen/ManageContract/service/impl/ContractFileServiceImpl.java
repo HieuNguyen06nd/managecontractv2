@@ -20,6 +20,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
@@ -29,6 +30,14 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+// PDFBox
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
+
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -36,25 +45,24 @@ public class ContractFileServiceImpl implements ContractFileService {
 
     private static final ObjectFactory WML = new ObjectFactory();
     private static final String UPLOAD_ROOT = "uploads/contracts";
-    private static final String DOCX_NAME = "contract.docx";
-    private static final String PDF_NAME  = "contract.pdf";
+    private static final String DOCX_NAME   = "contract.docx";
+    private static final String PDF_NAME    = "contract.pdf";
 
-    // chữ ký ảnh mặc định
+    // kích thước chữ ký mặc định (px, giả định ảnh thiết kế theo 96 DPI)
     private static final float DEFAULT_SIG_W = 180f;
     private static final float DEFAULT_SIG_H = 60f;
 
     private final ContractRepository contractRepository;
     private final ContractApprovalRepository contractApprovalRepository;
 
-    // OnlyOffice & chữ ký
     private final RestTemplate rest = new RestTemplate();
     private final ObjectMapper om = new ObjectMapper();
 
     @Value("${app.ds.url:http://localhost:8081}")
-    private String docServer; // http://localhost:8081 (Document Server)
+    private String docServer; // ONLYOFFICE Document Server
 
     @Value("${app.ds.source-base:http://host.docker.internal:8080}")
-    private String hostBaseUrl; // http://host.docker.internal:8080 (BE base URL để DS gọi vào)
+    private String hostBaseUrl; // BE base URL cho DS fetch file
 
     @Value("${app.signature.storage-dir:uploads/signatures}")
     private String signatureStorageDir;
@@ -63,13 +71,11 @@ public class ContractFileServiceImpl implements ContractFileService {
     // ContractFileService API
     // ========================================================================
 
-    /**
-     * Tạo file hợp đồng (DOCX từ template + variables) rồi convert PDF bằng OnlyOffice
-     */
+    /** Sinh DOCX từ template + variables, rồi convert PDF bằng OnlyOffice (1 lần) */
     @Override
     public String generateContractFile(Contract contract) {
         try {
-            Path docx = ensureDocxGenerated(contract, /*overrideVars*/ null);
+            Path docx = ensureDocxGenerated(contract, null);
             Path pdf  = pdfPathOf(contract.getId());
 
             convertToPdfUsingOnlyOffice(contract.getId(), docx, pdf);
@@ -84,9 +90,7 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /**
-     * Tạo file hợp đồng với danh sách biến truyền vào (ưu tiên biến tham số nếu có)
-     */
+    /** Sinh file với biến truyền vào (ưu tiên tham số) */
     @Override
     public String generateContractFileWithVariables(Contract contract, List<ContractVariableValue> variableValues) {
         try {
@@ -105,11 +109,7 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /**
-     * Lấy file gốc để tải xuống:
-     * - Nếu PDF đã sinh -> trả PDF
-     * - Nếu chưa có PDF -> trả DOCX (nếu có)
-     */
+    /** Lấy file gốc: ưu tiên PDF, sau đó DOCX, cuối cùng DB filePath nếu tồn tại */
     @Override
     public File getContractFile(Long contractId) {
         Contract contract = contractRepository.findById(contractId)
@@ -121,17 +121,15 @@ public class ContractFileServiceImpl implements ContractFileService {
         if (Files.exists(pdf)) return pdf.toFile();
         if (Files.exists(docx)) return docx.toFile();
 
-        // fallback: nếu DB có filePath và tồn tại thì trả
         if (contract.getFilePath() != null && Files.exists(Paths.get(contract.getFilePath()))) {
             return Paths.get(contract.getFilePath()).toFile();
         }
-
         throw new RuntimeException("Contract file not generated yet");
     }
 
     /**
-     * Ký bằng ảnh: thay thế placeholder trong DOCX => convert lại PDF (OnlyOffice)
-     * @param filePath có thể là đường dẫn PDF hoặc DOCX hiện tại; dùng để suy ra contractId
+     * Ký theo placeholder: chèn ảnh vào DOCX rồi convert lại PDF (giữ nguyên luồng cũ)
+     * Dùng khi ký theo step có placeholder, hoặc fallback khi không tìm thấy tên in.
      */
     @Override
     public String embedSignature(String filePath, String imageUrl, String placeholder) {
@@ -141,29 +139,28 @@ public class ContractFileServiceImpl implements ContractFileService {
             }
 
             Long contractId = extractContractIdFromPath(Paths.get(filePath));
+            Path docx = ensureDocxGenerated(contractRepository.findById(contractId).orElseThrow(), null);
 
-            // Bảo đảm đã có DOCX
-            Path docx = ensureDocxGenerated(
-                    contractRepository.findById(contractId).orElseThrow(), null);
-
-            // Chèn ảnh vào DOCX
             byte[] imageBytes = loadImageBytes(imageUrl);
             if (imageBytes == null || imageBytes.length == 0) {
                 throw new RuntimeException("Signature image is empty or invalid");
             }
 
             WordprocessingMLPackage pkg = WordprocessingMLPackage.load(docx.toFile());
-            boolean ok = replacePlaceholderWithImage(pkg, normalizePlaceholder(placeholder), imageBytes, DEFAULT_SIG_W, DEFAULT_SIG_H);
-            if (!ok) {
-                throw new RuntimeException("Placeholder not found in DOCX: " + placeholder);
-            }
+            boolean ok = replacePlaceholderWithImage(
+                    pkg,
+                    normalizePlaceholder(placeholder),
+                    imageBytes,
+                    DEFAULT_SIG_W,
+                    DEFAULT_SIG_H
+            );
+            if (!ok) throw new RuntimeException("Placeholder not found in DOCX: " + placeholder);
+
             pkg.save(docx.toFile());
 
-            // Convert lại PDF
             Path pdf = pdfPathOf(contractId);
             convertToPdfUsingOnlyOffice(contractId, docx, pdf);
 
-            // Cập nhật DB
             Contract c = contractRepository.findById(contractId).orElseThrow();
             c.setFilePath(pdf.toString());
             c.setFileGeneratedAt(LocalDateTime.now());
@@ -175,9 +172,7 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /**
-     * Ký theo step phê duyệt – dùng placeholder của step
-     */
+    /** Ký theo step phê duyệt: dùng placeholder của step */
     @Override
     public String embedSignatureForApproval(Long contractId, String imageUrl, Long approvalId) {
         try {
@@ -189,7 +184,6 @@ public class ContractFileServiceImpl implements ContractFileService {
                 throw new RuntimeException("No signature placeholder defined for this step");
             }
 
-            // Lấy current (PDF hoặc DOCX) để suy ra contractId (hoặc dùng trực tiếp id)
             File file = getContractFile(contractId);
             return embedSignature(file.getAbsolutePath(), imageUrl, ph);
         } catch (Exception e) {
@@ -197,9 +191,7 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /**
-     * Ghi thêm text phê duyệt vào DOCX (cuối tài liệu) rồi convert lại PDF
-     */
+    /** Ghi text phê duyệt vào DOCX rồi convert PDF (giữ nguyên) */
     @Override
     public void addApprovalText(String filePath, String approvalText) {
         try {
@@ -224,9 +216,7 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /**
-     * Lấy danh sách placeholder chữ ký từ các bước approval của contract
-     */
+    /** Liệt kê placeholder từ các bước */
     @Override
     public List<String> getSignaturePlaceholders(Long contractId) {
         List<ContractApproval> approvals = contractApprovalRepository.findByContractId(contractId);
@@ -239,15 +229,12 @@ public class ContractFileServiceImpl implements ContractFileService {
         return placeholders;
     }
 
-    /**
-     * Kiểm tra placeholder có tồn tại trong DOCX hiện tại không
-     */
+    /** Kiểm tra placeholder có tồn tại trong DOCX hiện tại không */
     @Override
     public boolean validatePlaceholdersInContract(Long contractId) {
         try {
             Path docx = docxPathOf(contractId);
             if (!Files.exists(docx)) {
-                // cố sinh DOCX nếu chưa có
                 Contract c = contractRepository.findById(contractId)
                         .orElseThrow(() -> new RuntimeException("Contract not found"));
                 generateDocxFile(c);
@@ -271,27 +258,20 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /**
-     * Sinh DOCX từ template + biến hợp đồng (ở contract.getVariableValues)
-     */
+    /** Sinh DOCX từ template + biến contract */
     @Override
     public String generateDocxFile(Contract contract) {
         try {
             Path out = docxPathOf(contract.getId());
             Files.createDirectories(out.getParent());
 
-            // chỉ hỗ trợ template DOCX
             if (contract.getTemplate() == null || contract.getTemplate().getFilePath() == null) {
                 throw new RuntimeException("Template not found or filePath is null");
             }
             Path templatePath = Paths.get(contract.getTemplate().getFilePath());
             String name = templatePath.getFileName().toString().toLowerCase(Locale.ROOT);
-            if (!name.endsWith(".docx")) {
-                throw new RuntimeException("Only DOCX template is supported");
-            }
-            if (!Files.exists(templatePath)) {
-                throw new RuntimeException("Template file not found: " + templatePath);
-            }
+            if (!name.endsWith(".docx")) throw new RuntimeException("Only DOCX template is supported");
+            if (!Files.exists(templatePath)) throw new RuntimeException("Template file not found: " + templatePath);
 
             Map<String, String> map = contract.getVariableValues() == null
                     ? Collections.emptyMap()
@@ -301,7 +281,6 @@ public class ContractFileServiceImpl implements ContractFileService {
                             v -> Optional.ofNullable(v.getVarValue()).orElse("")
                     ));
 
-            // biến -> variableReplace
             WordprocessingMLPackage pkg = WordprocessingMLPackage.load(templatePath.toFile());
             VariablePrepare.prepare(pkg);
             pkg.getMainDocumentPart().variableReplace(map);
@@ -313,9 +292,7 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /**
-     * Lấy PDF; nếu chưa có thì convert từ DOCX (tự sinh DOCX nếu cần)
-     */
+    /** Lấy PDF; nếu chưa có thì convert từ DOCX (tự sinh DOCX nếu cần) */
     @Override
     public File getPdfOrConvert(Long contractId) {
         try {
@@ -330,7 +307,6 @@ public class ContractFileServiceImpl implements ContractFileService {
             }
             convertToPdfUsingOnlyOffice(contractId, docx, pdf);
 
-            // cập nhật DB
             Contract c = contractRepository.findById(contractId).orElseThrow();
             c.setFilePath(pdf.toString());
             c.setFileGeneratedAt(LocalDateTime.now());
@@ -346,17 +322,14 @@ public class ContractFileServiceImpl implements ContractFileService {
     // Helpers (DOCX, OnlyOffice, Paths, I/O)
     // ========================================================================
 
-    /** Đảm bảo có DOCX cho hợp đồng (sinh nếu chưa) – có thể override biến bằng tham số */
+    /** Đảm bảo có DOCX cho hợp đồng; có thể override biến */
     private Path ensureDocxGenerated(Contract contract, List<ContractVariableValue> overrideVars) {
         try {
             Path docx = docxPathOf(contract.getId());
             Files.createDirectories(docx.getParent());
 
-            if (Files.exists(docx) && Files.size(docx) > 0) {
-                return docx;
-            }
+            if (Files.exists(docx) && Files.size(docx) > 0) return docx;
 
-            // Chỉ hỗ trợ template DOCX
             if (contract.getTemplate() == null || contract.getTemplate().getFilePath() == null) {
                 throw new RuntimeException("Template not found or filePath is null");
             }
@@ -368,10 +341,8 @@ public class ContractFileServiceImpl implements ContractFileService {
                 throw new RuntimeException("Only DOCX template is supported");
             }
 
-            // Build map biến (ưu tiên override)
             List<ContractVariableValue> src = (overrideVars != null) ? overrideVars : contract.getVariableValues();
-            Map<String, String> map = (src == null)
-                    ? Collections.emptyMap()
+            Map<String, String> map = (src == null) ? Collections.emptyMap()
                     : src.stream().collect(Collectors.toMap(
                     ContractVariableValue::getVarName,
                     v -> Optional.ofNullable(v.getVarValue()).orElse("")
@@ -388,14 +359,151 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
+    // ======= KÝ THEO TÊN – CHÈN ẢNH TRỰC TIẾP LÊN PDF =======
+
+    /** Nếu interface của bạn định nghĩa 3 tham số, dùng @Override ở đây */
+    @Override
+    public String embedSignatureByName(Long contractId, String imageRef, String printedName) {
+        return embedSignatureByName(contractId, imageRef, printedName, null, null);
+    }
+
+    /** Overload cho phép truyền kích thước (nếu interface chưa có thì bỏ @Override ở đây) */
+    public String embedSignatureByName(Long contractId, String imageRef, String printedName,
+                                       Float widthPx, Float heightPx) {
+        try {
+            if (printedName == null || printedName.isBlank()) {
+                throw new RuntimeException("printedName is required");
+            }
+
+            // 1) Bảo đảm đã có PDF (nếu chưa, convert 1 lần rồi dùng tiếp)
+            File pdfFile = getPdfOrConvert(contractId);
+            Path pdfPath = pdfFile.toPath();
+
+            // 2) Ảnh chữ ký
+            byte[] imageBytes = loadImageBytes(imageRef);
+            if (imageBytes == null || imageBytes.length == 0) {
+                throw new RuntimeException("Signature image is empty or invalid");
+            }
+
+            // 3) Mở PDF và tìm lần xuất hiện CUỐI của tên in
+            try (PDDocument doc = PDDocument.load(pdfPath.toFile())) {
+
+                MatchPos match = findLastOccurrencePosition(doc, printedName);
+                if (match == null) {
+                    // để cho tầng trên fallback sang placeholder
+                    throw new RuntimeException("Không tìm thấy tên in trong PDF: " + printedName);
+                }
+
+                float wPt = (widthPx  != null ? widthPx  : DEFAULT_SIG_W) * 72f / 96f; // px → pt
+                float hPt = (heightPx != null ? heightPx : DEFAULT_SIG_H) * 72f / 96f;
+
+                PDPage page = doc.getPage(match.pageIndex);
+                PDImageXObject img = PDImageXObject.createFromByteArray(doc, imageBytes, "signature");
+
+                float pageH = page.getMediaBox().getHeight();
+                float x = match.bounds.x;
+                float yTop = match.bounds.y + match.bounds.height;
+                float margin = 6f;
+
+                // Mặc định đặt phía TRÊN dòng tên; nếu chạm mép trên, đặt xuống DƯỚI
+                float y = yTop + margin;
+                if (y + hPt > pageH - 10) {
+                    y = Math.max(20, match.bounds.y - hPt - margin);
+                }
+
+                try (PDPageContentStream cs = new PDPageContentStream(
+                        doc, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
+                    cs.drawImage(img, x, y, wPt, hPt);
+                }
+
+                // 4) Lưu đè chính file PDF
+                doc.save(pdfPath.toFile());
+            }
+
+            // 5) Cập nhật DB (vẫn là cùng đường dẫn)
+            Contract c = contractRepository.findById(contractId).orElseThrow();
+            c.setFilePath(pdfPath.toString());
+            c.setFileGeneratedAt(LocalDateTime.now());
+            contractRepository.save(c);
+
+            return pdfPath.toString();
+
+        } catch (Exception e) {
+            throw new RuntimeException("Embed signature by NAME (PDF) failed: " + e.getMessage(), e);
+        }
+    }
+
+    // ====== PDF text locating ======
+    private static class MatchPos {
+        final int pageIndex;            // 0-based
+        final Rectangle2D.Float bounds; // x,y,width,height (point)
+        MatchPos(int pageIndex, Rectangle2D.Float bounds) {
+            this.pageIndex = pageIndex;
+            this.bounds = bounds;
+        }
+    }
+
+    /** Tìm toạ độ lần xuất hiện CUỐI của chuỗi trong PDF (theo thứ tự trang từ 1→N) */
+    private MatchPos findLastOccurrencePosition(PDDocument doc, String needleRaw) throws Exception {
+        final String needle = needleRaw.toLowerCase(Locale.ROOT);
+
+        class Locator extends PDFTextStripper {
+            MatchPos last = null;
+            Locator() throws java.io.IOException { setSortByPosition(true); }
+
+            @Override
+            protected void writeString(String text, List<TextPosition> positions) {
+                String lower = text.toLowerCase(Locale.ROOT);
+                int from = 0;
+                while (true) {
+                    int idx = lower.indexOf(needle, from);
+                    if (idx < 0) break;
+
+                    int endIdx = idx + needle.length() - 1;
+                    if (idx < positions.size() && endIdx < positions.size()) {
+                        TextPosition first = positions.get(idx);
+                        TextPosition lastTp = positions.get(endIdx);
+
+                        float minX = first.getXDirAdj();
+                        float minY = Float.MAX_VALUE;
+                        float maxYTop = Float.MIN_VALUE;
+
+                        for (int i = idx; i <= endIdx; i++) {
+                            TextPosition tp = positions.get(i);
+                            minX = Math.min(minX, tp.getXDirAdj());
+                            float y = tp.getYDirAdj();
+                            float h = tp.getHeightDir();
+                            minY = Math.min(minY, y);
+                            maxYTop = Math.max(maxYTop, y + h);
+                        }
+
+                        Rectangle2D.Float rect = new Rectangle2D.Float(
+                                minX,
+                                minY,
+                                lastTp.getXDirAdj() - minX + lastTp.getWidthDirAdj(),
+                                maxYTop - minY
+                        );
+                        last = new MatchPos(getCurrentPageNo() - 1, rect);
+                    }
+                    from = idx + 1;
+                }
+            }
+        }
+
+        Locator loc = new Locator();
+        for (int i = 1; i <= doc.getNumberOfPages(); i++) {
+            loc.setStartPage(i);
+            loc.setEndPage(i);
+            loc.getText(doc); // trigger writeString
+        }
+        return loc.last;
+    }
+
     /** Convert DOCX → PDF bằng OnlyOffice ConvertService */
     private void convertToPdfUsingOnlyOffice(Long contractId, Path inputDocx, Path outputPdf) {
         try {
             Files.createDirectories(outputPdf.getParent());
 
-            // OnlyOffice cần URL public để fetch DOCX từ BE
-            // Bạn cần một controller nội bộ như:
-            // GET /internal/files/{contractId}/contract.docx -> trả FileSystemResource(docxPath)
             final String sourceUrl = hostBaseUrl.replaceAll("/+$", "")
                     + "/internal/files/" + contractId + "/" + DOCX_NAME;
 
@@ -593,24 +701,18 @@ public class ContractFileServiceImpl implements ContractFileService {
         if (raw == null) return "{{SIGN}}";
         String s = raw.trim();
 
-        // đã có dạng {{...}} -> giữ nguyên
         if (s.startsWith("{{") && s.endsWith("}}")) return s;
 
-        // nếu đang ở dạng [SIGN] hoặc [SIGN:...], chuyển sang {{...}}
         if (s.startsWith("[") && s.endsWith("]")) {
             s = s.substring(1, s.length() - 1).trim();
         }
 
-        // chỉ "SIGN" -> {{SIGN}}
         if (s.equalsIgnoreCase("SIGN")) return "{{SIGN}}";
 
-        // "SIGN:KEY" -> {{SIGN:KEY}}  (không ép hoa phần KEY)
         if (s.regionMatches(true, 0, "SIGN:", 0, 5)) return "{{" + s + "}}";
 
-        // còn lại coi như KEY tuỳ ý -> {{SIGN:KEY}}
         return "{{SIGN:" + s + "}}";
     }
-
 
     private long pxToEmu(float px) { return Math.round(px * 9525f); }
 
@@ -620,7 +722,7 @@ public class ContractFileServiceImpl implements ContractFileService {
     // I/O helpers
     // ========================================================================
 
-    /** Hỗ trợ data: URL, http(s), file path (tuyệt đối/ tương đối), và đường dẫn trong signatureStorageDir */
+    /** Hỗ trợ data: URL, http(s), file path, và đường dẫn relative trong uploads/signatures */
     private byte[] loadImageBytes(String ref) {
         if (ref == null || ref.isBlank()) return null;
         try {
@@ -645,16 +747,15 @@ public class ContractFileServiceImpl implements ContractFileService {
 
             // filesystem candidates
             Path userDir = Paths.get(System.getProperty("user.dir"));
-            Path sigDirAbs = userDir.resolve(signatureStorageDir).normalize(); // vd: <user.dir>/uploads/signatures
+            Path sigDirAbs = userDir.resolve(signatureStorageDir).normalize(); // <user.dir>/uploads/signatures
 
             List<Path> candidates = new ArrayList<>();
-            Path asGiven = Paths.get(ref);                        // signatures/xxx.png (tương đối)
+            Path asGiven = Paths.get(ref);
             candidates.add(asGiven.normalize());
-            candidates.add(userDir.resolve(asGiven).normalize()); // <user.dir>/signatures/xxx.png
-            candidates.add(sigDirAbs.resolve(ref).normalize());   // <user.dir>/uploads/signatures/signatures/xxx.png (có thể trùng, nhưng thử)
-            candidates.add(userDir.resolve("uploads").resolve(ref).normalize()); // <user.dir>/uploads/signatures/xxx.png ✅
+            candidates.add(userDir.resolve(asGiven).normalize());
+            candidates.add(sigDirAbs.resolve(ref).normalize());
+            candidates.add(userDir.resolve("uploads").resolve(ref).normalize());
 
-            // nếu ref bắt đầu bằng "/uploads/..."
             if (ref.startsWith("/uploads/")) {
                 candidates.add(userDir.resolve(ref.substring(1)).normalize());
             }
@@ -670,7 +771,8 @@ public class ContractFileServiceImpl implements ContractFileService {
                     }
                 } catch (Exception ignore) {}
             }
-            log.error("Signature NOT FOUND. Tried:\n{}", candidates.stream().map(Path::toString).collect(Collectors.joining("\n")));
+            log.error("Signature NOT FOUND. Tried:\n{}",
+                    candidates.stream().map(Path::toString).collect(Collectors.joining("\n")));
             return null;
         } catch (Exception e) {
             log.error("loadImageBytes error: {}", e.toString(), e);
@@ -683,9 +785,9 @@ public class ContractFileServiceImpl implements ContractFileService {
         for (char c : s.toCharArray()) {
             if (!(Character.isLetterOrDigit(c) || c=='+' || c=='/' || c=='=' || c=='\n' || c=='\r')) return false;
         }
-        try { Base64.getDecoder().decode(s); return true; } catch (IllegalArgumentException e) { return false; }
+        try { Base64.getDecoder().decode(s); return true; }
+        catch (IllegalArgumentException e) { return false; }
     }
-
 
     private Long extractContractIdFromPath(Path anyPathUnderContractFolder) {
         // Expect: uploads/contracts/{id}/...
@@ -694,8 +796,7 @@ public class ContractFileServiceImpl implements ContractFileService {
             try {
                 long id = Long.parseLong(parent.getFileName().toString());
                 return id;
-            } catch (NumberFormatException ignore) {
-            }
+            } catch (NumberFormatException ignore) { }
             parent = parent.getParent();
         }
         throw new IllegalArgumentException("Cannot extract contractId from path: " + anyPathUnderContractFolder);
@@ -704,12 +805,6 @@ public class ContractFileServiceImpl implements ContractFileService {
     private Path contractDirOf(Long id) {
         return Paths.get(System.getProperty("user.dir"), UPLOAD_ROOT, String.valueOf(id)).normalize();
     }
-
-    private Path docxPathOf(Long id) {
-        return contractDirOf(id).resolve(DOCX_NAME);
-    }
-
-    private Path pdfPathOf(Long id) {
-        return contractDirOf(id).resolve(PDF_NAME);
-    }
+    private Path docxPathOf(Long id) { return contractDirOf(id).resolve(DOCX_NAME); }
+    private Path pdfPathOf(Long id)  { return contractDirOf(id).resolve(PDF_NAME); }
 }

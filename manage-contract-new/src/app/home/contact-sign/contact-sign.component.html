@@ -38,18 +38,18 @@
   </div>
 
   <!-- Loading / Error -->
-  <div *ngIf="loading" class="alert alert-info d-flex align-items-center gap-2">
+  <div *ngIf="listLoading" class="alert alert-info d-flex align-items-center gap-2">
     <i class="fas fa-spinner fa-spin"></i> Đang tải danh sách...
   </div>
-  <div *ngIf="!loading && errorMsg" class="alert alert-danger">{{ errorMsg }}</div>
+  <div *ngIf="!listLoading && errorMsg" class="alert alert-danger">{{ errorMsg }}</div>
 
   <!-- Empty -->
-  <div *ngIf="!loading && !errorMsg && visibleContracts.length === 0" class="alert alert-secondary">
+  <div *ngIf="!listLoading && !errorMsg && visibleContracts.length === 0" class="alert alert-secondary">
     Không có hợp đồng nào phù hợp.
   </div>
 
   <!-- Contracts -->
-  <div class="contracts-container" *ngIf="!loading && !errorMsg">
+  <div class="contracts-container" *ngIf="!listLoading && !errorMsg">
     <div class="contract-card" *ngFor="let c of visibleContracts; trackBy: trackById">
       <div class="contract-header">
         <span class="contract-badge" [ngClass]="badgeClass(c.status)">
@@ -90,20 +90,28 @@
             <i class="fas fa-eye me-1"></i> Xem trước
           </button>
 
-          <!-- Nút KÝ - chỉ hiện khi có thể ký -->
-          <button class="btn btn-sign" *ngIf="canSign(c)" (click)="sign(c)">
-            <i class="fas fa-signature me-1"></i> Ký
+          <!-- KÝ -->
+          <button class="btn btn-sign"
+                  *ngIf="canSign(c)"
+                  [disabled]="signing[c.id!]"
+                  (click)="sign(c)">
+            <i class="fas" [ngClass]="signing[c.id!] ? 'fa-spinner fa-spin' : 'fa-signature'"></i>
+            <span class="ms-1">{{ signing[c.id!] ? 'Đang ký...' : 'Ký' }}</span>
           </button>
 
-          <!-- Nút PHÊ DUYỆT -->
+          <!-- PHÊ DUYỆT -->
           <button class="btn btn-approve"
                   *ngIf="canApproveVisible(c)"
+                  [disabled]="approving[c.id!]"
                   (click)="openApprove(c)">
             <i class="fas fa-check me-1"></i> Phê duyệt
           </button>
 
-          <!-- Nút TỪ CHỐI -->
-          <button class="btn btn-reject" *ngIf="canReject(c)" (click)="openReject(c)">
+          <!-- TỪ CHỐI -->
+          <button class="btn btn-reject"
+                  *ngIf="canReject(c)"
+                  [disabled]="rejecting[c.id!] || approving[c.id!] || signing[c.id!]"
+                  (click)="openReject(c)">
             <i class="fas fa-times me-1"></i> Từ chối
           </button>
         </div>
@@ -134,10 +142,11 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" (click)="closeModals()">Hủy</button>
-        <button class="btn btn-success" [disabled]="loading" (click)="approve(current!)">
-          <i class="fas fa-check me-1" *ngIf="!loading"></i>
-          <i class="fas fa-spinner fa-spin me-1" *ngIf="loading"></i>
-          {{ loading ? 'Đang xử lý...' : 'Xác nhận Phê duyệt' }}
+        <button class="btn btn-success"
+                [disabled]="!current || approving[current.id!]"
+                (click)="approve(current!)">
+          <i class="fas" [ngClass]="approving[current?.id!] ? 'fa-spinner fa-spin me-1' : 'fa-check me-1'"></i>
+          {{ approving[current?.id!] ? 'Đang xử lý...' : 'Xác nhận Phê duyệt' }}
         </button>
       </div>
     </div>
@@ -185,11 +194,11 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" (click)="closeModals()">Hủy</button>
-        <button class="btn btn-danger" [disabled]="!rejectReasonCode || !rejectComment.trim() || loading" 
+        <button class="btn btn-danger"
+                [disabled]="!current || !rejectReasonCode || !rejectComment.trim() || rejecting[current.id!]"
                 (click)="reject(current!)">
-          <i class="fas fa-times me-1" *ngIf="!loading"></i>
-          <i class="fas fa-spinner fa-spin me-1" *ngIf="loading"></i>
-          {{ loading ? 'Đang xử lý...' : 'Xác nhận Từ chối' }}
+          <i class="fas" [ngClass]="rejecting[current?.id!] ? 'fa-spinner fa-spin me-1' : 'fa-times me-1'"></i>
+          {{ rejecting[current?.id!] ? 'Đang xử lý...' : 'Xác nhận Từ chối' }}
         </button>
       </div>
     </div>
@@ -223,11 +232,12 @@
             <i class="fas fa-rotate me-1"></i> Tải lại
           </button>
 
-          <!-- Nút KÝ trong preview -->
-          <button class="btn btn-success" *ngIf="current && canSign(current)" 
-                  (click)="sign(current)" [disabled]="loading">
-            <i class="fas fa-signature me-1"></i> 
-            {{ loading ? 'Đang ký...' : 'Ký' }}
+          <button class="btn btn-success"
+                  *ngIf="current && canSign(current)"
+                  [disabled]="signing[current.id!]"
+                  (click)="sign(current)">
+            <i class="fas" [ngClass]="signing[current.id!] ? 'fa-spinner fa-spin me-1' : 'fa-signature me-1'"></i>
+            {{ signing[current.id!] ? 'Đang ký...' : 'Ký' }}
           </button>
 
           <a class="btn btn-outline-primary" *ngIf="previewDownloadUrl"

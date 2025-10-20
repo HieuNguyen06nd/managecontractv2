@@ -5,6 +5,8 @@ import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
 import { ToastrService } from 'ngx-toastr';
 import { NgxExtendedPdfViewerModule } from 'ngx-extended-pdf-viewer';
+import { forkJoin, of } from 'rxjs';
+import { catchError, finalize, take } from 'rxjs/operators';
 
 import { ContractApprovalService } from '../../core/services/contract-approval.service';
 import { ContractService } from '../../core/services/contract.service';
@@ -43,9 +45,14 @@ export class ContactSignComponent implements OnInit {
   approvedContracts: PendingCard[] = [];
   rejectedContracts: PendingCard[] = [];
 
-  loading = false;
+  // danh sách
+  listLoading = false;
   errorMsg = '';
-  signingInProgress = false; // Thêm biến để theo dõi trạng thái ký
+
+  // trạng thái theo item
+  signing: Record<number, boolean> = {};
+  approving: Record<number, boolean> = {};
+  rejecting: Record<number, boolean> = {};
 
   // ===== Filters / Sort / Search =====
   filterTab: FilterTab = 'all';
@@ -69,157 +76,113 @@ export class ContactSignComponent implements OnInit {
   previewDownloadUrl: string | null = null;
   private cacheBust = Date.now();
 
-  ngOnInit(): void { 
-    this.fetchForTab('all'); 
+  ngOnInit(): void {
+    this.refreshAll();
   }
 
-  // ============ Fetch ============
-  private fetchForTab(tab: FilterTab) {
-    if (tab === 'PENDING_APPROVAL' || tab === 'all') this.fetchPending();
-    if (tab === 'APPROVED' || tab === 'all') this.fetchHandled('APPROVED');
-    if (tab === 'REJECTED' || tab === 'all') this.fetchHandled('REJECTED');
-  }
-
-  fetchPending() {
-    this.loading = true; 
+  // ============ Fetch helpers ============
+  private refreshAll() {
+    this.listLoading = true;
     this.errorMsg = '';
-    
-    this.service.getMyPendingContracts().subscribe({
-      next: (res: ResponseData<ContractResponse[]>) => {
-        const raw = (res.data ?? []) as PendingCard[];
-        this.pendingContracts = raw.map(c => ({
-          ...c,
-          currentStepName: c.currentStepName ?? 'Bước hiện tại',
-          priority: c.priority ?? 'NORMAL'
-        }));
-      },
-      error: (err) => {
-        this.errorMsg = err?.error?.message || 'Không tải được danh sách chờ phê duyệt.';
-        this.toastr.error(this.errorMsg);
-      },
-      complete: () => (this.loading = false)
+
+    forkJoin({
+      pending: this.service.getMyPendingContracts()
+        .pipe(catchError(err => { this.toastApiError(err, 'Không tải được danh sách chờ phê duyệt.'); return of({ data: [] as ContractResponse[] }); })),
+      approved: this.service.getMyHandledContracts('APPROVED')
+        .pipe(catchError(err => { this.toastApiError(err, 'Không tải được danh sách đã duyệt.'); return of({ data: [] as ContractResponse[] }); })),
+      rejected: this.service.getMyHandledContracts('REJECTED')
+        .pipe(catchError(err => { this.toastApiError(err, 'Không tải được danh sách từ chối.'); return of({ data: [] as ContractResponse[] }); })),
+    })
+    .pipe(finalize(() => this.listLoading = false), take(1))
+    .subscribe(({ pending, approved, rejected }: any) => {
+      this.pendingContracts = (pending?.data ?? []).map((c: PendingCard) => ({
+        ...c,
+        currentStepName: c.currentStepName ?? 'Bước hiện tại',
+        priority: c.priority ?? 'NORMAL'
+      }));
+      this.approvedContracts = (approved?.data ?? []);
+      this.rejectedContracts = (rejected?.data ?? []);
     });
   }
 
-  private fetchHandled(status: 'APPROVED' | 'REJECTED') {
-    this.service.getMyHandledContracts(status).subscribe({
-      next: (res: ResponseData<ContractResponse[]>) => {
-        const list = (res.data ?? []) as PendingCard[];
-        if (status === 'APPROVED') this.approvedContracts = list;
-        else this.rejectedContracts = list;
-      },
-      error: (err) =>
-        this.toastr.error(err?.error?.message || `Không tải được danh sách ${status === 'APPROVED' ? 'đã duyệt' : 'từ chối'}.`)
-    });
+  private toastApiError(err: any, fallback: string) {
+    const msg = err?.error?.message || fallback;
+    this.toastr.error(msg);
+    this.errorMsg = msg;
   }
 
   // ============ Actions ============
   approve(contract: PendingCard) {
-    if (!contract.currentStepId) { 
-      this.toastr.warning('Thiếu stepId của bước hiện tại.'); 
-      return; 
-    }
+    if (!contract.currentStepId) { this.toastr.warning('Thiếu stepId của bước hiện tại.'); return; }
+
+    const id = contract.id!;
+    this.approving[id] = true;
 
     const body: StepApprovalRequest = { comment: 'Đồng ý phê duyệt' };
-    this.loading = true;
-    
-    this.service.approveStep(contract.id, contract.currentStepId, body).subscribe({
-      next: () => {
-        this.toastr.success('Phê duyệt hợp đồng thành công');
-        this.closeModals();
-        this.fetchPending();
-        this.fetchHandled('APPROVED');
-      },
-      error: (err) => {
-        this.toastr.error(err?.error?.message || 'Phê duyệt thất bại');
-        this.loading = false;
-      },
-      complete: () => (this.loading = false)
-    });
+    this.service.approveStep(id, contract.currentStepId, body)
+      .pipe(finalize(() => this.approving[id] = false), take(1))
+      .subscribe({
+        next: () => {
+          this.toastr.success('Phê duyệt hợp đồng thành công');
+          this.closeModals();
+          this.refreshAll();
+          if (this.previewOpen && this.current?.id === id) this.reloadPreview();
+        },
+        error: (err) => this.toastApiError(err, 'Phê duyệt thất bại')
+      });
   }
 
   reject(contract: PendingCard) {
-    if (!contract.currentStepId) { 
-      this.toastr.warning('Thiếu stepId của bước hiện tại.'); 
-      return; 
-    }
-    
+    if (!contract.currentStepId) { this.toastr.warning('Thiếu stepId của bước hiện tại.'); return; }
     if (!this.rejectReasonCode || !this.rejectComment.trim()) {
-      this.toastr.info('Vui lòng chọn lý do và nhập mô tả chi tiết.'); 
+      this.toastr.info('Vui lòng chọn lý do và nhập mô tả chi tiết.');
       return;
     }
-    
-    const body: StepApprovalRequest = { 
-      comment: `[${this.rejectReasonCode}] ${this.rejectComment}` 
-    };
-    
-    this.loading = true;
-    this.service.rejectStep(contract.id, contract.currentStepId, body).subscribe({
-      next: () => {
-        this.toastr.success('Từ chối hợp đồng thành công');
-        this.closeModals();
-        this.fetchPending();
-        this.fetchHandled('REJECTED');
-      },
-      error: (err) => {
-        this.toastr.error(err?.error?.message || 'Từ chối thất bại');
-        this.loading = false;
-      },
-      complete: () => (this.loading = false)
-    });
+
+    const id = contract.id!;
+    this.rejecting[id] = true;
+
+    const body: StepApprovalRequest = { comment: `[${this.rejectReasonCode}] ${this.rejectComment}` };
+    this.service.rejectStep(id, contract.currentStepId, body)
+      .pipe(finalize(() => this.rejecting[id] = false), take(1))
+      .subscribe({
+        next: () => {
+          this.toastr.success('Từ chối hợp đồng thành công');
+          this.closeModals();
+          this.refreshAll();
+          if (this.previewOpen && this.current?.id === id) this.reloadPreview();
+        },
+        error: (err) => this.toastApiError(err, 'Từ chối thất bại')
+      });
   }
 
   // ============ KÝ HỢP ĐỒNG ============
   sign(contract: PendingCard) {
-    if (!contract.currentStepId) {
-      this.toastr.warning('Thiếu stepId của bước hiện tại.');
-      return;
-    }
+    if (!contract.currentStepId) { this.toastr.warning('Thiếu stepId của bước hiện tại.'); return; }
 
-    // Kiểm tra xem có placeholder không (không bắt buộc vì service đã xử lý)
-    if (!contract.currentStepSignaturePlaceholder) {
-      console.warn('Không có placeholder được định nghĩa, sử dụng placeholder từ service');
-    }
+    const id = contract.id!;
+    this.signing[id] = true;
 
-    // Sửa lại: Không cần truyền placeholder trong request nữa
-    const body: SignStepRequest = {
-      placeholder: contract.currentStepSignaturePlaceholder || '', // Có thể để trống, service sẽ lấy từ approval
-      comment: null
-    };
+    // Không cần placeholder nữa (BE tự ký theo tên + fallback)
+    const body: SignStepRequest = { comment: null };
 
-    this.signingInProgress = true;
-    this.service.signStep(contract.id, contract.currentStepId, body).subscribe({
-      next: () => {
-        this.toastr.success('Ký hợp đồng thành công');
-        this.signingInProgress = false;
-        
-        // Refresh data
-        this.fetchPending();
-        this.fetchHandled('APPROVED');
-        
-        // Reload preview nếu đang mở
-        if (this.previewOpen && this.current?.id === contract.id) {
-          this.reloadPreview();
+    this.service.signStep(id, contract.currentStepId, body)
+      .pipe(finalize(() => this.signing[id] = false), take(1))
+      .subscribe({
+        next: () => {
+          this.toastr.success('Ký hợp đồng thành công');
+          this.refreshAll();
+          if (this.previewOpen && this.current?.id === id) this.reloadPreview();
+        },
+        error: (err) => {
+          const errorMsg = err?.error?.message || 'Ký thất bại';
+          if (errorMsg.includes('chữ ký số')) this.toastr.error('Bạn chưa có chữ ký số. Vui lòng upload chữ ký trước.');
+          else if (errorMsg.includes('quyền')) this.toastr.error('Bạn không có quyền ký bước này.');
+          else if (errorMsg.includes('vị trí ký')) this.toastr.error('Không tìm thấy vị trí ký trong hợp đồng.');
+          else this.toastr.error(errorMsg);
+          console.error('Sign error:', err);
         }
-      },
-      error: (err) => {
-        this.signingInProgress = false;
-        const errorMsg = err?.error?.message || 'Ký thất bại';
-        
-        // Xử lý các lỗi cụ thể
-        if (errorMsg.includes('signature placeholder')) {
-          this.toastr.error('Không tìm thấy vị trí ký trong hợp đồng. Vui lòng kiểm tra lại template.');
-        } else if (errorMsg.includes('chữ ký số')) {
-          this.toastr.error('Bạn chưa có chữ ký số. Vui lòng upload chữ ký trước khi ký hợp đồng.');
-        } else if (errorMsg.includes('quyền')) {
-          this.toastr.error('Bạn không có quyền ký bước này.');
-        } else {
-          this.toastr.error(errorMsg);
-        }
-        
-        console.error('Sign error:', err);
-      }
-    });
+      });
   }
 
   // ============ XEM TRƯỚC ============
@@ -230,8 +193,8 @@ export class ContactSignComponent implements OnInit {
     this.pdfLoading = true;
 
     this.cacheBust = Date.now();
-    this.previewDownloadUrl = this.contractService.buildPdfDownloadUrl(contract.id, this.cacheBust);
-    this.loadPdfBlob(contract.id);
+    this.previewDownloadUrl = this.contractService.buildPdfDownloadUrl(contract.id!, this.cacheBust);
+    this.loadPdfBlob(contract.id!);
   }
 
   closePreview() {
@@ -239,53 +202,49 @@ export class ContactSignComponent implements OnInit {
     this.current = null;
     this.pdfError = null;
     this.pdfLoading = false;
-    
+
     if (this.pdfBlobUrl) {
       URL.revokeObjectURL(this.pdfBlobUrl);
       this.pdfBlobUrl = null;
     }
-    
     this.previewDownloadUrl = null;
   }
 
   reloadPreview() {
     if (!this.current) return;
-    
     this.pdfError = null;
     this.pdfLoading = true;
-    
-    if (this.pdfBlobUrl) { 
-      URL.revokeObjectURL(this.pdfBlobUrl); 
-      this.pdfBlobUrl = null; 
-    }
-    
+
+    if (this.pdfBlobUrl) { URL.revokeObjectURL(this.pdfBlobUrl); this.pdfBlobUrl = null; }
+
     this.cacheBust = Date.now();
-    this.previewDownloadUrl = this.contractService.buildPdfDownloadUrl(this.current.id, this.cacheBust);
-    this.loadPdfBlob(this.current.id);
+    this.previewDownloadUrl = this.contractService.buildPdfDownloadUrl(this.current.id!, this.cacheBust);
+    this.loadPdfBlob(this.current.id!);
   }
 
   private loadPdfBlob(contractId: number, tries = 0) {
-    this.contractService.getContractPdfBlob(contractId, this.cacheBust).subscribe({
-      next: (blob) => {
-        this.pdfLoading = false;
-        if (blob.type && !blob.type.toLowerCase().includes('pdf')) {
-          this.pdfError = 'File trả về không phải PDF.'; 
-          return;
-        }
-        
-        if (this.pdfBlobUrl) URL.revokeObjectURL(this.pdfBlobUrl);
-        this.pdfBlobUrl = URL.createObjectURL(blob);
-      },
-      error: (err) => {
-        const retriable = [404,409,423,425,429,500,502,503,504].includes(err?.status);
-        if (retriable && tries < 5) {
-          setTimeout(() => this.loadPdfBlob(contractId, tries + 1), 800 * (tries + 1));
-        } else {
+    this.contractService.getContractPdfBlob(contractId, this.cacheBust)
+      .pipe(take(1))
+      .subscribe({
+        next: (blob) => {
           this.pdfLoading = false;
-          this.pdfError = this.readablePdfError(err);
+          if (blob.type && !blob.type.toLowerCase().includes('pdf')) {
+            this.pdfError = 'File trả về không phải PDF.'; 
+            return;
+          }
+          if (this.pdfBlobUrl) URL.revokeObjectURL(this.pdfBlobUrl);
+          this.pdfBlobUrl = URL.createObjectURL(blob);
+        },
+        error: (err) => {
+          const retriable = [404,409,423,425,429,500,502,503,504].includes(err?.status);
+          if (retriable && tries < 5) {
+            setTimeout(() => this.loadPdfBlob(contractId, tries + 1), 800 * (tries + 1));
+          } else {
+            this.pdfLoading = false;
+            this.pdfError = this.readablePdfError(err);
+          }
         }
-      }
-    });
+      });
   }
 
   private readablePdfError(err: any): string {
@@ -299,13 +258,11 @@ export class ContactSignComponent implements OnInit {
   // ============ UTILITIES ============
   get visibleContracts(): PendingCard[] {
     let list: PendingCard[] = [];
-    
     if (this.filterTab === 'all') list = [...this.pendingContracts, ...this.approvedContracts, ...this.rejectedContracts];
     else if (this.filterTab === 'PENDING_APPROVAL') list = [...this.pendingContracts];
     else if (this.filterTab === 'APPROVED') list = [...this.approvedContracts];
     else list = [...this.rejectedContracts];
 
-    // Filter by search
     const q = this.searchTerm.trim().toLowerCase();
     if (q) {
       list = list.filter(c =>
@@ -315,12 +272,10 @@ export class ContactSignComponent implements OnInit {
       );
     }
 
-    // Filter by type
     if (this.typeFilter) {
       list = list.filter(c => (c.templateName ?? '').toLowerCase().includes(this.typeFilter));
     }
 
-    // Sort
     if (this.sortBy === 'name') {
       list.sort((a,b) => (a.title || '').localeCompare(b.title || ''));
     } else if (this.sortBy === 'oldest') {
@@ -328,65 +283,42 @@ export class ContactSignComponent implements OnInit {
     } else {
       list.sort((a,b) => +new Date(b.createdAt || 0) - +new Date(a.createdAt || 0));
     }
-    
+
     return list;
   }
 
   trackById = (_: number, item: { id?: number }) => item?.id ?? _;
 
-  isPending(c: PendingCard) { 
-    return ((c.status || '').toUpperCase() === 'PENDING_APPROVAL'); 
-  }
-  
-  canSign(c: PendingCard) { 
-    return this.isPending(c) && 
-           (c.currentStepAction === 'SIGN_ONLY' || c.currentStepAction === 'SIGN_THEN_APPROVE') &&
-           !this.signingInProgress; // Thêm điều kiện không đang trong quá trình ký
-  }
-  
-  canApproveVisible(c: PendingCard) { 
-    return this.isPending(c) && 
-           (c.currentStepAction === 'APPROVE_ONLY' || c.currentStepAction === 'SIGN_THEN_APPROVE'); 
-  }
-  
-  canReject(c: PendingCard) { 
-    return this.isPending(c); 
+  isPending(c: PendingCard) {
+    return ((c.status || '').toUpperCase() === 'PENDING_APPROVAL');
   }
 
+  canSign(c: PendingCard) {
+    return this.isPending(c) && (c.currentStepAction === 'SIGN_ONLY' || c.currentStepAction === 'SIGN_THEN_APPROVE') && !this.signing[c.id!];
+  }
+
+  canApproveVisible(c: PendingCard) {
+    return this.isPending(c) && (c.currentStepAction === 'APPROVE_ONLY' || c.currentStepAction === 'SIGN_THEN_APPROVE');
+  }
+
+  canReject(c: PendingCard) { return this.isPending(c); }
+
   // ============ MODALS ============
-  openApprove(contract: PendingCard) { 
-    this.current = contract; 
-    this.approvalOpen = true; 
-  }
-  
+  openApprove(contract: PendingCard) { this.current = contract; this.approvalOpen = true; }
   openReject(contract: PendingCard)  {
-    this.current = contract; 
-    this.rejectionOpen = true;
-    this.rejectReasonCode = ''; 
-    this.rejectComment = ''; 
-    this.allowResubmission = true;
+    this.current = contract; this.rejectionOpen = true;
+    this.rejectReasonCode = ''; this.rejectComment = ''; this.allowResubmission = true;
   }
-  
-  closeModals() { 
-    this.approvalOpen = false; 
-    this.rejectionOpen = false; 
-  }
+  closeModals() { this.approvalOpen = false; this.rejectionOpen = false; }
 
   // ============ MISC ============
   formatDate(d?: string) { 
     if (!d) return ''; 
-    try { 
-      return new Date(d).toLocaleDateString('vi-VN'); 
-    } catch { 
-      return d; 
-    } 
+    try { return new Date(d).toLocaleDateString('vi-VN'); } catch { return d; } 
   }
-  
-  onTabChange(tab: FilterTab) { 
-    this.filterTab = tab; 
-    this.fetchForTab(tab); 
-  }
-  
+
+  onTabChange(tab: FilterTab) { this.filterTab = tab; this.refreshAll(); }
+
   badgeClass(status?: string) {
     switch ((status || '').toUpperCase()) {
       case 'PENDING_APPROVAL': return 'badge-approval';
@@ -395,5 +327,4 @@ export class ContactSignComponent implements OnInit {
       default:                 return 'badge-secondary';
     }
   }
-  
 }

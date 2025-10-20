@@ -346,7 +346,7 @@ export class ContractComponent implements OnInit {
       if (act === 'APPROVE_ONLY') {
         phCtrl.clearValidators();
       } else {
-        phCtrl.setValidators([Validators.required, Validators.minLength(3)]);
+        phCtrl.setValidators([ Validators.minLength(3)]);
       }
       phCtrl.updateValueAndValidity({ emitEvent: false });
     };

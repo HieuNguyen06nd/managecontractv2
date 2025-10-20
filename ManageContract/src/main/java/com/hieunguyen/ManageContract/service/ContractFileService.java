@@ -21,4 +21,10 @@ public interface ContractFileService {
     // Lấy PDF nếu có, nếu chưa có thì convert từ DOCX
     File getPdfOrConvert(Long contractId);
 
+    String embedSignatureByName(Long contractId, String imageRef, String printedName, Float widthPx, Float heightPx);
+
+    default String embedSignatureByName(Long contractId, String imageRef, String printedName) {
+        return embedSignatureByName(contractId, imageRef, printedName, null, null);
+    }
+
 }
