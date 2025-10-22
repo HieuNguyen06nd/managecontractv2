@@ -24,9 +24,9 @@ import {
 } from '../../core/services/department.service';
 
 import {
-  PositionService,
-  PositionResponse
+  PositionService
 } from '../../core/services/position.service';
+import {PositionResponse} from "../../core/models/position.model";
 
 import {
   EmployeeService,

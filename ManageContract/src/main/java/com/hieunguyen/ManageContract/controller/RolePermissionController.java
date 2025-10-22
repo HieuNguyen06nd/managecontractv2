@@ -12,14 +12,14 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/role-permissions")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class RolePermissionController {
 
     private final RolePermissionService rolePermissionService;
 
     // Gán mới quyền cho role (xoá toàn bộ quyền cũ rồi thêm mới)
     @PostMapping("/assign")
-    @PreAuthorize("hasAuthority('role.assign_permission')")
-    @Operation(summary = "Gán mới quyền cho role (xoá toàn bộ quyền cũ rồi thêm mới")
+    @Operation(summary = "Gán mới quyền cho role (xoá toàn bộ quyền cũ rồi thêm mới)")
     public ResponseData<String> assignPermissions(
             @RequestParam Long roleId,
             @RequestBody List<Long> permissionIds) {
@@ -29,7 +29,6 @@ public class RolePermissionController {
 
     // Thêm quyền vào role (không xoá quyền cũ)
     @PostMapping("/add")
-    @PreAuthorize("hasAuthority('role.assign_permission')")
     @Operation(summary = "Thêm quyền vào role (không xoá quyền cũ)")
     public ResponseData<String> addPermissions(
             @RequestParam Long roleId,
@@ -40,7 +39,6 @@ public class RolePermissionController {
 
     // Xoá quyền cụ thể khỏi role
     @DeleteMapping("/remove")
-    @PreAuthorize("hasAuthority('role.assign_permission')")
     @Operation(summary = "Xoá quyền cụ thể khỏi role")
     public ResponseData<String> removePermissions(
             @RequestParam Long roleId,

@@ -2,9 +2,13 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
+
 import { PositionService } from '../../core/services/position.service';
+import { DepartmentService } from '../../core/services/department.service';
+
 import { ResponseData } from '../../core/models/response-data.model';
 import { PositionResponse, PositionRequest, Status } from '../../core/models/position.model';
+import { DepartmentResponse } from '../../core/models/department.model'; // nếu bạn không có file này, import từ service: '../../core/services/department.service'
 
 @Component({
   selector: 'app-position',
@@ -16,7 +20,8 @@ import { PositionResponse, PositionRequest, Status } from '../../core/models/pos
 export class PositionComponent implements OnInit {
 
   positions: PositionResponse[] = [];
-  filteredPositions: PositionResponse[] = []; // dữ liệu đã lọc, CHƯA cắt trang
+  filteredPositions: PositionResponse[] = [];
+  departments: DepartmentResponse[] = [];
 
   // filters
   searchTerm = '';
@@ -35,12 +40,32 @@ export class PositionComponent implements OnInit {
 
   selectedPosition: PositionResponse | null = null;
 
-  formData: PositionRequest = { name: '', description: '', status: Status.ACTIVE };
+  // BẮT BUỘC có departmentId
+  formData: PositionRequest = { name: '', description: '', status: Status.ACTIVE, departmentId: 0 };
 
-  constructor(private positionService: PositionService, private toastr: ToastrService) {}
+  constructor(
+    private positionService: PositionService,
+    private departmentService: DepartmentService,
+    private toastr: ToastrService
+  ) {}
 
   ngOnInit(): void {
+    this.loadDepartments();
     this.loadPositions();
+  }
+
+  // ===== LOAD DATA =====
+  loadDepartments(): void {
+    this.departmentService.getAllDepartments().subscribe({
+      next: (res: ResponseData<DepartmentResponse[]>) => {
+        this.departments = res?.data ?? [];
+      },
+      error: (err) => {
+        console.error(err);
+        this.departments = [];
+        this.toastr.error('Không thể tải danh sách phòng ban');
+      }
+    });
   }
 
   loadPositions(): void {
@@ -60,19 +85,17 @@ export class PositionComponent implements OnInit {
     });
   }
 
-  /** Getter trả về danh sách đã cắt theo trang để hiển thị */
+  // ===== PAGINATION / FILTER =====
   get paginatedPositions(): PositionResponse[] {
     const start = (this.currentPage - 1) * this.pageSize;
     return this.filteredPositions.slice(start, start + this.pageSize);
   }
 
-  /** Gọi khi thay đổi input/select filter */
   onFilterChange(): void {
     this.currentPage = 1;
     this.filterPositions();
   }
 
-  /** Lọc dữ liệu theo search + department + status, đồng thời tính totalPages */
   filterPositions(): void {
     const keyword = this.normalize(this.searchTerm);
     const deptKw = this.normalize(this.departmentFilter);
@@ -82,8 +105,10 @@ export class PositionComponent implements OnInit {
       const name = this.normalize(p.name);
       const desc = this.normalize(p.description || '');
 
-      // nếu có thêm field phòng ban trong response, hỗ trợ luôn:
-      const deptName = this.normalize((p as any).departmentName || (p as any).department || '');
+      // Nếu BE chưa trả kèm tên phòng ban, bạn có thể map từ danh sách departments:
+      const deptName =
+        this.normalize((p as any).departmentName || (p as any).department || '') ||
+        this.normalize(this.departments.find(d => d.id === p.departmentId)?.name || '');
 
       const matchesSearch = !keyword || name.includes(keyword) || desc.includes(keyword);
       const matchesDepartment = !deptKw || deptName.includes(deptKw) || desc.includes(deptKw);
@@ -94,23 +119,22 @@ export class PositionComponent implements OnInit {
 
     this.filteredPositions = result;
 
-    // tính lại totalPages và chốt currentPage trong biên
     this.totalPages = Math.max(1, Math.ceil(this.filteredPositions.length / this.pageSize));
     if (this.currentPage > this.totalPages) {
       this.currentPage = this.totalPages;
     }
   }
 
-  /** Chuyển trang */
   changePage(page: number): void {
     if (page < 1 || page > this.totalPages) return;
     this.currentPage = page;
-    // không cần gọi filter lại vì filteredPositions đã có, getter sẽ cắt trang
   }
 
-  /** Thêm */
+  // ===== CRUD =====
   openAddModal(): void {
-    this.formData = { name: '', description: '', status: Status.ACTIVE };
+    // mặc định chọn phòng ban đầu tiên (nếu có)
+    const defaultDeptId = this.departments.length ? this.departments[0].id : 0;
+    this.formData = { name: '', description: '', status: Status.ACTIVE, departmentId: defaultDeptId };
     this.showAddModal = true;
   }
 
@@ -119,6 +143,11 @@ export class PositionComponent implements OnInit {
       this.toastr.error('Tên vị trí là bắt buộc');
       return;
     }
+    if (!this.formData.departmentId || this.formData.departmentId <= 0) {
+      this.toastr.error('Vui lòng chọn phòng ban');
+      return;
+    }
+
     this.positionService.createPosition(this.formData).subscribe({
       next: () => {
         this.toastr.success('Thêm vị trí thành công');
@@ -132,13 +161,13 @@ export class PositionComponent implements OnInit {
     });
   }
 
-  /** Sửa */
   openEditModal(position: PositionResponse): void {
     this.selectedPosition = { ...position };
     this.formData = {
       name: position.name,
       description: position.description || '',
-      status: position.status
+      status: position.status,
+      departmentId: position.departmentId || 0
     };
     this.showEditModal = true;
   }
@@ -149,6 +178,11 @@ export class PositionComponent implements OnInit {
       this.toastr.error('Tên vị trí là bắt buộc');
       return;
     }
+    if (!this.formData.departmentId || this.formData.departmentId <= 0) {
+      this.toastr.error('Vui lòng chọn phòng ban');
+      return;
+    }
+
     this.positionService.updatePosition(this.selectedPosition.id, this.formData).subscribe({
       next: () => {
         this.toastr.success('Cập nhật vị trí thành công');
@@ -162,7 +196,6 @@ export class PositionComponent implements OnInit {
     });
   }
 
-  /** Xóa */
   openDeleteModal(position: PositionResponse): void {
     this.selectedPosition = position;
     this.showDeleteModal = true;
@@ -174,7 +207,6 @@ export class PositionComponent implements OnInit {
       next: () => {
         this.toastr.success('Xóa vị trí thành công');
         this.closeModals();
-        // nếu xóa phần tử cuối của trang cuối -> lùi trang
         const totalAfter = this.filteredPositions.length - 1;
         const newTotalPages = Math.max(1, Math.ceil(totalAfter / this.pageSize));
         if (this.currentPage > newTotalPages) this.currentPage = newTotalPages;
@@ -187,7 +219,6 @@ export class PositionComponent implements OnInit {
     });
   }
 
-  /** Đóng modal */
   closeModals(): void {
     this.showAddModal = false;
     this.showEditModal = false;
@@ -195,16 +226,14 @@ export class PositionComponent implements OnInit {
     this.selectedPosition = null;
   }
 
-  /** trackBy để tránh re-render không cần thiết */
   trackByPositionId(_i: number, p: PositionResponse) {
     return p.id;
   }
 
-  /** Chuẩn hóa để tìm kiếm không phân biệt hoa thường/dấu tiếng Việt */
   private normalize(s: string): string {
     return (s || '')
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, ''); // bỏ dấu
+      .replace(/[\u0300-\u036f]/g, '');
   }
 }

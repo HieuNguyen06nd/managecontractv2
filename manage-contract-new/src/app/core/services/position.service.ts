@@ -3,20 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { ResponseData } from '../models/response-data.model';
 import { environment } from '../../../environments/environment';
-
-export interface PositionRequest {
-    name: string;
-    description?: string;
-    status: Status;
-}
-
-export interface PositionResponse {
-    id: number;
-    name: string;
-    description?: string;
-    status: Status;
-    departmentId?: number;  
-}
+import { PositionResponse, PositionRequest } from '../models/position.model';
 
 
 export enum Status {
@@ -41,7 +28,7 @@ export class PositionService {
   // Lấy tất cả position (có phân trang)
   getAllPositionsPaging(page: number, size: number): Observable<ResponseData<any>> {
     return this.http.get<ResponseData<any>>(
-      `${this.baseUrl}/positions?page=${page}&size=${size}`
+      `${this.baseUrl}?page=${page}&size=${size}`
     );
   }
 

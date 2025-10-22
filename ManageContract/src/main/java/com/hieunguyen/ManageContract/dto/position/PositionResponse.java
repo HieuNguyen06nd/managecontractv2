@@ -11,4 +11,7 @@ public class PositionResponse {
     private String name;
     private String description;
     private Status status;
+
+    private Long departmentId;
+    private String departmentName;
 }

@@ -2,6 +2,7 @@ export interface PositionRequest {
     name: string;
     description?: string;
     status: Status;
+    departmentId: number;
 }
 
 export interface PositionResponse {
@@ -9,6 +10,8 @@ export interface PositionResponse {
     name: string;
     description?: string;
     status: Status;
+    departmentId?: number;  
+    departmentName?: string;
 }
 
 

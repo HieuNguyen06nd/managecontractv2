@@ -39,8 +39,8 @@ export class RolePermissionComponent implements OnInit {
   showPermissionModal = false;
   isEditRole = false;
   isEditPermission = false;
-  editingRoleId?: number;
-  editingPermissionId?: number;
+  editingRoleId?: number | string;
+  editingPermissionId?: number | string;
 
   roleForm!: FormGroup;
   permissionForm!: FormGroup;
@@ -50,8 +50,12 @@ export class RolePermissionComponent implements OnInit {
   selectedModule = ''; // '' = tất cả
   matrixPermissions: PermissionResponse[] = [];
 
-  // roleId -> Set<permissionId> để check nhanh
-  roleAssignedMap = new Map<number, Set<number>>();
+  // roleKey (string|number) -> Set<permissionId(number)>
+  roleAssignedMap = new Map<any, Set<number>>();
+
+  // Bản gốc để hoàn tác/so sánh khi lưu
+  private originalRoleAssignedMap = new Map<any, Set<number>>();
+  dirty = false;
 
   // Pagination
   matrixRolePage = 1;
@@ -59,11 +63,6 @@ export class RolePermissionComponent implements OnInit {
   pageSizeOptions = [5, 10, 20, 50];
 
   public Math = Math;
-
-  private rid(role: RoleResponse)  { return Number((role as any).id); }
-private pid(perm: PermissionResponse) { return Number((perm as any).id); }
-
-
 
   constructor(
     private fb: FormBuilder,
@@ -78,6 +77,32 @@ private pid(perm: PermissionResponse) { return Number((perm as any).id); }
     this.loadRoles();
     this.loadPermissions();
   }
+
+  // ---------- HELPERS ----------
+  // tạo _uid cho role: id || roleId || role_id || roleKey
+  private attachUid(r: any): any {
+    const uid = r?.id ?? r?.roleId ?? r?.role_id ?? r?.roleKey;
+    return { ...r, _uid: uid };
+  }
+  // key dùng cho Map/UI
+  private roleKey(role: any): any {
+    return role?._uid ?? role?.roleKey;
+  }
+  // id số để gọi API; nếu không phải số -> NaN
+  private rid(role: any): number {
+    const raw = role?._uid ?? role?.id ?? role?.roleId ?? role?.role_id;
+    return raw == null ? NaN : Number(raw);
+  }
+  private pid(perm: PermissionResponse): number {
+    const raw: any = (perm as any)?.id;
+    return raw == null ? NaN : Number(raw);
+  }
+  private cloneMap(src: Map<any, Set<number>>): Map<any, Set<number>> {
+    const out = new Map<any, Set<number>>();
+    src.forEach((set, key) => out.set(key, new Set(set)));
+    return out;
+  }
+  private markDirty() { this.dirty = true; }
 
   // ---------- FORMS ----------
   private initForms() {
@@ -97,7 +122,7 @@ private pid(perm: PermissionResponse) { return Number((perm as any).id); }
   loadRoles() {
     this.roleService.getAll().subscribe({
       next: (res: ResponseData<RoleResponse[]>) => {
-        this.roles = res.data || [];
+        this.roles = (res.data || []).map(r => this.attachUid(r as any));
         this.filteredRoles = [...this.roles];
         this.buildRoleAssignedMap();
       },
@@ -111,9 +136,8 @@ private pid(perm: PermissionResponse) { return Number((perm as any).id); }
         this.permissions = res.data || [];
         this.filteredPermissions = [...this.permissions];
         
-        // Tập module duy nhất
         this.modules = Array.from(
-          new Set(this.permissions.map(p => p.module).filter(Boolean))
+          new Set(this.permissions.map(p => p.module).filter((m): m is string => !!m))
         ).sort();
 
         this.recomputeMatrixPermissions();
@@ -135,192 +159,229 @@ private pid(perm: PermissionResponse) { return Number((perm as any).id); }
     this.recomputeMatrixPermissions();
   }
 
-  private buildRoleAssignedMap() {
-    this.roleAssignedMap.clear();
-    
-    // Load permissions for each role
-    const roleDetailRequests = this.roles.map(role => 
-      this.roleService.getById(role.id)
-    );
-
-    forkJoin(roleDetailRequests).subscribe({
-      next: (responses) => {
-        responses.forEach((res, index) => {
-          const role = this.roles[index];
-          const permissions = res.data?.permissions || [];
-          this.roleAssignedMap.set(role.id, new Set(permissions.map((p: any) => p.id)));
-        });
-      },
-      error: () => this.toastr.error('Không thể tải chi tiết permissions của role')
-    });
+  private getPermIdsInScope(): number[] {
+    const list = this.selectedModule
+      ? this.getPermissionsByModule(this.selectedModule)
+      : (this.permissions || []);
+    return list.map(p => this.pid(p)).filter(Number.isFinite) as number[];
   }
+
+private buildRoleAssignedMap() {
+  this.roleAssignedMap.clear();
+
+  // Tạo mảng role an toàn để gọi API + giữ _uid làm key cho Map/UI
+  const safeRoles: any[] = (this.roles || []).map(r => {
+    const uid = this.roleKey(r as any);        // key dùng cho Map/UI
+    const nid = Number(this.rid(r as any));    // id số để gọi API
+    return { ...(r as any), _uid: uid, __nid: nid };
+  });
+
+  // Chỉ gọi chi tiết cho role có id số hợp lệ
+  const roleDetailRequests = safeRoles
+    .filter(r => Number.isFinite(r.__nid))
+    .map(r => this.roleService.getById(r.__nid));
+
+  if (roleDetailRequests.length === 0) {
+    // Không có role nào có id số: vẫn tạo entry rỗng để UI hiện checkbox
+    (this.roles || []).forEach(r => {
+      const key = this.roleKey(r as any);
+      this.roleAssignedMap.set(key, new Set<number>());
+    });
+    this.originalRoleAssignedMap = this.cloneMap(this.roleAssignedMap);
+    this.dirty = false;
+    return;
+  }
+
+  forkJoin(roleDetailRequests).subscribe({
+    next: (responses) => {
+      responses.forEach((res, index) => {
+        const role = safeRoles[index]; // any -> có _uid
+        const perms = res.data?.permissions || [];
+        this.roleAssignedMap.set(role._uid, new Set(perms.map((p: any) => Number(p.id))));
+      });
+
+      // đảm bảo mọi role đều có entry trong Map
+      (this.roles || []).forEach(r => {
+        const key = this.roleKey(r as any);
+        if (!this.roleAssignedMap.has(key)) {
+          this.roleAssignedMap.set(key, new Set<number>());
+        }
+      });
+
+      this.originalRoleAssignedMap = this.cloneMap(this.roleAssignedMap);
+      this.dirty = false;
+    },
+    error: () => this.toastr.error('Không thể tải chi tiết permissions của role')
+  });
+}
+  
+
   isRoleAssigned(role: RoleResponse, perm: PermissionResponse): boolean {
-    const rid = this.rid(role);
+    const key = this.roleKey(role as any);
     const pid = this.pid(perm);
-    return this.roleAssignedMap.get(rid)?.has(pid) ?? false;
+    if (!Number.isFinite(pid)) return false;
+    return this.roleAssignedMap.get(key)?.has(pid) ?? false;
   }
 
   toggleAllForRole(role: RoleResponse, checked: boolean) {
-  if (!this.selectedModule) return;
-  const rid = this.rid(role);
-  const permIds = this.getPermissionsByModule(this.selectedModule).map(p => this.pid(p));
+    if (!this.selectedModule) return;
 
-  const oldSet = this.roleAssignedMap.get(rid) ?? new Set<number>();
-  const newSet = new Set(oldSet);
-  permIds.forEach(id => checked ? newSet.add(id) : newSet.delete(id));
-  this.roleAssignedMap.set(rid, newSet);
+    const key = this.roleKey(role as any);
+    const permIds = this.getPermissionsByModule(this.selectedModule)
+      .map(p => this.pid(p)).filter(Number.isFinite) as number[];
 
-  const req$ = checked
-    ? this.rolePermissionService.addPermissions(rid, permIds)
-    : this.rolePermissionService.removePermissions(rid, permIds);
+    const oldSet = this.roleAssignedMap.get(key) ?? new Set<number>();
+    const newSet = new Set(oldSet);
+    permIds.forEach(id => checked ? newSet.add(id) : newSet.delete(id));
+    this.roleAssignedMap.set(key, newSet);
 
-  req$.subscribe({
-    error: () => {
-      this.toastr.error('Thao tác chọn/bỏ theo cột thất bại');
-      this.roleAssignedMap.set(rid, oldSet); // rollback
-    }
-  });
-}
+    this.markDirty();
+  }
 
   isAllCheckedForRole(role: RoleResponse): boolean {
-  if (!this.selectedModule) return false;
-  const rid = this.rid(role);
-  const set = this.roleAssignedMap.get(rid) ?? new Set<number>();
-  const permIds = this.getPermissionsByModule(this.selectedModule).map(p => this.pid(p));
-  return permIds.length > 0 && permIds.every(id => set.has(id));
-}
-
-  trackByModule(index: number, module: string): string {
-    return module;
+    if (!this.selectedModule) return false;
+    const key = this.roleKey(role as any);
+    const set = this.roleAssignedMap.get(key) ?? new Set<number>();
+    const permIds = this.getPermissionsByModule(this.selectedModule)
+      .map(p => this.pid(p)).filter(Number.isFinite) as number[];
+    return permIds.length > 0 && permIds.every(id => set.has(id));
   }
 
-  trackByPermission(index: number, permission: PermissionResponse): number {
-    return permission.id;
+  trackByModule(index: number, module: string) { return module; }
+  trackByPermission(index: number, permission: PermissionResponse) {
+    return (permission as any).id ?? permission.permissionKey ?? index;
+  }
+  trackByRole(index: number, role: any) {
+    return role?._uid ?? role?.roleKey ?? index;
   }
 
-  trackByRole(index: number, role: RoleResponse): number {
-    return role.id;
-  }
+  onToggleAssignment(role: RoleResponse, perm: PermissionResponse, checked: boolean) {
+    const key = this.roleKey(role as any);
+    const pid = this.pid(perm);
+    if (!Number.isFinite(pid)) {
+      this.toastr.error('Permission ID không hợp lệ');
+      return;
+    }
 
+    const newMap = new Map(this.roleAssignedMap);
+    const currentSet = newMap.get(key) || new Set<number>();
+    const newSet = new Set(currentSet);
 
-onToggleAssignment(role: RoleResponse, perm: PermissionResponse, checked: boolean) {
-  console.log('Toggle assignment:', role.id, role.roleKey, perm.id, perm.permissionKey, checked);
-  
-  // Tạo một bản sao mới của Map để trigger change detection
-  const newMap = new Map(this.roleAssignedMap);
-  const currentSet = newMap.get(role.id) || new Set<number>();
-  const newSet = new Set(currentSet);
-  
-  if (checked) {
-    newSet.add(perm.id);
-  } else {
-    newSet.delete(perm.id);
+    if (checked) newSet.add(pid);
+    else newSet.delete(pid);
+
+    newMap.set(key, newSet);
+    this.roleAssignedMap = newMap;
+
+    this.markDirty();
   }
-  
-  newMap.set(role.id, newSet);
-  this.roleAssignedMap = newMap; // Gán lại để trigger change detection
-  
-  // Gọi API
-  if (checked) {
-    this.rolePermissionService.addPermissions(role.id, [perm.id]).subscribe({
-      next: () => {
-        this.toastr.success(`Đã gán ${perm.permissionKey} cho ${role.roleKey}`);
-      },
-      error: (error) => {
-        console.error('Error assigning permission:', error);
-        this.toastr.error('Gán permission thất bại');
-        // Rollback
-        const rollbackSet = new Set(currentSet);
-        const rollbackMap = new Map(this.roleAssignedMap);
-        rollbackMap.set(role.id, rollbackSet);
-        this.roleAssignedMap = rollbackMap;
-      }
-    });
-  } else {
-    this.rolePermissionService.removePermissions(role.id, [perm.id]).subscribe({
-      next: () => {
-        this.toastr.success(`Đã gỡ ${perm.permissionKey} khỏi ${role.roleKey}`);
-      },
-      error: (error) => {
-        console.error('Error removing permission:', error);
-        this.toastr.error('Gỡ permission thất bại');
-        // Rollback
-        const rollbackSet = new Set(currentSet);
-        const rollbackMap = new Map(this.roleAssignedMap);
-        rollbackMap.set(role.id, rollbackSet);
-        this.roleAssignedMap = rollbackMap;
-      }
-    });
-  }
-}
 
   getPermissionsByModule(module: string): PermissionResponse[] {
     return (this.permissions || []).filter(p => p.module === module);
   }
 
-
-  // Bulk operations for matrix
   selectAllPermissionsForModule() {
     if (!this.matrixPermissions.length) return;
 
-    const roleIds = this.pagedMatrixRoles.map(r => r.id);
-    const permIds = this.matrixPermissions.map(p => p.id);
+    const roleKeys = this.pagedMatrixRoles.map(r => this.roleKey(r as any));
+    const permIds = this.matrixPermissions.map(p => this.pid(p)).filter(Number.isFinite) as number[];
 
-    roleIds.forEach(roleId => {
-      const set = this.roleAssignedMap.get(roleId) ?? new Set<number>();
+    roleKeys.forEach(roleKey => {
+      const set = new Set(this.roleAssignedMap.get(roleKey) ?? new Set<number>());
       permIds.forEach(permId => set.add(permId));
-      this.roleAssignedMap.set(roleId, set);
+      this.roleAssignedMap.set(roleKey, set);
     });
 
-    this.bulkAssignPermissions(roleIds, permIds, true);
+    this.markDirty();
   }
 
   deselectAllPermissionsForModule() {
     if (!this.matrixPermissions.length) return;
 
-    const roleIds = this.pagedMatrixRoles.map(r => r.id);
-    const permIds = this.matrixPermissions.map(p => p.id);
+    const roleKeys = this.pagedMatrixRoles.map(r => this.roleKey(r as any));
+    const permIds = this.matrixPermissions.map(p => this.pid(p)).filter(Number.isFinite) as number[];
 
-    roleIds.forEach(roleId => {
-      const set = this.roleAssignedMap.get(roleId) ?? new Set<number>();
+    roleKeys.forEach(roleKey => {
+      const set = new Set(this.roleAssignedMap.get(roleKey) ?? new Set<number>());
       permIds.forEach(permId => set.delete(permId));
-      this.roleAssignedMap.set(roleId, set);
+      this.roleAssignedMap.set(roleKey, set);
     });
 
-    this.bulkAssignPermissions(roleIds, permIds, false);
+    this.markDirty();
   }
 
-  private bulkAssignPermissions(roleIds: number[], permIds: number[], assign: boolean) {
-    const requests = roleIds.map(roleId => 
-      assign 
-        ? this.rolePermissionService.addPermissions(roleId, permIds)
-        : this.rolePermissionService.removePermissions(roleId, permIds)
-    );
+  saveMatrixChanges() {
+    const scopedPermIds = new Set(this.getPermIdsInScope());
+    if (scopedPermIds.size === 0) {
+      this.toastr.info('Không có thay đổi trong phạm vi hiện tại');
+      return;
+    }
+
+    const requests: any[] = [];
+
+    for (const role of this.roles) {
+      const key = this.roleKey(role as any);
+      const rid = this.rid(role as any);
+      if (!Number.isFinite(rid)) {
+        // Không có ID số => không thể gọi API cho role này
+        continue;
+      }
+
+      const before = this.originalRoleAssignedMap.get(key) ?? new Set<number>();
+      const after  = this.roleAssignedMap.get(key) ?? new Set<number>();
+
+      const added: number[] = [];
+      after.forEach(pid => {
+        if (!before.has(pid) && scopedPermIds.has(pid)) added.push(pid);
+      });
+
+      const removed: number[] = [];
+      before.forEach(pid => {
+        if (!after.has(pid) && scopedPermIds.has(pid)) removed.push(pid);
+      });
+
+      if (added.length)  requests.push(this.rolePermissionService.addPermissions(rid, added));
+      if (removed.length) requests.push(this.rolePermissionService.removePermissions(rid, removed));
+    }
+
+    if (requests.length === 0) {
+      this.toastr.info('Không có thay đổi để lưu');
+      this.dirty = false;
+      return;
+    }
 
     forkJoin(requests).subscribe({
-      next: () => this.toastr.success(`Đã ${assign ? 'gán' : 'gỡ'} permissions hàng loạt`),
-      error: () => this.toastr.error(`${assign ? 'Gán' : 'Gỡ'} permissions hàng loạt thất bại`)
+      next: () => {
+        this.toastr.success('Đã lưu thay đổi phân quyền');
+        this.originalRoleAssignedMap = this.cloneMap(this.roleAssignedMap);
+        this.dirty = false;
+      },
+      error: () => this.toastr.error('Lưu thay đổi thất bại, vui lòng thử lại')
     });
+  }
+
+  discardMatrixChanges() {
+    this.roleAssignedMap = this.cloneMap(this.originalRoleAssignedMap);
+    this.dirty = false;
+    this.toastr.info('Đã hoàn tác thay đổi');
   }
 
   // ---------- PAGINATION ----------
   get matrixRoleTotalPages(): number {
     return Math.max(1, Math.ceil(this.roles.length / this.matrixRolePageSize));
   }
-
   get pagedMatrixRoles(): RoleResponse[] {
     const start = (this.matrixRolePage - 1) * this.matrixRolePageSize;
     return this.roles.slice(start, start + this.matrixRolePageSize);
   }
-
+  get pageNumbers(): number[] {
+    return Array.from({ length: this.matrixRoleTotalPages }, (_, i) => i + 1);
+  }
   changeMatrixRolePage(page: number) {
     if (page < 1 || page > this.matrixRoleTotalPages) return;
     this.matrixRolePage = page;
   }
-
-  onMatrixRolePageSizeChange() {
-    this.matrixRolePage = 1;
-  }
+  onMatrixRolePageSizeChange() { this.matrixRolePage = 1; }
 
   // ---------- ROLE MANAGEMENT ----------
   applyRoleFilter() {
@@ -336,28 +397,25 @@ onToggleAssignment(role: RoleResponse, perm: PermissionResponse, checked: boolea
   openRoleModal(role?: RoleResponse) {
     this.isEditRole = !!role;
     this.showRoleModal = true;
-    this.editingRoleId = role?.id;
+    this.editingRoleId = (role as any)?._uid ?? (role as any)?.id;
     this.roleForm.reset({
       roleKey: role?.roleKey || '',
       description: role?.description || ''
     });
   }
-
   closeRoleModal() {
     this.showRoleModal = false;
     this.isEditRole = false;
     this.editingRoleId = undefined;
   }
-
   saveRole() {
     if (this.roleForm.invalid) {
       this.roleForm.markAllAsTouched();
       return;
     }
-
     const payload: RoleRequest = this.roleForm.value;
-    const request = this.isEditRole && this.editingRoleId
-      ? this.roleService.update(this.editingRoleId, payload)
+    const request = this.isEditRole && this.editingRoleId != null
+      ? this.roleService.update(Number(this.editingRoleId), payload)
       : this.roleService.create(payload);
 
     request.subscribe({
@@ -369,11 +427,14 @@ onToggleAssignment(role: RoleResponse, perm: PermissionResponse, checked: boolea
       error: () => this.toastr.error(this.isEditRole ? 'Cập nhật role thất bại' : 'Tạo role thất bại')
     });
   }
-
   deleteRole(role: RoleResponse) {
     if (!confirm(`Xóa role "${role.roleKey}"?`)) return;
-    
-    this.roleService.delete(role.id).subscribe({
+    const rid = this.rid(role as any);
+    if (!Number.isFinite(rid)) {
+      this.toastr.error('Role ID không hợp lệ');
+      return;
+    }
+    this.roleService.delete(rid).subscribe({
       next: () => {
         this.toastr.success('Xóa role thành công');
         this.loadRoles();
@@ -393,33 +454,29 @@ onToggleAssignment(role: RoleResponse, perm: PermissionResponse, checked: boolea
         )
       : [...this.permissions];
   }
-
   openPermissionModal(perm?: PermissionResponse) {
     this.isEditPermission = !!perm;
     this.showPermissionModal = true;
-    this.editingPermissionId = perm?.id;
+    this.editingPermissionId = (perm as any)?.id;
     this.permissionForm.reset({
       permissionKey: perm?.permissionKey || '',
       module: perm?.module || '',
       description: perm?.description || ''
     });
   }
-
   closePermissionModal() {
     this.showPermissionModal = false;
     this.isEditPermission = false;
     this.editingPermissionId = undefined;
   }
-
   savePermission() {
     if (this.permissionForm.invalid) {
       this.permissionForm.markAllAsTouched();
       return;
     }
-
     const payload: PermissionRequest = this.permissionForm.value;
-    const request = this.isEditPermission && this.editingPermissionId
-      ? this.permissionService.update(this.editingPermissionId, payload)
+    const request = this.isEditPermission && this.editingPermissionId != null
+      ? this.permissionService.update(Number(this.editingPermissionId), payload)
       : this.permissionService.create(payload);
 
     request.subscribe({
@@ -431,11 +488,14 @@ onToggleAssignment(role: RoleResponse, perm: PermissionResponse, checked: boolea
       error: () => this.toastr.error(this.isEditPermission ? 'Cập nhật permission thất bại' : 'Tạo permission thất bại')
     });
   }
-
   deletePermission(perm: PermissionResponse) {
     if (!confirm(`Xóa permission "${perm.permissionKey}"?`)) return;
-    
-    this.permissionService.delete(perm.id).subscribe({
+    const pid = this.pid(perm);
+    if (!Number.isFinite(pid)) {
+      this.toastr.error('Permission ID không hợp lệ');
+      return;
+    }
+    this.permissionService.delete(pid).subscribe({
       next: () => {
         this.toastr.success('Xóa permission thành công');
         this.loadPermissions();
@@ -445,10 +505,9 @@ onToggleAssignment(role: RoleResponse, perm: PermissionResponse, checked: boolea
   }
 
   // ---------- UTILITIES ----------
-  trackById(index: number, item: any): number {
-    return item.id;
+  trackById(index: number, item: any) {
+    return item?._uid ?? item?.id ?? index;
   }
-
   setTab(tab: 'roles' | 'permissions' | 'matrix') {
     this.activeTab = tab;
   }

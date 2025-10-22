@@ -1,0 +1,221 @@
+<main class="main-content">
+  <div class="container">
+    <header>
+      <h1><i class="fas fa-building"></i> Quản lý Phòng ban và Vị trí</h1>
+      <div class="actions">
+        <button class="btn btn-primary" (click)="openAddDepartment()">
+          <i class="fas fa-plus"></i> Thêm Phòng ban
+        </button>
+        <button class="btn btn-success" (click)="openAddPosition()">
+          <i class="fas fa-plus"></i> Thêm Vị trí
+        </button>
+      </div>
+    </header>
+
+    <div class="alert alert-success" *ngIf="successMessage">
+      {{ successMessage }}
+    </div>
+    <div class="alert alert-danger" *ngIf="errorMessage">
+      {{ errorMessage }}
+    </div>
+
+    <div class="search-container">
+      <input type="text" [(ngModel)]="searchTerm" placeholder="Tìm kiếm phòng ban hoặc vị trí..." />
+      <button class="btn btn-primary">
+        <i class="fas fa-search"></i> Tìm kiếm
+      </button>
+    </div>
+
+    <div class="filter-container">
+      <select class="filter-select" [(ngModel)]="statusFilter">
+        <option value="all">Tất cả trạng thái</option>
+        <option value="ACTIVE">Đang hoạt động</option>
+        <option value="INACTIVE">Ngừng hoạt động</option>
+        <option value="LOCKED">Bị khóa</option>
+      </select>
+
+      <select class="filter-select" [(ngModel)]="departmentFilter">
+        <option value="all">Tất cả phòng ban</option>
+        <option *ngFor="let d of departments" [value]="d.id">{{ d.name }}</option>
+      </select>
+    </div>
+
+    <ul class="department-list">
+      <ng-container *ngIf="filteredDepartments.length; else noDept">
+        <li class="department-item" *ngFor="let department of filteredDepartments">
+          <div class="department-header" (click)="toggleExpand(department)">
+            <div>
+              <div class="department-name">{{ department.name }}</div>
+              <div class="department-info">
+                <span>Trưởng phòng: {{ department.leaderName || 'Chưa phân bổ' }}</span>
+                <span>Cấp: {{ department.level }}</span>
+                <span class="status"
+                      [ngClass]="department.status === 'ACTIVE' ? 'active' : (department.status === 'LOCKED' ? 'locked' : 'inactive')">
+                  {{ department.status === 'ACTIVE' ? 'Đang hoạt động' : (department.status === 'LOCKED' ? 'Bị khóa' : 'Ngừng hoạt động') }}
+                </span>
+              </div>
+            </div>
+            <div class="department-actions" (click)="$event.stopPropagation()">
+              <button class="action-btn edit-btn" (click)="openEditDepartment(department)">
+                <i class="fas fa-edit"></i>
+              </button>
+              <button class="action-btn delete-btn" (click)="deleteDepartment(department.id)">
+                <i class="fas fa-trash"></i>
+              </button>
+              <button class="action-btn toggle-btn" (click)="toggleExpand(department)">
+                <span class="toggle-icon" [class.expanded]="department.expanded">▶</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="department-details" [class.expanded]="department.expanded">
+            <div class="positions-section">
+              <div class="positions-header">
+                <div class="positions-title">Vị trí trong phòng ban:</div>
+                <button class="btn btn-success btn-sm" (click)="openAddPosition(department.id)">
+                  <i class="fas fa-plus"></i> Thêm vị trí
+                </button>
+              </div>
+
+              <ng-container *ngIf="department.positions?.length; else noPos">
+                <ul class="positions-list">
+                  <li class="position-item" *ngFor="let position of department.positions">
+                    <div class="position-name">{{ position.name }}</div>
+                    <div class="position-description">{{ position.description }}</div>
+                    <div class="position-actions">
+                      <span class="status" [ngClass]="position.status === 'ACTIVE' ? 'active' : 'inactive'">
+                        {{ position.status === 'ACTIVE' ? 'Đang hoạt động' : 'Ngừng hoạt động' }}
+                      </span>
+                      <button class="action-btn edit-btn" (click)="openEditPosition(position, department.id)">
+                        <i class="fas fa-edit"></i>
+                      </button>
+                      <button class="action-btn delete-btn" (click)="deletePosition(position.id, department.id)">
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </div>
+                  </li>
+                </ul>
+              </ng-container>
+
+              <ng-template #noPos>
+                <div class="no-positions">Không có vị trí nào trong phòng ban này</div>
+              </ng-template>
+            </div>
+          </div>
+        </li>
+      </ng-container>
+
+      <ng-template #noDept>
+        <div class="empty-state">
+          <h3>Không có phòng ban nào</h3>
+          <p>Không tìm thấy phòng ban nào phù hợp</p>
+        </div>
+      </ng-template>
+    </ul>
+  </div>
+
+  <!-- ===== Department Modal ===== -->
+  <div class="modal" [style.display]="showDeptModal ? 'flex' : 'none'">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">{{ editingDepartment ? 'Sửa Phòng ban' : 'Thêm Phòng ban' }}</h2>
+        <button class="close-btn" (click)="closeDeptModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form (ngSubmit)="saveDepartment()">
+          <div class="form-group" *ngIf="editingDepartment">
+            <label class="form-label">Mã phòng ban</label>
+            <input type="text" class="form-control" [value]="deptForm.id" readonly />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Tên phòng ban</label>
+            <input type="text" class="form-control" [(ngModel)]="deptForm.name" name="deptName" required />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Cấp phòng ban</label>
+            <select class="form-control" [(ngModel)]="deptForm.level" name="deptLevel" required>
+              <option [ngValue]="1">Cấp 1 (Cao nhất)</option>
+              <option [ngValue]="2">Cấp 2</option>
+              <option [ngValue]="3">Cấp 3</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Phòng ban cha (nếu có)</label>
+            <select class="form-control" [(ngModel)]="deptForm.parentId" name="deptParent">
+              <option value="">Không có</option>
+              <option *ngFor="let d of departments" [value]="d.id" [disabled]="editingDepartment && deptForm.id === d.id">
+                {{ d.name }}
+              </option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Trạng thái</label>
+            <select class="form-control" [(ngModel)]="deptForm.status" name="deptStatus" required>
+              <option value="ACTIVE">Đang hoạt động</option>
+              <option value="INACTIVE">Ngừng hoạt động</option>
+              <option value="LOCKED">Bị khóa</option>
+            </select>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-danger" (click)="closeDeptModal()">Hủy</button>
+            <button type="submit" class="btn btn-success">Lưu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Position Modal ===== -->
+  <div class="modal" [style.display]="showPosModal ? 'flex' : 'none'">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">{{ editingPosition ? 'Sửa Vị trí' : 'Thêm Vị trí' }}</h2>
+        <button class="close-btn" (click)="closePosModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form (ngSubmit)="savePosition()">
+          <div class="form-group" *ngIf="editingPosition">
+            <label class="form-label">Mã vị trí</label>
+            <input type="text" class="form-control" [value]="posForm.id" readonly />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Tên vị trí</label>
+            <input type="text" class="form-control" [(ngModel)]="posForm.name" name="posName" required />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Mô tả</label>
+            <textarea class="form-control" [(ngModel)]="posForm.description" name="posDesc"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Phòng ban</label>
+            <select class="form-control" [(ngModel)]="posForm.departmentId" name="posDept" required>
+              <option *ngFor="let d of activeDepartments" [value]="d.id">{{ d.name }}</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Trạng thái</label>
+            <select class="form-control" [(ngModel)]="posForm.status" name="posStatus" required>
+              <option value="ACTIVE">Đang hoạt động</option>
+              <option value="INACTIVE">Ngừng hoạt động</option>
+              <option value="LOCKED">Bị khóa</option>
+            </select>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-danger" (click)="closePosModal()">Hủy</button>
+            <button type="submit" class="btn btn-success">Lưu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</main>

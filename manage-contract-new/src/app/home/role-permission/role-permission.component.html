@@ -45,10 +45,10 @@
         </thead>
         <tbody>
           <tr *ngFor="let role of filteredRoles; trackBy: trackById">
-            <td>{{ role.id }}</td>
+            <td>{{ $any(role)._uid || role.id || '—' }}</td>
             <td><strong>{{ role.roleKey }}</strong></td>
             <td>{{ role.description || '—' }}</td>
-            <td>{{ roleAssignedMap.get(role.id)?.size || 0 }}</td>
+            <td>{{ roleAssignedMap.get($any(role)._uid)?.size || 0 }}</td>
             <td>
               <button class="btn btn-primary btn-sm me-2" (click)="openRoleModal(role)">
                 <i class="fas fa-edit"></i> Sửa
@@ -122,140 +122,142 @@
   </section>
 
   <!-- ========== MATRIX TAB ========== -->
-<section *ngIf="activeTab === 'matrix'" class="role-permission-section active">
-  <div class="section-header">
-    <h2 class="page-title"><i class="fas fa-table me-2"></i>Matrix Phân quyền</h2>
-    <div class="bulk-actions">
-      <button class="btn btn-primary btn-sm" (click)="selectAllPermissionsForModule()">
-        <i class="fas fa-check-double"></i> Chọn tất cả
-      </button>
-      <button class="btn btn-secondary btn-sm" (click)="deselectAllPermissionsForModule()">
-        <i class="fas fa-times"></i> Bỏ chọn tất cả
-      </button>
-    </div>
-  </div>
+  <section *ngIf="activeTab === 'matrix'" class="role-permission-section active">
+    <div class="section-header">
+      <h2 class="page-title"><i class="fas fa-table me-2"></i>Matrix Phân quyền</h2>
+      <div class="bulk-actions">
+        <button class="btn btn-primary btn-sm" (click)="selectAllPermissionsForModule()">
+          <i class="fas fa-check-double"></i> Chọn tất cả
+        </button>
+        <button class="btn btn-secondary btn-sm" (click)="deselectAllPermissionsForModule()">
+          <i class="fas fa-times"></i> Bỏ chọn tất cả
+        </button>
 
-  <!-- Module Filter -->
-  <div class="card">
-    <div class="form-group">
-      <label>Lọc theo Module:</label>
-      <select class="form-control" [(ngModel)]="selectedModule" (ngModelChange)="onModuleChange()">
-        <option value="">Tất cả module</option>
-        <option *ngFor="let module of modules; trackBy: trackByModule" [value]="module">{{ module }}</option>
-      </select>
-    </div>
-
-    <!-- Pagination Controls -->
-    <div class="d-flex justify-content-between align-items-center mt-3">
-      <span class="text-muted">
-        Hiển thị {{ (matrixRolePage - 1) * matrixRolePageSize + 1 }} - 
-        {{ Math.min(matrixRolePage * matrixRolePageSize, roles.length) }} của {{ roles.length }} role
-      </span>
-      <div class="d-flex align-items-center">
-        <span class="me-2 text-muted">Role mỗi trang:</span>
-        <select class="form-control form-control-sm w-auto" 
-                [(ngModel)]="matrixRolePageSize" 
-                (change)="onMatrixRolePageSizeChange()">
-          <option *ngFor="let size of pageSizeOptions" [value]="size">{{ size }}</option>
-        </select>
+        <button class="btn btn-success btn-sm ms-2" (click)="saveMatrixChanges()" [disabled]="!dirty">
+          <i class="fas fa-save"></i> Lưu thay đổi
+        </button>
+        <button class="btn btn-outline-secondary btn-sm ms-1" (click)="discardMatrixChanges()" [disabled]="!dirty">
+          <i class="fas fa-undo"></i> Hoàn tác
+        </button>
       </div>
     </div>
-  </div>
 
-  <!-- Matrix Table -->
-  <div class="card mt-3">
-    <div class="table-responsive">
-      <table class="matrix-table">
-        <thead>
-          <tr>
-            <th class="module-header">Module / Permission</th>
-            <th *ngFor="let role of pagedMatrixRoles; trackBy: trackByRole" class="role-header">
-              <div class="fw-bold">{{ role.roleKey }}</div>
-              <div class="small">{{ role.description || '—' }}</div>
-              <div class="small text-muted">ID: {{ role.id }}</div>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <!-- Group by Module -->
-          <ng-container *ngFor="let module of modules; trackBy: trackByModule">
-            <ng-container *ngIf="!selectedModule || selectedModule === module">
-              <!-- Module Header Row -->
-              <tr class="module-section">
-                <td class="module-header" [attr.colspan]="pagedMatrixRoles.length + 1">
-                  <strong>{{ module }}</strong>
-                  <span class="badge bg-light text-dark ms-2">
-                    {{ getPermissionsByModule(module).length }} permissions
-                  </span>
-                </td>
-              </tr>
-              
-              <!-- Permission Rows -->
-              <tr *ngFor="let perm of getPermissionsByModule(module); trackBy: trackByPermission" 
-                  class="permission-row">
-                <td class="permission-name">
-                  <div class="fw-semibold">{{ perm.permissionKey }}</div>
-                  <div class="small text-muted">{{ perm.description }}</div>
-                  <div class="small text-muted">ID: {{ perm.id }}</div>
-                  
-                </td>
+    <!-- Module Filter -->
+    <div class="card">
+      <div class="form-group">
+        <label>Lọc theo Module:</label>
+        <select class="form-control" [(ngModel)]="selectedModule" (ngModelChange)="onModuleChange()">
+          <option value="">Tất cả module</option>
+          <option *ngFor="let module of modules; trackBy: trackByModule" [value]="module">{{ module }}</option>
+        </select>
+      </div>
+
+      <!-- Pagination Controls (top) -->
+      <div class="d-flex justify-content-between align-items-center mt-3">
+        <span class="text-muted">
+          Hiển thị {{ (matrixRolePage - 1) * matrixRolePageSize + 1 }} - 
+          {{ Math.min(matrixRolePage * matrixRolePageSize, roles.length) }} của {{ roles.length }} role
+        </span>
+        <div class="d-flex align-items-center">
+          <span class="me-2 text-muted">Role mỗi trang:</span>
+          <select class="form-control form-control-sm w-auto" 
+                  [(ngModel)]="matrixRolePageSize" 
+                  (change)="onMatrixRolePageSizeChange()">
+            <option *ngFor="let size of pageSizeOptions" [value]="size">{{ size }}</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Matrix Table -->
+    <div class="card mt-3">
+      <div class="table-responsive">
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th class="module-header">Module / Permission</th>
+              <th *ngFor="let role of pagedMatrixRoles; trackBy: trackByRole" class="role-header">
+                <div class="fw-bold">{{ role.roleKey }}</div>
+                <div class="small">{{ role.description || '—' }}</div>
+                <div class="small text-muted">ID: {{ $any(role)._uid || '—' }}</div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Group by Module -->
+            <ng-container *ngFor="let module of modules; trackBy: trackByModule">
+              <ng-container *ngIf="!selectedModule || selectedModule === module">
+                <!-- Module Header Row -->
+                <tr class="module-section">
+                  <td class="module-header" [attr.colspan]="pagedMatrixRoles.length + 1">
+                    <strong>{{ module }}</strong>
+                    <span class="badge bg-light text-dark ms-2">
+                      {{ getPermissionsByModule(module).length }} permissions
+                    </span>
+                  </td>
+                </tr>
                 
-                <!-- Ô trong ma trận -->
-                <td *ngFor="let role of pagedMatrixRoles; trackBy: trackByRole" class="checkbox-cell">
-                <input type="checkbox"
-                        [id]="'perm-' + perm.id + '-role-' + role.id"
-                        [ngModel]="isRoleAssigned(role, perm)"
-                        (ngModelChange)="onToggleAssignment(role, perm, $event)"
-                        [ngModelOptions]="{standalone:true}">
-                <!-- <label [attr.for]="'perm-' + perm.id + '-role-' + role.id" class="sr-only">
-                    Gán {{ perm.permissionKey }} cho {{ role.roleKey }}
-                </label> -->
-                </td>
-
-              </tr>
-              
-              <!-- Spacer row -->
-              <tr>
-                <td [attr.colspan]="pagedMatrixRoles.length + 1" style="height: 15px; background: #f8f9fa;"></td>
-              </tr>
+                <!-- Permission Rows -->
+                <tr *ngFor="let perm of getPermissionsByModule(module); trackBy: trackByPermission" 
+                    class="permission-row">
+                  <td class="permission-name">
+                    <div class="fw-semibold">{{ perm.permissionKey }}</div>
+                    <div class="small text-muted">{{ perm.description }}</div>
+                    <div class="small text-muted">ID: {{ perm.id }}</div>
+                  </td>
+                  
+                  <!-- Ô trong ma trận -->
+                  <td *ngFor="let role of pagedMatrixRoles; trackBy: trackByRole" class="checkbox-cell">
+                    <input type="checkbox"
+                           [id]="'perm-' + perm.id + '-role-' + ($any(role)._uid || role.roleKey)"
+                           [ngModel]="isRoleAssigned(role, perm)"
+                           (ngModelChange)="onToggleAssignment(role, perm, $event)"
+                           [ngModelOptions]="{standalone:true}">
+                  </td>
+                </tr>
+                
+                <!-- Spacer row -->
+                <tr>
+                  <td [attr.colspan]="pagedMatrixRoles.length + 1" style="height: 15px; background: #f8f9fa;"></td>
+                </tr>
+              </ng-container>
             </ng-container>
-          </ng-container>
-          
-          <tr *ngIf="matrixPermissions.length === 0">
-            <td [attr.colspan]="pagedMatrixRoles.length + 1" class="empty-state">
-              <i class="fas fa-table"></i>
-              <p>Không có permission nào để hiển thị</p>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            
+            <tr *ngIf="matrixPermissions.length === 0">
+              <td [attr.colspan]="pagedMatrixRoles.length + 1" class="empty-state">
+                <i class="fas fa-table"></i>
+                <p>Không có permission nào để hiển thị</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-    <!-- Pagination -->
-    <div class="d-flex justify-content-center mt-3" *ngIf="matrixRoleTotalPages > 1">
-      <button class="btn btn-outline-primary btn-sm me-2"
-              (click)="changeMatrixRolePage(matrixRolePage - 1)"
-              [disabled]="matrixRolePage === 1">
-        <i class="fas fa-chevron-left"></i> Trước
-      </button>
-      
-      <button *ngFor="let page of [].constructor(matrixRoleTotalPages); let i = index"
-              class="btn btn-sm me-1"
-              [ngClass]="{'btn-primary': matrixRolePage === i + 1, 'btn-outline-primary': matrixRolePage !== i + 1}"
-              (click)="changeMatrixRolePage(i + 1)">
-        {{ i + 1 }}
-      </button>
-      
-      <button class="btn btn-outline-primary btn-sm ms-2"
-              (click)="changeMatrixRolePage(matrixRolePage + 1)"
-              [disabled]="matrixRolePage === matrixRoleTotalPages">
-        Sau <i class="fas fa-chevron-right"></i>
-      </button>
+      <!-- Pagination (bottom) -->
+      <div class="d-flex justify-content-center mt-3" *ngIf="matrixRoleTotalPages > 1">
+        <button class="btn btn-outline-primary btn-sm me-2"
+                (click)="changeMatrixRolePage(matrixRolePage - 1)"
+                [disabled]="matrixRolePage === 1">
+          <i class="fas fa-chevron-left"></i> Trước
+        </button>
+        
+        <button *ngFor="let p of pageNumbers"
+                class="btn btn-sm me-1"
+                [ngClass]="{'btn-primary': matrixRolePage === p, 'btn-outline-primary': matrixRolePage !== p}"
+                (click)="changeMatrixRolePage(p)">
+          {{ p }}
+        </button>
+        
+        <button class="btn btn-outline-primary btn-sm ms-2"
+                (click)="changeMatrixRolePage(matrixRolePage + 1)"
+                [disabled]="matrixRolePage === matrixRoleTotalPages">
+          Sau <i class="fas fa-chevron-right"></i>
+        </button>
+      </div>
     </div>
-  </div>
-</section>
+  </section>
+
   <!-- ========== MODALS ========== -->
-  
   <!-- Role Modal -->
   <div class="modal fade show d-block" *ngIf="showRoleModal" style="background: rgba(0,0,0,.5);">
     <div class="modal-dialog">
