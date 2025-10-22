@@ -126,6 +126,14 @@
             <option value="LOCKED">Bị khóa</option>
           </select>
         </div>
+        <div class="mb-2">
+          <label>Phòng ban <span class="text-danger">*</span></label>
+          <select [(ngModel)]="formData.departmentId" class="form-control">
+            <option [ngValue]="0" disabled>-- Chọn phòng ban --</option>
+            <option *ngFor="let d of departments" [ngValue]="d.id">{{ d.name }}</option>
+          </select>
+        </div>
+
         <div class="modal-actions d-flex justify-content-end">
           <button class="btn btn-secondary me-2" (click)="closeModals()">Hủy</button>
           <button class="btn btn-primary" (click)="addPosition()">Lưu</button>
@@ -155,6 +163,14 @@
             <option value="LOCKED">Bị khóa</option>
           </select>
         </div>
+        <div class="mb-2">
+          <label>Phòng ban <span class="text-danger">*</span></label>
+          <select [(ngModel)]="formData.departmentId" class="form-control">
+            <option [ngValue]="0" disabled>-- Chọn phòng ban --</option>
+            <option *ngFor="let d of departments" [ngValue]="d.id">{{ d.name }}</option>
+          </select>
+        </div>
+
         <div class="modal-actions d-flex justify-content-end">
           <button class="btn btn-secondary me-2" (click)="closeModals()">Hủy</button>
           <button class="btn btn-primary" (click)="updatePosition()">Cập nhật</button>
