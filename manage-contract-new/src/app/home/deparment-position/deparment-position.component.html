@@ -12,20 +12,6 @@
       </div>
     </header>
 
-    <div class="alert alert-success" *ngIf="successMessage">
-      {{ successMessage }}
-    </div>
-    <div class="alert alert-danger" *ngIf="errorMessage">
-      {{ errorMessage }}
-    </div>
-
-    <div class="search-container">
-      <input type="text" [(ngModel)]="searchTerm" placeholder="Tìm kiếm phòng ban hoặc vị trí..." />
-      <button class="btn btn-primary">
-        <i class="fas fa-search"></i> Tìm kiếm
-      </button>
-    </div>
-
     <div class="filter-container">
       <select class="filter-select" [(ngModel)]="statusFilter">
         <option value="all">Tất cả trạng thái</option>
@@ -38,6 +24,8 @@
         <option value="all">Tất cả phòng ban</option>
         <option *ngFor="let d of departments" [value]="d.id">{{ d.name }}</option>
       </select>
+
+       <input type="text" [(ngModel)]="searchTerm" placeholder="Tìm kiếm phòng ban hoặc vị trí..." />
     </div>
 
     <ul class="department-list">

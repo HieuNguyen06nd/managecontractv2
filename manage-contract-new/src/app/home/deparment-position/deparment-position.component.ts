@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ToastrService } from 'ngx-toastr';
 
 import {
   DepartmentService,
@@ -13,8 +14,7 @@ import {
   PositionService,
   Status as PosStatus
 } from '../../core/services/position.service';
-import { PositionResponse,PositionRequest } from '../../core/models/position.model';  
-
+import { PositionResponse, PositionRequest } from '../../core/models/position.model';
 
 type UiStatus = 'ACTIVE' | 'INACTIVE' | 'LOCKED';
 
@@ -27,8 +27,6 @@ interface DepartmentUi {
   leaderId?: number;
   leaderName?: string;
   status: UiStatus;
-
-  // UI state
   expanded?: boolean;
   positionsLoaded?: boolean;
   positions: PositionResponse[];
@@ -50,10 +48,6 @@ export class DeparmentPositionComponent {
   // ===== Data =====
   departments: DepartmentUi[] = [];
 
-  // ===== Alerts =====
-  successMessage = '';
-  errorMessage = '';
-
   // ===== Modal state & forms =====
   showDeptModal = false;
   editingDepartment = false;
@@ -74,14 +68,15 @@ export class DeparmentPositionComponent {
     description: string;
     departmentId: string;   // select
     status: UiStatus;
-    originalDepartmentId: number | null; // để biết có đổi phòng ban không
+    originalDepartmentId: number | null;
   } = { id: null, name: '', description: '', departmentId: '', status: 'ACTIVE', originalDepartmentId: null };
 
   loading = false;
 
   constructor(
     private departmentService: DepartmentService,
-    private positionService: PositionService
+    private positionService: PositionService,
+    private toastr: ToastrService
   ) {
     this.loadDepartments();
   }
@@ -167,14 +162,18 @@ export class DeparmentPositionComponent {
     });
   }
 
-  // ===== Alerts =====
+  // ===== Toast helpers =====
   private showSuccess(msg: string): void {
-    this.successMessage = msg;
-    setTimeout(() => (this.successMessage = ''), 2500);
+    this.toastr.success(msg, 'Thành công');
   }
   private showError(msg: string): void {
-    this.errorMessage = msg;
-    setTimeout(() => (this.errorMessage = ''), 3000);
+    this.toastr.error(msg, 'Lỗi');
+  }
+  private showInfo(msg: string): void {
+    this.toastr.info(msg, 'Thông báo');
+  }
+  private showWarning(msg: string): void {
+    this.toastr.warning(msg, 'Cảnh báo');
   }
 
   // ===== Department Modal =====
@@ -208,7 +207,6 @@ export class DeparmentPositionComponent {
       name: f.name,
       level: f.level,
       parentId: f.parentId ? Number(f.parentId) : undefined,
-      // leaderId: f.leaderId ? Number(f.leaderId) : undefined, // bật nếu có dropdown nhân viên
       status: f.status as DeptStatus
     };
 
@@ -334,11 +332,11 @@ export class DeparmentPositionComponent {
           if (f.originalDepartmentId && f.originalDepartmentId !== targetDeptId) {
             const fromDept = this.departments.find(d => d.id === f.originalDepartmentId);
             const toDept = this.departments.find(d => d.id === targetDeptId);
-            if (fromDept?.positionsLoaded) this.loadPositionsForDepartment(fromDept);
-            if (toDept?.positionsLoaded) this.loadPositionsForDepartment(toDept);
+            if (fromDept) { fromDept.positionsLoaded = false; this.loadPositionsForDepartment(fromDept); }
+            if (toDept)   { toDept.expanded = true; toDept.positionsLoaded = false; this.loadPositionsForDepartment(toDept); }
           } else {
             const dept = this.departments.find(d => d.id === targetDeptId);
-            if (dept?.positionsLoaded) this.loadPositionsForDepartment(dept);
+            if (dept) { dept.expanded = true; dept.positionsLoaded = false; this.loadPositionsForDepartment(dept); }
           }
           this.showSuccess('Cập nhật vị trí thành công!');
           this.closePosModal();
@@ -357,7 +355,8 @@ export class DeparmentPositionComponent {
         const dept = this.departments.find(d => d.id === targetDeptId);
         if (dept) {
           dept.expanded = true;
-          if (dept.positionsLoaded) this.loadPositionsForDepartment(dept);
+          dept.positionsLoaded = false;          // buộc reload để thấy item mới
+          this.loadPositionsForDepartment(dept);
         }
         this.showSuccess('Thêm vị trí thành công!');
         this.closePosModal();
@@ -374,7 +373,7 @@ export class DeparmentPositionComponent {
     this.positionService.deletePosition(positionId).subscribe({
       next: () => {
         const dept = this.departments.find(d => d.id === departmentId);
-        if (dept?.positionsLoaded) this.loadPositionsForDepartment(dept);
+        if (dept) { dept.positionsLoaded = false; this.loadPositionsForDepartment(dept); }
         this.showSuccess('Xóa vị trí thành công!');
       },
       error: (err) => {

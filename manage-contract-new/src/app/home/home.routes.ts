@@ -14,6 +14,7 @@ import { ContractFlowComponent } from './contract-flow/contract-flow.component';
 import { RolePermissionComponent } from './role-permission/role-permission.component';
 import { ProfileComponent } from './profile/profile.component';
 import { ContractListComponent } from './contract-list/contract-list.component';
+import { DeparmentPositionComponent } from './deparment-position/deparment-position.component';
 
 export const HOME_ROUTES: Routes = [
   {
@@ -84,9 +85,15 @@ export const HOME_ROUTES: Routes = [
         canActivate: [PermissionGuard],
         data: { role: 'ADMIN' }
       },
-            { 
+      { 
         path: 'contract/list',
         component: ContractListComponent,
+        canActivate: [PermissionGuard],
+        data: { role: 'ADMIN' }
+      },
+            { 
+        path: 'department-position',
+        component: DeparmentPositionComponent,
         canActivate: [PermissionGuard],
         data: { role: 'ADMIN' }
       },

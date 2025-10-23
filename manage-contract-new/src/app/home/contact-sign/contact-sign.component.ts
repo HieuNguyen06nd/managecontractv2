@@ -10,7 +10,6 @@ import { catchError, finalize, take } from 'rxjs/operators';
 
 import { ContractApprovalService } from '../../core/services/contract-approval.service';
 import { ContractService } from '../../core/services/contract.service';
-import { ResponseData } from '../../core/models/response-data.model';
 import { StepApprovalRequest, SignStepRequest } from '../../core/models/contract-approval.models';
 import { ContractResponse } from '../../core/models/contract.model';
 

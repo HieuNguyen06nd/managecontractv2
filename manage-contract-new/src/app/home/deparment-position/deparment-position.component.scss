@@ -20,15 +20,6 @@
             padding: 20px;
         }
         
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-            padding: 30px;
-        }
-        
         header {
             display: flex;
             justify-content: space-between;
@@ -116,20 +107,77 @@
             outline: none;
         }
         
-        .filter-container {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
+        /* ==== FILTERS (select + search) ==== */
+        .filter-container{
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;             /* tự xuống dòng khi hẹp */
+        margin-bottom: 18px;
         }
-        
-        .filter-select {
-            padding: 10px 15px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            background-color: white;
-            font-size: 14px;
+
+        .filter-select,
+        .filter-container input[type="text"]{
+        height: 42px;
+        padding: 10px 14px;
+        font-size: 14px;
+        border: 1px solid #e2e8f0;   /* border neutral */
+        border-radius: 10px;
+        background: #fff;
+        color: #0f172a;
+        outline: none;
+        transition: border-color .2s ease, box-shadow .2s ease, background .2s;
         }
-        
+
+        /* Select nhìn gọn hơn + mũi tên custom */
+        .filter-select{
+        min-width: 220px;
+        appearance: none;            /* bỏ style mặc định */
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-image: url("data:image/svg+xml;utf8,<svg fill='none' stroke='%2364748b' stroke-width='2' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path d='M6 9l6 6 6-6'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        background-size: 16px 16px;
+        padding-right: 36px;         /* chừa chỗ cho mũi tên */
+        }
+
+        /* Input chiếm phần còn lại (ưu tiên rộng) */
+        .filter-container input[type="text"]{
+        flex: 1 1 280px;             /* tối thiểu 280px, còn lại co giãn */
+        }
+
+        /* Focus ring */
+        .filter-select:focus,
+        .filter-container input[type="text"]:focus{
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 4px rgba(59,130,246,.12);
+        }
+
+        /* Hover nhẹ */
+        .filter-select:hover,
+        .filter-container input[type="text"]:hover{
+        background: #f8fafc;
+        }
+
+        /* Placeholder dịu hơn */
+        .filter-container input[type="text"]::placeholder{
+        color: #94a3b8;
+        }
+
+        /* Mobile tối ưu */
+        @media (max-width: 768px){
+        .filter-container{
+            gap: 10px;
+        }
+        .filter-select{
+            min-width: 100%;
+        }
+        .filter-container input[type="text"]{
+            flex-basis: 100%;
+        }
+        }
+
         .department-list {
             list-style-type: none;
         }
@@ -168,37 +216,71 @@
             color: #7f8c8d;
         }
         
-        .department-actions {
-            display: flex;
-            gap: 10px;
+        /* ===== Department actions (fix icon không hiển thị & làm đẹp) ===== */
+        .department-actions{
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
         }
-        
-        .action-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
-            padding: 5px;
-            border-radius: 4px;
-            transition: all 0.3s;
+
+        /* Nút tròn, đồng bộ kích thước, canh giữa icon */
+        .action-btn{
+        height: 36px;
+        width: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border, #e2e8f0);
+        background: #fff;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+        padding: 0;            /* tránh icon bị co */
+        line-height: 0;        /* canh icon chuẩn */
         }
-        
-        .edit-btn {
-            color: #3498db;
+
+        /* Hover/active feedback */
+        .action-btn:hover{
+        background: #f8fafc;
+        border-color: var(--border, #e2e8f0);
+        box-shadow: 0 6px 12px rgba(2,6,23,.08);
+        transform: translateY(-1px);
         }
-        
-        .edit-btn:hover {
-            background-color: rgba(52, 152, 219, 0.1);
+        .action-btn:active{
+        transform: translateY(0);
+        box-shadow: 0 3px 8px rgba(2,6,23,.08);
         }
-        
-        .delete-btn {
-            color: #e74c3c;
+
+        /* Màu theo loại hành động */
+        .edit-btn{   color: var(--primary, #3b82f6); }
+        .delete-btn{ color: var(--danger,  #ef4444); }
+        .toggle-btn{ color: var(--primary, #3b82f6); }
+
+        /* Bắt buộc icon FA hiển thị đúng kích thước */
+        .action-btn i[class^="fa"],
+        .action-btn i[class*=" fa"]{
+        font-size: 16px;   /* kích thước icon */
+        width: 1em;
+        height: 1em;
+        line-height: 1;
+        display: inline-block;
         }
-        
-        .delete-btn:hover {
-            background-color: rgba(231, 76, 60, 0.1);
+
+        /* Nếu dùng FA6 (fa-solid...), vẫn áp dụng được */
+        .action-btn .fa-solid{
+        font-size: 16px;
         }
-        
+
+        /* Icon mũi tên toggle bằng ký tự ▶ */
+        .toggle-icon{
+        font-size: 14px;
+        color: #64748b;
+        transition: transform .25s ease;
+        }
+        .toggle-icon.expanded{
+        transform: rotate(90deg);
+        }
+
         .toggle-btn {
             color: #3498db;
         }

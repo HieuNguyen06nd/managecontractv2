@@ -18,7 +18,7 @@ export const appConfig: ApplicationConfig = {
 
     importProvidersFrom(
 ToastrModule.forRoot({
-        positionClass: 'toast-top-right', // 👈 chuyển xuống góc phải cho gọn
+        positionClass: 'toast-top-right',
         timeOut: 4000, // lâu hơn chút
         progressBar: true, // thêm progress bar
         closeButton: true, // thêm nút close
