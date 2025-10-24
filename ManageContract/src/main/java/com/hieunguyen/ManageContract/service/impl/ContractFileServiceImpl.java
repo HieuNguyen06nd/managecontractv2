@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
@@ -128,8 +129,8 @@ public class ContractFileServiceImpl implements ContractFileService {
     }
 
     /**
-     * Ký theo placeholder: chèn ảnh vào DOCX rồi convert lại PDF (giữ nguyên luồng cũ)
-     * Dùng khi ký theo step có placeholder, hoặc fallback khi không tìm thấy tên in.
+     * Ký theo placeholder: giữ nguyên luồng cũ (DOCX -> PDF) để tương thích.
+     * Khuyến nghị: dùng embedSignatureByName để ký theo họ tên, còn placeholder làm fallback.
      */
     @Override
     public String embedSignature(String filePath, String imageUrl, String placeholder) {
@@ -359,7 +360,7 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    // ======= KÝ THEO TÊN – CHÈN ẢNH TRỰC TIẾP LÊN PDF =======
+    // ======= KÝ THEO TÊN – CHÈN ẢNH TRỰC TIẾP LÊN PDF (ưu tiên match theo style) =======
 
     /** Nếu interface của bạn định nghĩa 3 tham số, dùng @Override ở đây */
     @Override
@@ -385,10 +386,14 @@ public class ContractFileServiceImpl implements ContractFileService {
                 throw new RuntimeException("Signature image is empty or invalid");
             }
 
-            // 3) Mở PDF và tìm lần xuất hiện CUỐI của tên in
+            // 3) Mở PDF và tìm lần xuất hiện CUỐI của tên in (ưu tiên theo style Times ~14pt, Bold)
             try (PDDocument doc = PDDocument.load(pdfPath.toFile())) {
 
-                MatchPos match = findLastOccurrencePosition(doc, printedName);
+                MatchPos match = findLastOccurrencePositionStyled(doc, printedName, defaultNameStyle());
+                if (match == null) {
+                    // fallback nếu không khớp style
+                    match = findLastOccurrencePosition(doc, printedName);
+                }
                 if (match == null) {
                     // để cho tầng trên fallback sang placeholder
                     throw new RuntimeException("Không tìm thấy tên in trong PDF: " + printedName);
@@ -484,6 +489,110 @@ public class ContractFileServiceImpl implements ContractFileService {
                                 maxYTop - minY
                         );
                         last = new MatchPos(getCurrentPageNo() - 1, rect);
+                    }
+                    from = idx + 1;
+                }
+            }
+        }
+
+        Locator loc = new Locator();
+        for (int i = 1; i <= doc.getNumberOfPages(); i++) {
+            loc.setStartPage(i);
+            loc.setEndPage(i);
+            loc.getText(doc); // trigger writeString
+        }
+        return loc.last;
+    }
+
+    // ====== Style-based matching (Times New Roman ~14pt, Bold, và các font tương đương) ======
+
+    private static class StyleCriteria {
+        final double minPt, maxPt;
+        final boolean requireBold;
+        final String[] familyHints;
+        StyleCriteria(double minPt, double maxPt, boolean requireBold, String... familyHints) {
+            this.minPt = minPt; this.maxPt = maxPt; this.requireBold = requireBold; this.familyHints = familyHints;
+        }
+    }
+
+    private static StyleCriteria defaultNameStyle() {
+        // 14pt ± 0.5; Bold; Times (bao gồm font thay thế phổ biến sau khi convert)
+        return new StyleCriteria(13.5, 14.5, true,
+                "times", "timesnewroman", "times-roman", "nimbusroman", "liberationserif", "georgia");
+    }
+
+    private static String normFontName(PDFont font) {
+        if (font == null) return "";
+        String n = font.getName(); if (n == null) return "";
+        int plus = n.indexOf('+'); if (plus >= 0 && plus < n.length() - 1) n = n.substring(plus + 1);
+        return n.toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean looksBold(String fontName) {
+        String n = fontName.toLowerCase(Locale.ROOT);
+        return n.contains("bold") || n.contains("-bd") || n.endsWith("bd");
+    }
+
+    private static boolean looksFamily(String fontName, String[] hints) {
+        String n = fontName.toLowerCase(Locale.ROOT);
+        for (String h : hints) if (n.contains(h)) return true;
+        return false;
+    }
+
+    /** Tìm lần xuất hiện CUỐI của needle thỏa tiêu chí style */
+    private MatchPos findLastOccurrencePositionStyled(PDDocument doc, String needleRaw, StyleCriteria sc) throws Exception {
+        final String needle = needleRaw.toLowerCase(Locale.ROOT);
+
+        class Locator extends PDFTextStripper {
+            MatchPos last = null;
+            Locator() throws java.io.IOException { setSortByPosition(true); }
+
+            @Override
+            protected void writeString(String text, List<TextPosition> positions) {
+                String lower = text.toLowerCase(Locale.ROOT);
+                int from = 0;
+                while (true) {
+                    int idx = lower.indexOf(needle, from);
+                    if (idx < 0) break;
+                    int endIdx = idx + needle.length() - 1;
+                    if (idx < positions.size() && endIdx < positions.size()) {
+                        // Kiểm tra style trên đa số ký tự trùng khớp
+                        int ok = 0, total = 0;
+                        for (int i = idx; i <= endIdx; i++) {
+                            TextPosition tp = positions.get(i);
+                            double pt = tp.getFontSizeInPt();
+                            String fn = normFontName(tp.getFont());
+                            boolean inRange = (pt >= sc.minPt && pt <= sc.maxPt);
+                            boolean famOk  = looksFamily(fn, sc.familyHints);
+                            boolean boldOk = !sc.requireBold || looksBold(fn);
+                            if (inRange && famOk && boldOk) ok++;
+                            total++;
+                        }
+                        if (total > 0 && ok * 100 / total >= 70) { // ≥70% glyph đạt tiêu chí
+                            TextPosition first = positions.get(idx);
+                            TextPosition lastTp = positions.get(endIdx);
+
+                            float minX = first.getXDirAdj();
+                            float minY = Float.MAX_VALUE;
+                            float maxYTop = Float.MIN_VALUE;
+
+                            for (int i = idx; i <= endIdx; i++) {
+                                TextPosition tp = positions.get(i);
+                                minX = Math.min(minX, tp.getXDirAdj());
+                                float y = tp.getYDirAdj();
+                                float h = tp.getHeightDir();
+                                minY = Math.min(minY, y);
+                                maxYTop = Math.max(maxYTop, y + h);
+                            }
+
+                            Rectangle2D.Float rect = new Rectangle2D.Float(
+                                    minX,
+                                    minY,
+                                    lastTp.getXDirAdj() - minX + lastTp.getWidthDirAdj(),
+                                    maxYTop - minY
+                            );
+                            last = new MatchPos(getCurrentPageNo() - 1, rect);
+                        }
                     }
                     from = idx + 1;
                 }
