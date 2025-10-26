@@ -24,4 +24,22 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
             "LEFT JOIN FETCH d.employees")
     Page<Department> findAllWithParentAndLeaderAndEmployees(Pageable pageable);
 
+
+    @Query("""
+   SELECT DISTINCT d FROM Department d
+   LEFT JOIN FETCH d.parent
+   LEFT JOIN FETCH d.leader
+   LEFT JOIN FETCH d.positions p
+""")
+    List<Department> findAllWithParentLeaderAndPositions();
+
+    @Query("""
+   SELECT d FROM Department d
+   LEFT JOIN FETCH d.parent
+   LEFT JOIN FETCH d.leader
+   LEFT JOIN FETCH d.positions p
+   WHERE d.id = :id
+""")
+    Optional<Department> findByIdWithParentLeaderAndPositions(Long id);
+
 }

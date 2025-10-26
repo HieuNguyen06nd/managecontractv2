@@ -103,23 +103,34 @@ public class DepartmentServiceImpl implements DepartmentService {
     }
 
     // Phương thức ánh xạ thông tin phòng ban từ entity -> DTO, không tính số lượng nhân viên
-    private DepartmentResponse mapToDepartmentResponse(Department department) {
-        String parentName = department.getParent() != null ? department.getParent().getName() : null;
-        String leaderName = department.getLeader() != null ? department.getLeader().getFullName() : null;
+    private DepartmentResponse mapToDepartmentResponse(Department d) {
+        String parentName = d.getParent() != null ? d.getParent().getName() : null;
+        String leaderName = d.getLeader() != null ? d.getLeader().getFullName() : null;
+        Long employeeCount = employeeRepository.countEmployeesByDepartmentId(d.getId());
 
-        // Sử dụng query để đếm số lượng nhân viên từ cơ sở dữ liệu
-        Long employeeCount = employeeRepository.countEmployeesByDepartmentId(department.getId());
+        var positions = (d.getPositions() == null) ? java.util.List.<com.hieunguyen.ManageContract.dto.position.PositionResponse>of()
+                : d.getPositions().stream()
+                .map(p -> com.hieunguyen.ManageContract.dto.position.PositionResponse.builder()
+                        .id(p.getId())
+                        .name(p.getName())
+                        .description(p.getDescription())
+                        .status(p.getStatus())                 // com.hieunguyen.ManageContract.common.constants.Status
+                        .departmentId(d.getId())               // set theo dept hiện tại
+                        .departmentName(d.getName())
+                        .build()
+                ).toList();
 
         return DepartmentResponse.builder()
-                .id(department.getId())
-                .name(department.getName())
-                .level(department.getLevel())
-                .parentId(department.getParent() != null ? department.getParent().getId() : null)
+                .id(d.getId())
+                .name(d.getName())
+                .level(d.getLevel())
+                .parentId(d.getParent() != null ? d.getParent().getId() : null)
                 .parentName(parentName)
-                .leaderId(department.getLeader() != null ? department.getLeader().getId() : null)
+                .leaderId(d.getLeader() != null ? d.getLeader().getId() : null)
                 .leaderName(leaderName)
-                .employeeCount(employeeCount.intValue())  // Sử dụng giá trị long từ query
-                .status(department.getStatus())
+                .employeeCount(employeeCount.intValue())
+                .status(d.getStatus())
+                .positions(positions)
                 .build();
     }
 

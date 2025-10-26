@@ -1,14 +1,16 @@
-<!-- src/app/home/contact-sign/contact-sign.component.html -->
-<main class="main-content container py-4">
+<main class="main-content py-4">
   <!-- Header -->
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-      <h1 class="page-title mb-1">Hợp đồng chờ Phê duyệt</h1>
+      <h1 class="page-title mb-0">Hợp đồng chờ Phê duyệt</h1>
       <p class="page-subtitle m-0">Quản lý và xử lý các hợp đồng đang chờ phê duyệt của bạn</p>
     </div>
     <div class="d-flex gap-2 align-items-center">
-      <input class="form-control" style="min-width:260px" placeholder="Tìm theo tiêu đề/số HĐ/mẫu..." [(ngModel)]="searchTerm">
-      <select class="form-select" style="min-width:180px" [(ngModel)]="sortBy">
+      <input class="form-control" style="min-width:260px"
+             placeholder="Tìm theo tiêu đề/số HĐ/mẫu..."
+             [(ngModel)]="searchTerm" (ngModelChange)="onSearchChange()">
+      <select class="form-select" style="min-width:180px"
+              [(ngModel)]="sortBy" (ngModelChange)="onSortChange()">
         <option [ngValue]="''">Sắp xếp: Mặc định</option>
         <option [ngValue]="'newest'">Sắp xếp: Mới nhất</option>
         <option [ngValue]="'oldest'">Sắp xếp: Cũ nhất</option>
@@ -26,7 +28,8 @@
       <button class="filter-tag" [class.active]="filterTab==='REJECTED'" (click)="onTabChange('REJECTED')">Từ chối</button>
       <div class="ms-auto d-flex align-items-center gap-2">
         <span class="text-muted">Loại</span>
-        <select class="form-select" style="min-width:180px" [(ngModel)]="typeFilter">
+        <select class="form-select" style="min-width:180px"
+                [(ngModel)]="typeFilter" (ngModelChange)="onTypeFilterChange()">
           <option [ngValue]="''">Tất cả</option>
           <option [ngValue]="'labor'">Hợp đồng lao động</option>
           <option [ngValue]="'sale'">Hợp đồng mua bán</option>
@@ -50,7 +53,7 @@
 
   <!-- Contracts -->
   <div class="contracts-container" *ngIf="!listLoading && !errorMsg">
-    <div class="contract-card" *ngFor="let c of visibleContracts; trackBy: trackById">
+    <div class="contract-card" *ngFor="let c of pagedContracts; trackBy: trackById">
       <div class="contract-header">
         <span class="contract-badge" [ngClass]="badgeClass(c.status)">
           {{ ((c.status || 'PENDING_APPROVAL').split('_').join(' ')) | uppercase }}
@@ -116,6 +119,41 @@
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Pagination toolbar (BOTTOM) -->
+  <div class="d-flex align-items-center justify-content-between mt-3"
+       *ngIf="!listLoading && !errorMsg && totalRecords >= 0">
+    <div class="text-muted">
+      Hiển thị {{ totalRecords ? (pageStartIndex + 1) : 0 }}–{{ pageEndIndex }} / {{ totalRecords }}
+    </div>
+
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-muted">Trang</span>
+      <button class="btn btn-sm btn-light" (click)="firstPage()" [disabled]="page===1">
+        <i class="fas fa-angle-double-left"></i>
+      </button>
+      <button class="btn btn-sm btn-light" (click)="prevPage()" [disabled]="page===1">
+        <i class="fas fa-angle-left"></i>
+      </button>
+
+      <input type="number" class="form-control form-control-sm" style="width:70px"
+             [ngModel]="page" (ngModelChange)="goToPage($event)" [min]="1" [max]="totalPages">
+
+      <span class="text-muted">/ {{ totalPages }}</span>
+
+      <button class="btn btn-sm btn-light" (click)="nextPage()" [disabled]="page===totalPages">
+        <i class="fas fa-angle-right"></i>
+      </button>
+      <button class="btn btn-sm btn-light" (click)="lastPage()" [disabled]="page===totalPages">
+        <i class="fas fa-angle-double-right"></i>
+      </button>
+
+      <select class="form-select form-select-sm ms-2" style="width:120px"
+              [(ngModel)]="pageSize" (ngModelChange)="goToPage(1)">
+        <option *ngFor="let s of pageSizes" [ngValue]="s">{{ s }}/trang</option>
+      </select>
     </div>
   </div>
 

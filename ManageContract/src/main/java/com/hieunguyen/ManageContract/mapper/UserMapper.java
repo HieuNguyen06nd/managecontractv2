@@ -6,7 +6,9 @@ import com.hieunguyen.ManageContract.dto.role.RoleResponse;
 import com.hieunguyen.ManageContract.dto.user.UserResponse;
 import com.hieunguyen.ManageContract.dto.user.UserUpdateRequest;
 import com.hieunguyen.ManageContract.entity.AuthAccount;
+import com.hieunguyen.ManageContract.entity.Department;
 import com.hieunguyen.ManageContract.entity.Employee;
+import com.hieunguyen.ManageContract.entity.Position;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -37,6 +39,15 @@ public class UserMapper {
                 })
                 .toList();
 
+        Department dept = employee.getDepartment();
+        Position pos = employee.getPosition();
+
+        Long departmentId = (dept != null) ? dept.getId() : null;
+        String departmentName = (dept != null) ? dept.getName() : null;
+
+        Long positionId = (pos != null) ? pos.getId() : null;
+        String positionName = (pos != null) ? pos.getName() : null;
+
         return AuthProfileResponse.builder()
                 .id(employee.getId())
                 .fullName(employee.getFullName())
@@ -44,6 +55,11 @@ public class UserMapper {
                 .gender(employee.getGender())
                 .email(account.getEmail())
                 .roles(roleResponses)
+
+                .departmentId(departmentId)
+                .departmentName(departmentName)
+                .positionId(positionId)
+                .positionName(positionName)
                 .build();
     }
 

@@ -418,7 +418,6 @@ export class ContractComponent implements OnInit {
     }
   }
 
-
   validateStep(step: number): boolean {
     if (step === 1 && !this.selectedTemplate) {
       this.errorMessage = 'Vui lòng chọn một template để tiếp tục.';

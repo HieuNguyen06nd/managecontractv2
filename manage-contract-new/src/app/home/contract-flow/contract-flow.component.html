@@ -1,9 +1,9 @@
 <main class="main-content">
 
   <!-- Header + Switch View -->
-  <div class="container mt-4">
+  <div class="">
     <div class="d-flex justify-content-between align-items-center glass-card p-3">
-      <h3 class="mb-0">Luồng phê duyệt</h3>
+      <h3 class="page-title">Luồng phê duyệt</h3>
       <div class="btn-group">
         <button class="btn btn-outline-secondary" [class.active]="viewMode==='list'" (click)="switchToList()">
           <i class="fas fa-list me-1"></i> Danh sách
@@ -16,7 +16,7 @@
   </div>
 
   <!-- LIST MODE -->
-  <div class="container py-4" *ngIf="viewMode==='list'">
+  <div class=" py-4" *ngIf="viewMode==='list'">
     <div class="glass-card p-4">
       <!-- Bộ lọc template -->
       <div class="row g-3 align-items-end">
@@ -134,7 +134,7 @@
   </div>
 
   <!-- CREATE MODE -->
-  <div class="container py-5" *ngIf="viewMode==='create'" [formGroup]="form">
+  <div class=" py-5" *ngIf="viewMode==='create'" [formGroup]="form">
     <div class="row justify-content-center">
       <div class="col-lg-10">
         <!-- Header -->

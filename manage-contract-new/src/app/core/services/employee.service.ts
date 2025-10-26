@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { ResponseData } from '../models/response-data.model';
 import { AuthProfileResponse } from '../models/auth.model';
+import { AdminUpdateUserRequest } from '../models/auth.model';
 
 export interface LoginRequest {
   emailOrPhone: string;
@@ -109,6 +110,14 @@ export class EmployeeService {
   update(id: number, payload: AuthProfileResponse): Observable<ResponseData<AuthProfileResponse>> {
     return this.http.put<ResponseData<AuthProfileResponse>>(
       `${this.baseUrl}/update/${id}`,
+      payload
+    );
+  }
+
+
+  updateByAdmin(id: number, payload: AdminUpdateUserRequest): Observable<ResponseData<AuthProfileResponse>> {
+    return this.http.put<ResponseData<AuthProfileResponse>>(
+      `${this.baseUrl}/auth/users/${id}`,
       payload
     );
   }

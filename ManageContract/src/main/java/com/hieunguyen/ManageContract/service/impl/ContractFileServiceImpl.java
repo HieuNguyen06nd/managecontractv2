@@ -20,24 +20,15 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.math.BigInteger;
 import java.nio.file.*;
 import java.time.LocalDateTime;
+import java.text.Normalizer;
 import java.util.*;
 import java.util.stream.Collectors;
-
-// PDFBox
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
-import org.apache.pdfbox.text.PDFTextStripper;
-import org.apache.pdfbox.text.TextPosition;
 
 @Service
 @Slf4j
@@ -59,10 +50,10 @@ public class ContractFileServiceImpl implements ContractFileService {
     private final RestTemplate rest = new RestTemplate();
     private final ObjectMapper om = new ObjectMapper();
 
-    @Value("${app.ds.url:http://localhost:8081}")
+    @Value("${app.ds.url:http://documentserver}")
     private String docServer; // ONLYOFFICE Document Server
 
-    @Value("${app.ds.source-base:http://host.docker.internal:8080}")
+    @Value("${app.ds.source-base:http://app:8080}")
     private String hostBaseUrl; // BE base URL cho DS fetch file
 
     @Value("${app.signature.storage-dir:uploads/signatures}")
@@ -129,8 +120,8 @@ public class ContractFileServiceImpl implements ContractFileService {
     }
 
     /**
-     * Ký theo placeholder: giữ nguyên luồng cũ (DOCX -> PDF) để tương thích.
-     * Khuyến nghị: dùng embedSignatureByName để ký theo họ tên, còn placeholder làm fallback.
+     * Ký theo placeholder trên DOCX rồi convert PDF (giống luồng cũ nhưng an toàn hơn)
+     * Khuyến nghị: để placeholder đứng riêng một run trong template.
      */
     @Override
     public String embedSignature(String filePath, String imageUrl, String placeholder) {
@@ -140,7 +131,9 @@ public class ContractFileServiceImpl implements ContractFileService {
             }
 
             Long contractId = extractContractIdFromPath(Paths.get(filePath));
-            Path docx = ensureDocxGenerated(contractRepository.findById(contractId).orElseThrow(), null);
+            Contract contract = contractRepository.findById(contractId)
+                    .orElseThrow(() -> new RuntimeException("Contract not found"));
+            Path docx = ensureDocxGenerated(contract, null);
 
             byte[] imageBytes = loadImageBytes(imageUrl);
             if (imageBytes == null || imageBytes.length == 0) {
@@ -162,10 +155,9 @@ public class ContractFileServiceImpl implements ContractFileService {
             Path pdf = pdfPathOf(contractId);
             convertToPdfUsingOnlyOffice(contractId, docx, pdf);
 
-            Contract c = contractRepository.findById(contractId).orElseThrow();
-            c.setFilePath(pdf.toString());
-            c.setFileGeneratedAt(LocalDateTime.now());
-            contractRepository.save(c);
+            contract.setFilePath(pdf.toString());
+            contract.setFileGeneratedAt(LocalDateTime.now());
+            contractRepository.save(contract);
 
             return pdf.toString();
         } catch (Exception e) {
@@ -173,17 +165,16 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /** Ký theo step phê duyệt: dùng placeholder của step */
+    /** Ký theo step phê duyệt: dùng placeholder của step hoặc mặc định SIGN:<approvalId> */
     @Override
     public String embedSignatureForApproval(Long contractId, String imageUrl, Long approvalId) {
         try {
             ContractApproval approval = contractApprovalRepository.findById(approvalId)
                     .orElseThrow(() -> new RuntimeException("Contract approval not found"));
 
-            String ph = approval.getSignaturePlaceholder();
-            if (ph == null || ph.isBlank()) {
-                throw new RuntimeException("No signature placeholder defined for this step");
-            }
+            String ph = Optional.ofNullable(approval.getSignaturePlaceholder())
+                    .filter(s -> !s.isBlank())
+                    .orElse("SIGN:" + approvalId);
 
             File file = getContractFile(contractId);
             return embedSignature(file.getAbsolutePath(), imageUrl, ph);
@@ -192,7 +183,7 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /** Ghi text phê duyệt vào DOCX rồi convert PDF (giữ nguyên) */
+    /** Ghi text phê duyệt vào DOCX rồi convert PDF */
     @Override
     public void addApprovalText(String filePath, String approvalText) {
         try {
@@ -320,6 +311,62 @@ public class ContractFileServiceImpl implements ContractFileService {
     }
 
     // ========================================================================
+    // NEW: KÝ THEO TÊN – TRÊN DOCX, SAU ĐÓ MỚI CONVERT PDF (DOCX-first)
+    // ========================================================================
+
+    /** Nếu interface định nghĩa 3 tham số, dùng @Override ở đây */
+    @Override
+    public String embedSignatureByName(Long contractId, String imageRef, String printedName) {
+        return embedSignatureByNameOnDocx(contractId, imageRef, printedName, null, null);
+    }
+
+    /** Overload cho phép truyền kích thước */
+    public String embedSignatureByNameOnDocx(Long contractId, String imageRef, String printedName,
+                                             Float widthPx, Float heightPx) {
+        try {
+            if (printedName == null || printedName.isBlank()) {
+                throw new RuntimeException("printedName is required");
+            }
+
+            // 1) Bảo đảm đã có DOCX (nếu chưa, sinh từ template + biến)
+            Contract contract = contractRepository.findById(contractId)
+                    .orElseThrow(() -> new RuntimeException("Contract not found"));
+            Path docx = ensureDocxGenerated(contract, null);
+
+            // 2) Ảnh chữ ký
+            byte[] imageBytes = loadImageBytes(imageRef);
+            if (imageBytes == null || imageBytes.length == 0) {
+                throw new RuntimeException("Signature image is empty or invalid");
+            }
+
+            // 3) Mở DOCX và chèn ảnh NGAY SAU lần xuất hiện CUỐI của tên
+            WordprocessingMLPackage pkg = WordprocessingMLPackage.load(docx.toFile());
+            boolean ok = insertImageAboveName(pkg, printedName, imageBytes,
+                    (widthPx  != null ? widthPx  : DEFAULT_SIG_W),
+                    (heightPx != null ? heightPx : DEFAULT_SIG_H));
+            if (!ok) {
+                // Cho phép fallback: thử dạng "Admin, Nguyễn Văn A" không dấu nếu người dùng nhập có dấu & không tìm thấy
+                throw new RuntimeException("Không tìm thấy tên trong DOCX: " + printedName);
+            }
+            pkg.save(docx.toFile());
+
+            // 4) Convert DOCX → PDF (một lần)
+            Path pdfPath = pdfPathOf(contractId);
+            convertToPdfUsingOnlyOffice(contractId, docx, pdfPath);
+
+            // 5) Cập nhật DB
+            contract.setFilePath(pdfPath.toString());
+            contract.setFileGeneratedAt(LocalDateTime.now());
+            contractRepository.save(contract);
+
+            return pdfPath.toString();
+
+        } catch (Exception e) {
+            throw new RuntimeException("Embed signature by NAME (DOCX-first) failed: " + e.getMessage(), e);
+        }
+    }
+
+    // ========================================================================
     // Helpers (DOCX, OnlyOffice, Paths, I/O)
     // ========================================================================
 
@@ -358,254 +405,6 @@ public class ContractFileServiceImpl implements ContractFileService {
         } catch (Exception e) {
             throw new RuntimeException("Ensure DOCX generated failed: " + e.getMessage(), e);
         }
-    }
-
-    // ======= KÝ THEO TÊN – CHÈN ẢNH TRỰC TIẾP LÊN PDF (ưu tiên match theo style) =======
-
-    /** Nếu interface của bạn định nghĩa 3 tham số, dùng @Override ở đây */
-    @Override
-    public String embedSignatureByName(Long contractId, String imageRef, String printedName) {
-        return embedSignatureByName(contractId, imageRef, printedName, null, null);
-    }
-
-    /** Overload cho phép truyền kích thước (nếu interface chưa có thì bỏ @Override ở đây) */
-    public String embedSignatureByName(Long contractId, String imageRef, String printedName,
-                                       Float widthPx, Float heightPx) {
-        try {
-            if (printedName == null || printedName.isBlank()) {
-                throw new RuntimeException("printedName is required");
-            }
-
-            // 1) Bảo đảm đã có PDF (nếu chưa, convert 1 lần rồi dùng tiếp)
-            File pdfFile = getPdfOrConvert(contractId);
-            Path pdfPath = pdfFile.toPath();
-
-            // 2) Ảnh chữ ký
-            byte[] imageBytes = loadImageBytes(imageRef);
-            if (imageBytes == null || imageBytes.length == 0) {
-                throw new RuntimeException("Signature image is empty or invalid");
-            }
-
-            // 3) Mở PDF và tìm lần xuất hiện CUỐI của tên in (ưu tiên theo style Times ~14pt, Bold)
-            try (PDDocument doc = PDDocument.load(pdfPath.toFile())) {
-
-                MatchPos match = findLastOccurrencePositionStyled(doc, printedName, defaultNameStyle());
-                if (match == null) {
-                    // fallback nếu không khớp style
-                    match = findLastOccurrencePosition(doc, printedName);
-                }
-                if (match == null) {
-                    // để cho tầng trên fallback sang placeholder
-                    throw new RuntimeException("Không tìm thấy tên in trong PDF: " + printedName);
-                }
-
-                float wPt = (widthPx  != null ? widthPx  : DEFAULT_SIG_W) * 72f / 96f; // px → pt
-                float hPt = (heightPx != null ? heightPx : DEFAULT_SIG_H) * 72f / 96f;
-
-                PDPage page = doc.getPage(match.pageIndex);
-                PDImageXObject img = PDImageXObject.createFromByteArray(doc, imageBytes, "signature");
-
-                float pageH = page.getMediaBox().getHeight();
-                float x = match.bounds.x;
-                float yTop = match.bounds.y + match.bounds.height;
-                float margin = 6f;
-
-                // Mặc định đặt phía TRÊN dòng tên; nếu chạm mép trên, đặt xuống DƯỚI
-                float y = yTop + margin;
-                if (y + hPt > pageH - 10) {
-                    y = Math.max(20, match.bounds.y - hPt - margin);
-                }
-
-                try (PDPageContentStream cs = new PDPageContentStream(
-                        doc, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
-                    cs.drawImage(img, x, y, wPt, hPt);
-                }
-
-                // 4) Lưu đè chính file PDF
-                doc.save(pdfPath.toFile());
-            }
-
-            // 5) Cập nhật DB (vẫn là cùng đường dẫn)
-            Contract c = contractRepository.findById(contractId).orElseThrow();
-            c.setFilePath(pdfPath.toString());
-            c.setFileGeneratedAt(LocalDateTime.now());
-            contractRepository.save(c);
-
-            return pdfPath.toString();
-
-        } catch (Exception e) {
-            throw new RuntimeException("Embed signature by NAME (PDF) failed: " + e.getMessage(), e);
-        }
-    }
-
-    // ====== PDF text locating ======
-    private static class MatchPos {
-        final int pageIndex;            // 0-based
-        final Rectangle2D.Float bounds; // x,y,width,height (point)
-        MatchPos(int pageIndex, Rectangle2D.Float bounds) {
-            this.pageIndex = pageIndex;
-            this.bounds = bounds;
-        }
-    }
-
-    /** Tìm toạ độ lần xuất hiện CUỐI của chuỗi trong PDF (theo thứ tự trang từ 1→N) */
-    private MatchPos findLastOccurrencePosition(PDDocument doc, String needleRaw) throws Exception {
-        final String needle = needleRaw.toLowerCase(Locale.ROOT);
-
-        class Locator extends PDFTextStripper {
-            MatchPos last = null;
-            Locator() throws java.io.IOException { setSortByPosition(true); }
-
-            @Override
-            protected void writeString(String text, List<TextPosition> positions) {
-                String lower = text.toLowerCase(Locale.ROOT);
-                int from = 0;
-                while (true) {
-                    int idx = lower.indexOf(needle, from);
-                    if (idx < 0) break;
-
-                    int endIdx = idx + needle.length() - 1;
-                    if (idx < positions.size() && endIdx < positions.size()) {
-                        TextPosition first = positions.get(idx);
-                        TextPosition lastTp = positions.get(endIdx);
-
-                        float minX = first.getXDirAdj();
-                        float minY = Float.MAX_VALUE;
-                        float maxYTop = Float.MIN_VALUE;
-
-                        for (int i = idx; i <= endIdx; i++) {
-                            TextPosition tp = positions.get(i);
-                            minX = Math.min(minX, tp.getXDirAdj());
-                            float y = tp.getYDirAdj();
-                            float h = tp.getHeightDir();
-                            minY = Math.min(minY, y);
-                            maxYTop = Math.max(maxYTop, y + h);
-                        }
-
-                        Rectangle2D.Float rect = new Rectangle2D.Float(
-                                minX,
-                                minY,
-                                lastTp.getXDirAdj() - minX + lastTp.getWidthDirAdj(),
-                                maxYTop - minY
-                        );
-                        last = new MatchPos(getCurrentPageNo() - 1, rect);
-                    }
-                    from = idx + 1;
-                }
-            }
-        }
-
-        Locator loc = new Locator();
-        for (int i = 1; i <= doc.getNumberOfPages(); i++) {
-            loc.setStartPage(i);
-            loc.setEndPage(i);
-            loc.getText(doc); // trigger writeString
-        }
-        return loc.last;
-    }
-
-    // ====== Style-based matching (Times New Roman ~14pt, Bold, và các font tương đương) ======
-
-    private static class StyleCriteria {
-        final double minPt, maxPt;
-        final boolean requireBold;
-        final String[] familyHints;
-        StyleCriteria(double minPt, double maxPt, boolean requireBold, String... familyHints) {
-            this.minPt = minPt; this.maxPt = maxPt; this.requireBold = requireBold; this.familyHints = familyHints;
-        }
-    }
-
-    private static StyleCriteria defaultNameStyle() {
-        // 14pt ± 0.5; Bold; Times (bao gồm font thay thế phổ biến sau khi convert)
-        return new StyleCriteria(13.5, 14.5, true,
-                "times", "timesnewroman", "times-roman", "nimbusroman", "liberationserif", "georgia");
-    }
-
-    private static String normFontName(PDFont font) {
-        if (font == null) return "";
-        String n = font.getName(); if (n == null) return "";
-        int plus = n.indexOf('+'); if (plus >= 0 && plus < n.length() - 1) n = n.substring(plus + 1);
-        return n.toLowerCase(Locale.ROOT);
-    }
-
-    private static boolean looksBold(String fontName) {
-        String n = fontName.toLowerCase(Locale.ROOT);
-        return n.contains("bold") || n.contains("-bd") || n.endsWith("bd");
-    }
-
-    private static boolean looksFamily(String fontName, String[] hints) {
-        String n = fontName.toLowerCase(Locale.ROOT);
-        for (String h : hints) if (n.contains(h)) return true;
-        return false;
-    }
-
-    /** Tìm lần xuất hiện CUỐI của needle thỏa tiêu chí style */
-    private MatchPos findLastOccurrencePositionStyled(PDDocument doc, String needleRaw, StyleCriteria sc) throws Exception {
-        final String needle = needleRaw.toLowerCase(Locale.ROOT);
-
-        class Locator extends PDFTextStripper {
-            MatchPos last = null;
-            Locator() throws java.io.IOException { setSortByPosition(true); }
-
-            @Override
-            protected void writeString(String text, List<TextPosition> positions) {
-                String lower = text.toLowerCase(Locale.ROOT);
-                int from = 0;
-                while (true) {
-                    int idx = lower.indexOf(needle, from);
-                    if (idx < 0) break;
-                    int endIdx = idx + needle.length() - 1;
-                    if (idx < positions.size() && endIdx < positions.size()) {
-                        // Kiểm tra style trên đa số ký tự trùng khớp
-                        int ok = 0, total = 0;
-                        for (int i = idx; i <= endIdx; i++) {
-                            TextPosition tp = positions.get(i);
-                            double pt = tp.getFontSizeInPt();
-                            String fn = normFontName(tp.getFont());
-                            boolean inRange = (pt >= sc.minPt && pt <= sc.maxPt);
-                            boolean famOk  = looksFamily(fn, sc.familyHints);
-                            boolean boldOk = !sc.requireBold || looksBold(fn);
-                            if (inRange && famOk && boldOk) ok++;
-                            total++;
-                        }
-                        if (total > 0 && ok * 100 / total >= 70) { // ≥70% glyph đạt tiêu chí
-                            TextPosition first = positions.get(idx);
-                            TextPosition lastTp = positions.get(endIdx);
-
-                            float minX = first.getXDirAdj();
-                            float minY = Float.MAX_VALUE;
-                            float maxYTop = Float.MIN_VALUE;
-
-                            for (int i = idx; i <= endIdx; i++) {
-                                TextPosition tp = positions.get(i);
-                                minX = Math.min(minX, tp.getXDirAdj());
-                                float y = tp.getYDirAdj();
-                                float h = tp.getHeightDir();
-                                minY = Math.min(minY, y);
-                                maxYTop = Math.max(maxYTop, y + h);
-                            }
-
-                            Rectangle2D.Float rect = new Rectangle2D.Float(
-                                    minX,
-                                    minY,
-                                    lastTp.getXDirAdj() - minX + lastTp.getWidthDirAdj(),
-                                    maxYTop - minY
-                            );
-                            last = new MatchPos(getCurrentPageNo() - 1, rect);
-                        }
-                    }
-                    from = idx + 1;
-                }
-            }
-        }
-
-        Locator loc = new Locator();
-        for (int i = 1; i <= doc.getNumberOfPages(); i++) {
-            loc.setStartPage(i);
-            loc.setEndPage(i);
-            loc.getText(doc); // trigger writeString
-        }
-        return loc.last;
     }
 
     /** Convert DOCX → PDF bằng OnlyOffice ConvertService */
@@ -718,12 +517,25 @@ public class ContractFileServiceImpl implements ContractFileService {
                         for (int ti = 0; ti < r.getContent().size(); ti++) {
                             Object tObj = unwrap(r.getContent().get(ti));
                             if (tObj instanceof Text t) {
-                                String val = t.getValue();
-                                if (val != null && val.contains(placeholder)) {
-                                    int idx = val.indexOf(placeholder);
+                                String val = Optional.ofNullable(t.getValue()).orElse("");
+
+                                // Ưu tiên: placeholder đứng riêng một run
+                                if (val.trim().equals(placeholder)) {
+                                    t.setValue("");
+
+                                    Drawing drawing = WML.createDrawing();
+                                    drawing.getAnchorOrInline().add(inline);
+                                    R imgRun = WML.createR();
+                                    imgRun.getContent().add(drawing);
+                                    runs.add(ri + 1, imgRun);
+                                    return true;
+                                }
+
+                                // Fallback: placeholder nằm trọn trong cùng Text (không cắt qua run khác)
+                                int idx = val.indexOf(placeholder);
+                                if (idx >= 0) {
                                     String before = val.substring(0, idx);
                                     String after  = val.substring(idx + placeholder.length());
-
                                     t.setValue(before);
 
                                     Drawing drawing = WML.createDrawing();
@@ -828,6 +640,97 @@ public class ContractFileServiceImpl implements ContractFileService {
     private Object unwrap(Object o) { return (o instanceof JAXBElement<?> je) ? je.getValue() : o; }
 
     // ========================================================================
+    // DOCX name matching & insert image after the LAST occurrence of a full name
+    // ========================================================================
+
+    private static String foldAccents(String s) {
+        if (s == null) return null;
+        String n = Normalizer.normalize(s, Normalizer.Form.NFD);
+        return n.replaceAll("\\p{M}+", "");
+    }
+    private static String collapseSpaces(String s) {
+        return s == null ? null : s.replace('\u00A0',' ').trim().replaceAll("\\s+"," ");
+    }
+
+    private boolean insertImageAfterName(WordprocessingMLPackage pkg, String name,
+                                         byte[] imageBytes, float wPx, float hPx) throws Exception {
+        long cx = pxToEmu(wPx), cy = pxToEmu(hPx);
+        var imgPart = BinaryPartAbstractImage.createImagePart(pkg, imageBytes);
+        var inline  = imgPart.createImageInline("signature","signature",0,1,cx,cy,false);
+
+        List<Object> blocks = pkg.getMainDocumentPart().getContent();
+        P lastPara = null; R endRun = null;
+
+        for (Object o : blocks) {
+            Object u = unwrap(o);
+            if (!(u instanceof P p)) continue;
+
+            @SuppressWarnings("unchecked")
+            List<Object> runs = p.getContent();
+
+            StringBuilder joined = new StringBuilder();
+            List<R> idxToRun = new ArrayList<>();
+            for (Object rObj : runs) {
+                Object ur = unwrap(rObj);
+                if (!(ur instanceof R r)) continue;
+                for (Object tObj : r.getContent()) {
+                    Object ut = unwrap(tObj);
+                    if (ut instanceof Text t) {
+                        String val = Optional.ofNullable(t.getValue()).orElse("");
+                        if (!val.isEmpty()) {
+                            String norm = val.replace('\u00A0',' ');
+                            joined.append(norm);
+                            for (int i=0;i<norm.length();i++) idxToRun.add(r);
+                        }
+                    }
+                }
+                // chèn 1 space ảo giữa các run để tránh dính ký tự (vẫn mapping vào run hiện tại)
+                joined.append(' '); idxToRun.add((R) (unwrap(rObj)));
+            }
+
+            String hayExact = collapseSpaces(joined.toString().toLowerCase(Locale.ROOT));
+            String hayFold  = collapseSpaces(foldAccents(joined.toString()).toLowerCase(Locale.ROOT));
+            String needleE  = collapseSpaces(name.toLowerCase(Locale.ROOT));
+            String needleF  = collapseSpaces(foldAccents(name).toLowerCase(Locale.ROOT));
+
+            int end = lastIndexEnd(hayExact, needleE);
+            if (end < 0) end = lastIndexEnd(hayFold, needleF);
+            if (end < 0 || idxToRun.isEmpty()) continue;
+
+            endRun  = idxToRun.get(Math.min(end, idxToRun.size()-1));
+            lastPara = p;
+        }
+
+        if (lastPara == null || endRun == null) return false;
+
+        Drawing drawing = WML.createDrawing();
+        drawing.getAnchorOrInline().add(inline);
+        R imgRun = WML.createR(); imgRun.getContent().add(drawing);
+
+        List<Object> runs = lastPara.getContent();
+        for (int i=0;i<runs.size();i++) {
+            if (unwrap(runs.get(i)) == endRun) {
+                runs.add(i+1, imgRun);
+                return true;
+            }
+        }
+        runs.add(imgRun);
+        return true;
+    }
+
+    private int lastIndexEnd(String hay, String needle){
+        if (hay==null||needle==null||needle.isBlank()) return -1;
+        int from=0, end=-1;
+        while (true) {
+            int idx = hay.indexOf(needle, from);
+            if (idx<0) break;
+            end = idx + needle.length() - 1;
+            from = idx + 1;
+        }
+        return end;
+    }
+
+    // ========================================================================
     // I/O helpers
     // ========================================================================
 
@@ -916,4 +819,73 @@ public class ContractFileServiceImpl implements ContractFileService {
     }
     private Path docxPathOf(Long id) { return contractDirOf(id).resolve(DOCX_NAME); }
     private Path pdfPathOf(Long id)  { return contractDirOf(id).resolve(PDF_NAME); }
+
+    private boolean insertImageAboveName(WordprocessingMLPackage pkg, String name,
+                                         byte[] imageBytes, float wPx, float hPx) throws Exception {
+        long cx = pxToEmu(wPx), cy = pxToEmu(hPx);
+        var imgPart = BinaryPartAbstractImage.createImagePart(pkg, imageBytes);
+        var inline  = imgPart.createImageInline("signature","signature",0,1,cx,cy,false);
+
+        List<Object> blocks = pkg.getMainDocumentPart().getContent();
+        P targetPara = null; R startRun = null;
+
+        for (Object o : blocks) {
+            Object u = unwrap(o);
+            if (!(u instanceof P p)) continue;
+
+            @SuppressWarnings("unchecked")
+            List<Object> runs = p.getContent();
+
+            StringBuilder joined = new StringBuilder();
+            List<R> idxToRun = new ArrayList<>();
+            for (Object rObj : runs) {
+                Object ur = unwrap(rObj);
+                if (!(ur instanceof R r)) continue;
+                for (Object tObj : r.getContent()) {
+                    Object ut = unwrap(tObj);
+                    if (ut instanceof Text t) {
+                        String val = Optional.ofNullable(t.getValue()).orElse("");
+                        if (!val.isEmpty()) {
+                            String norm = val.replace('\u00A0',' ');
+                            joined.append(norm);
+                            for (int i=0;i<norm.length();i++) idxToRun.add(r);
+                        }
+                    }
+                }
+                // giữ mapping 1 ký tự -> 1 run để xác định startRun
+                joined.append(' ');
+                idxToRun.add((R) unwrap(rObj));
+            }
+
+            String hayExact = collapseSpaces(joined.toString().toLowerCase(Locale.ROOT));
+            String hayFold  = collapseSpaces(foldAccents(joined.toString()).toLowerCase(Locale.ROOT));
+            String needleE  = collapseSpaces(name.toLowerCase(Locale.ROOT));
+            String needleF  = collapseSpaces(foldAccents(name).toLowerCase(Locale.ROOT));
+
+            int end = lastIndexEnd(hayExact, needleE);
+            int nlen = (needleE != null ? needleE.length() : 0);
+            if (end < 0) { end = lastIndexEnd(hayFold, needleF); nlen = (needleF != null ? needleF.length() : 0); }
+            if (end < 0 || idxToRun.isEmpty()) continue;
+
+            int start = Math.max(0, end - nlen + 1);
+            startRun  = idxToRun.get(Math.min(start, idxToRun.size()-1));
+            targetPara = p;
+        }
+
+        if (targetPara == null || startRun == null) return false;
+
+        // CHÈN TRONG CHÍNH run CHỨA KÝ TỰ ĐẦU CỦA TÊN
+        Drawing drawing = WML.createDrawing();
+        drawing.getAnchorOrInline().add(inline);
+        Br br = WML.createBr(); // xuống dòng sau ảnh
+
+        List<Object> rc = startRun.getContent();
+        rc.add(0, br);       // tên nằm ngay dưới ảnh
+        rc.add(0, drawing);  // ảnh trùng đúng vị trí X của ký tự đầu tên
+
+        return true;
+    }
+
+
+
 }

@@ -25,4 +25,8 @@ public class AuthProfileResponse {
     private Gender gender;
     private StatusUser status;
     private List<RoleResponse> roles;
+    private Long departmentId;
+    private String departmentName;
+    private Long positionId;
+    private String positionName;
 }

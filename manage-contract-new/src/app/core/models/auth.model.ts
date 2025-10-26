@@ -56,6 +56,16 @@ export interface AuthProfileResponse {
   passwordChangedAt?: string; // Thời gian đổi mật khẩu (nếu có)
 }
 
+export interface AdminUpdateUserRequest {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  roleKeys?: string[];                 // cập nhật vai trò
+  departmentId?: number | null;        // chuyển phòng ban
+  positionId?: number | null;          // đổi chức danh
+  status?: 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'LOCKED';
+}
+
 export enum StatusUser {
     ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',

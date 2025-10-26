@@ -1,11 +1,11 @@
 /* Main Content Styles */
-.main-content {
-    margin-left: 250px;
-    margin-top: 70px;
-    padding: 20px;
-    background-color: #f5f7fa;
-    min-height: calc(100vh - 70px);
-}
+  .main-content {
+      margin-left: 250px;
+      margin-top: 70px;
+      padding: 20px;
+      background-color: #f5f7fa;
+      min-height: calc(100vh - 70px);
+  }
 
 .page-title {
     font-size: 24px;
@@ -16,10 +16,11 @@
     align-items: center;
 }
 
-.page-title i {
-    margin-right: 10px;
-    color: #3498db;
-}
+  .page-title {
+      color: rgb(49, 150, 232);
+      font-weight: 700;
+      margin-bottom: 0.01rem;
+  }
 
 /* Modal Styles */
 .modal-backdrop {

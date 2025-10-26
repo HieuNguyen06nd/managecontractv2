@@ -75,34 +75,58 @@ export class ContactSignComponent implements OnInit {
   previewDownloadUrl: string | null = null;
   private cacheBust = Date.now();
 
+  page = 1;
+  pageSize = 10;
+  pageSizes = [10, 20, 50];
+  get totalRecords(): number {
+    return this.visibleContracts.length;
+  }
+  get totalPages(): number {
+    return Math.max(1, Math.ceil(this.totalRecords / this.pageSize));
+  }
+  get pageStartIndex(): number {
+    return (this.page - 1) * this.pageSize;
+  }
+  get pageEndIndex(): number {
+    return Math.min(this.pageStartIndex + this.pageSize, this.totalRecords);
+  }
+  get pagedContracts(): PendingCard[] {
+    const list = this.visibleContracts;
+    if (this.page > this.totalPages) this.page = this.totalPages; // tự điều chỉnh nếu lọc làm giảm tổng trang
+    return list.slice(this.pageStartIndex, this.pageEndIndex);
+  }
+
+
   ngOnInit(): void {
     this.refreshAll();
   }
 
   // ============ Fetch helpers ============
   private refreshAll() {
-    this.listLoading = true;
-    this.errorMsg = '';
+      this.listLoading = true;
+      this.errorMsg = '';
 
-    forkJoin({
-      pending: this.service.getMyPendingContracts()
-        .pipe(catchError(err => { this.toastApiError(err, 'Không tải được danh sách chờ phê duyệt.'); return of({ data: [] as ContractResponse[] }); })),
-      approved: this.service.getMyHandledContracts('APPROVED')
-        .pipe(catchError(err => { this.toastApiError(err, 'Không tải được danh sách đã duyệt.'); return of({ data: [] as ContractResponse[] }); })),
-      rejected: this.service.getMyHandledContracts('REJECTED')
-        .pipe(catchError(err => { this.toastApiError(err, 'Không tải được danh sách từ chối.'); return of({ data: [] as ContractResponse[] }); })),
-    })
-    .pipe(finalize(() => this.listLoading = false), take(1))
-    .subscribe(({ pending, approved, rejected }: any) => {
-      this.pendingContracts = (pending?.data ?? []).map((c: PendingCard) => ({
-        ...c,
-        currentStepName: c.currentStepName ?? 'Bước hiện tại',
-        priority: c.priority ?? 'NORMAL'
-      }));
-      this.approvedContracts = (approved?.data ?? []);
-      this.rejectedContracts = (rejected?.data ?? []);
-    });
-  }
+      forkJoin({
+        pending: this.service.getMyPendingContracts()
+          .pipe(catchError(err => { this.toastApiError(err, 'Không tải được danh sách chờ phê duyệt.'); return of({ data: [] as ContractResponse[] }); })),
+        approved: this.service.getMyHandledContracts('APPROVED')
+          .pipe(catchError(err => { this.toastApiError(err, 'Không tải được danh sách đã duyệt.'); return of({ data: [] as ContractResponse[] }); })),
+        rejected: this.service.getMyHandledContracts('REJECTED')
+          .pipe(catchError(err => { this.toastApiError(err, 'Không tải được danh sách từ chối.'); return of({ data: [] as ContractResponse[] }); })),
+      })
+      .pipe(finalize(() => this.listLoading = false), take(1))
+      .subscribe(({ pending, approved, rejected }: any) => {
+        this.pendingContracts = (pending?.data ?? []).map((c: PendingCard) => ({
+          ...c,
+          currentStepName: c.currentStepName ?? 'Bước hiện tại',
+          priority: c.priority ?? 'NORMAL'
+        }));
+        this.approvedContracts = (approved?.data ?? []);
+        this.rejectedContracts = (rejected?.data ?? []);
+
+        this.resetToFirstPage(); // reset trang sau khi reload dữ liệu
+      });
+    }
 
   private toastApiError(err: any, fallback: string) {
     const msg = err?.error?.message || fallback;
@@ -253,6 +277,22 @@ export class ContactSignComponent implements OnInit {
     if ([502,503,504].includes(st)) return 'Máy chuyển đổi đang bận. Hãy thử lại.';
     return 'Không xem được PDF. Vui lòng thử lại.';
   }
+
+  // ============ Misc ============
+
+  onSearchChange() { this.resetToFirstPage(); }
+  onSortChange()   { this.resetToFirstPage(); }
+  onTypeFilterChange() { this.resetToFirstPage(); }
+
+  goToPage(p: number) {
+    const tp = this.totalPages;
+    this.page = Math.min(Math.max(1, Number(p) || 1), tp);
+  }
+  firstPage() { this.goToPage(1); }
+  lastPage()  { this.goToPage(this.totalPages); }
+  prevPage()  { this.goToPage(this.page - 1); }
+  nextPage()  { this.goToPage(this.page + 1); }
+  private resetToFirstPage() { this.page = 1; }
 
   // ============ UTILITIES ============
   get visibleContracts(): PendingCard[] {

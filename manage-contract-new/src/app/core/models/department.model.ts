@@ -1,3 +1,4 @@
+import { PositionResponse } from "./position.model";
 export interface DepartmentResponse {
   id: number;
   name: string;
@@ -7,6 +8,7 @@ export interface DepartmentResponse {
   leaderId?: number;
   leaderName?: string;
   status:Status;
+  positions?: PositionResponse[]; 
 }
 
 export interface DepartmentRequest {
