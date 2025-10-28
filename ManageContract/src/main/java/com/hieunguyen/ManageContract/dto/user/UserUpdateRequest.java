@@ -11,4 +11,6 @@ public class UserUpdateRequest {
     private String fullName;
     private String phone;
     private Gender gender;
+    private Long departmentId;
+    private Long positionId;
 }

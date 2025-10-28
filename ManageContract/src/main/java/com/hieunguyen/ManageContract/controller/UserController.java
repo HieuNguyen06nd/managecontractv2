@@ -76,4 +76,15 @@ public class UserController {
         AuthProfileResponse response = userService.uploadSignatureBase64(dataUrl);
         return new ResponseData<>(200, "Upload chữ ký Base64 thành công", response);
     }
+
+    @PutMapping("/{userId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "ADMIN cập nhật thông tin người dùng (phòng ban/vị trí, hồ sơ, ...). Không cho đổi email.")
+    public ResponseData<AuthProfileResponse> updateUserByAdmin(
+            @PathVariable Long userId,
+            @RequestBody UserUpdateRequest request
+    ) throws BadRequestException {
+        AuthProfileResponse updated = userService.updateUserByAdmin(userId, request);
+        return new ResponseData<>(200, "ADMIN cập nhật người dùng thành công", updated);
+    }
 }

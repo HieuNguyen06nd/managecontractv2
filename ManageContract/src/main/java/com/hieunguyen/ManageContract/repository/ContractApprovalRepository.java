@@ -42,5 +42,19 @@ public interface ContractApprovalRepository extends JpaRepository<ContractApprov
 
     List<ContractApproval> findByContract(Contract contract);
 
+    @Query("""
+        select a from ContractApproval a
+        left join fetch a.approver ap
+        left join fetch ap.department apDept
+        left join fetch a.department dept
+        left join fetch a.step st
+        where a.contract.id = :contractId
+        order by a.stepOrder asc, a.id asc
+        """)
+    List<ContractApproval> findAllForLog(@Param("contractId") Long contractId);
+
+
+
+
 
 }

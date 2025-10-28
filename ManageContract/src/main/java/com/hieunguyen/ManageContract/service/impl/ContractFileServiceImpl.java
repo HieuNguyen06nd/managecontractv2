@@ -8,6 +8,7 @@ import com.hieunguyen.ManageContract.entity.ContractVariableValue;
 import com.hieunguyen.ManageContract.repository.ContractApprovalRepository;
 import com.hieunguyen.ManageContract.repository.ContractRepository;
 import com.hieunguyen.ManageContract.service.ContractFileService;
+import jakarta.transaction.Transactional;
 import jakarta.xml.bind.JAXBElement;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,8 +27,10 @@ import java.io.InputStream;
 import java.math.BigInteger;
 import java.nio.file.*;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.text.Normalizer;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,7 +43,7 @@ public class ContractFileServiceImpl implements ContractFileService {
     private static final String DOCX_NAME   = "contract.docx";
     private static final String PDF_NAME    = "contract.pdf";
 
-    // kích thước chữ ký mặc định (px, giả định ảnh thiết kế theo 96 DPI)
+    // kích thước chữ ký mặc định (px, giả định ảnh 96 DPI)
     private static final float DEFAULT_SIG_W = 180f;
     private static final float DEFAULT_SIG_H = 60f;
 
@@ -70,6 +73,7 @@ public class ContractFileServiceImpl implements ContractFileService {
             Path docx = ensureDocxGenerated(contract, null);
             Path pdf  = pdfPathOf(contract.getId());
 
+            // không thêm nhật ký ở đây; chỉ cập nhật khi có hành động ký/phê duyệt
             convertToPdfUsingOnlyOffice(contract.getId(), docx, pdf);
 
             contract.setFilePath(pdf.toString());
@@ -120,10 +124,11 @@ public class ContractFileServiceImpl implements ContractFileService {
     }
 
     /**
-     * Ký theo placeholder trên DOCX rồi convert PDF (giống luồng cũ nhưng an toàn hơn)
-     * Khuyến nghị: để placeholder đứng riêng một run trong template.
+     * Ký theo placeholder trên DOCX rồi convert PDF.
+     * Trang "Nhật ký ký duyệt" cuối văn bản sẽ được REPLACE (chỉ 1 trang).
      */
     @Override
+    @Transactional
     public String embedSignature(String filePath, String imageUrl, String placeholder) {
         try {
             if (placeholder == null || placeholder.isBlank()) {
@@ -150,6 +155,9 @@ public class ContractFileServiceImpl implements ContractFileService {
             );
             if (!ok) throw new RuntimeException("Placeholder not found in DOCX: " + placeholder);
 
+            // === Cập nhật trang "Nhật ký ký duyệt" (chỉ 1 trang) ===
+            updateApprovalLogPage(contractId, pkg);
+
             pkg.save(docx.toFile());
 
             Path pdf = pdfPathOf(contractId);
@@ -167,6 +175,7 @@ public class ContractFileServiceImpl implements ContractFileService {
 
     /** Ký theo step phê duyệt: dùng placeholder của step hoặc mặc định SIGN:<approvalId> */
     @Override
+    @Transactional
     public String embedSignatureForApproval(Long contractId, String imageUrl, Long approvalId) {
         try {
             ContractApproval approval = contractApprovalRepository.findById(approvalId)
@@ -183,8 +192,9 @@ public class ContractFileServiceImpl implements ContractFileService {
         }
     }
 
-    /** Ghi text phê duyệt vào DOCX rồi convert PDF */
+    /** Ghi text phê duyệt vào DOCX rồi convert PDF (và replace nhật ký) */
     @Override
+    @Transactional
     public void addApprovalText(String filePath, String approvalText) {
         try {
             Long contractId = extractContractIdFromPath(Paths.get(filePath));
@@ -195,6 +205,10 @@ public class ContractFileServiceImpl implements ContractFileService {
 
             WordprocessingMLPackage pkg = WordprocessingMLPackage.load(docx.toFile());
             addParagraphWithText(pkg, approvalText, 10, false);
+
+            // === Cập nhật trang "Nhật ký ký duyệt" (chỉ 1 trang) ===
+            updateApprovalLogPage(contractId, pkg);
+
             pkg.save(docx.toFile());
 
             Path pdf = pdfPathOf(contractId);
@@ -286,6 +300,7 @@ public class ContractFileServiceImpl implements ContractFileService {
 
     /** Lấy PDF; nếu chưa có thì convert từ DOCX (tự sinh DOCX nếu cần) */
     @Override
+    @Transactional
     public File getPdfOrConvert(Long contractId) {
         try {
             Path pdf = pdfPathOf(contractId);
@@ -297,6 +312,11 @@ public class ContractFileServiceImpl implements ContractFileService {
                         .orElseThrow(() -> new RuntimeException("Contract not found"));
                 generateDocxFile(c);
             }
+
+            WordprocessingMLPackage pkg = WordprocessingMLPackage.load(docx.toFile());
+            updateApprovalLogPage(contractId, pkg);
+            pkg.save(docx.toFile());
+
             convertToPdfUsingOnlyOffice(contractId, docx, pdf);
 
             Contract c = contractRepository.findById(contractId).orElseThrow();
@@ -311,16 +331,14 @@ public class ContractFileServiceImpl implements ContractFileService {
     }
 
     // ========================================================================
-    // NEW: KÝ THEO TÊN – TRÊN DOCX, SAU ĐÓ MỚI CONVERT PDF (DOCX-first)
+    // (Tuỳ chọn) KÝ THEO TÊN – chèn ảnh trên tên (nếu bạn dùng luồng này)
     // ========================================================================
 
-    /** Nếu interface định nghĩa 3 tham số, dùng @Override ở đây */
     @Override
     public String embedSignatureByName(Long contractId, String imageRef, String printedName) {
         return embedSignatureByNameOnDocx(contractId, imageRef, printedName, null, null);
     }
 
-    /** Overload cho phép truyền kích thước */
     public String embedSignatureByNameOnDocx(Long contractId, String imageRef, String printedName,
                                              Float widthPx, Float heightPx) {
         try {
@@ -328,33 +346,29 @@ public class ContractFileServiceImpl implements ContractFileService {
                 throw new RuntimeException("printedName is required");
             }
 
-            // 1) Bảo đảm đã có DOCX (nếu chưa, sinh từ template + biến)
             Contract contract = contractRepository.findById(contractId)
                     .orElseThrow(() -> new RuntimeException("Contract not found"));
             Path docx = ensureDocxGenerated(contract, null);
 
-            // 2) Ảnh chữ ký
             byte[] imageBytes = loadImageBytes(imageRef);
             if (imageBytes == null || imageBytes.length == 0) {
                 throw new RuntimeException("Signature image is empty or invalid");
             }
 
-            // 3) Mở DOCX và chèn ảnh NGAY SAU lần xuất hiện CUỐI của tên
             WordprocessingMLPackage pkg = WordprocessingMLPackage.load(docx.toFile());
             boolean ok = insertImageAboveName(pkg, printedName, imageBytes,
                     (widthPx  != null ? widthPx  : DEFAULT_SIG_W),
                     (heightPx != null ? heightPx : DEFAULT_SIG_H));
-            if (!ok) {
-                // Cho phép fallback: thử dạng "Admin, Nguyễn Văn A" không dấu nếu người dùng nhập có dấu & không tìm thấy
-                throw new RuntimeException("Không tìm thấy tên trong DOCX: " + printedName);
-            }
+            if (!ok) throw new RuntimeException("Không tìm thấy tên trong DOCX: " + printedName);
+
+            // === Replace trang nhật ký ===
+            updateApprovalLogPage(contractId, pkg);
+
             pkg.save(docx.toFile());
 
-            // 4) Convert DOCX → PDF (một lần)
             Path pdfPath = pdfPathOf(contractId);
             convertToPdfUsingOnlyOffice(contractId, docx, pdfPath);
 
-            // 5) Cập nhật DB
             contract.setFilePath(pdfPath.toString());
             contract.setFileGeneratedAt(LocalDateTime.now());
             contractRepository.save(contract);
@@ -640,7 +654,7 @@ public class ContractFileServiceImpl implements ContractFileService {
     private Object unwrap(Object o) { return (o instanceof JAXBElement<?> je) ? je.getValue() : o; }
 
     // ========================================================================
-    // DOCX name matching & insert image after the LAST occurrence of a full name
+    // DOCX name matching & insert image after/above a full name
     // ========================================================================
 
     private static String foldAccents(String s) {
@@ -684,7 +698,6 @@ public class ContractFileServiceImpl implements ContractFileService {
                         }
                     }
                 }
-                // chèn 1 space ảo giữa các run để tránh dính ký tự (vẫn mapping vào run hiện tại)
                 joined.append(' '); idxToRun.add((R) (unwrap(rObj)));
             }
 
@@ -728,6 +741,417 @@ public class ContractFileServiceImpl implements ContractFileService {
             from = idx + 1;
         }
         return end;
+    }
+
+    private boolean insertImageAboveName(WordprocessingMLPackage pkg, String name,
+                                         byte[] imageBytes, float wPx, float hPx) throws Exception {
+        long cx = pxToEmu(wPx), cy = pxToEmu(hPx);
+        var imgPart = BinaryPartAbstractImage.createImagePart(pkg, imageBytes);
+        var inline  = imgPart.createImageInline("signature","signature",0,1,cx,cy,false);
+
+        List<Object> blocks = pkg.getMainDocumentPart().getContent();
+        P targetPara = null; R startRun = null;
+
+        for (Object o : blocks) {
+            Object u = unwrap(o);
+            if (!(u instanceof P p)) continue;
+
+            @SuppressWarnings("unchecked")
+            List<Object> runs = p.getContent();
+
+            StringBuilder joined = new StringBuilder();
+            List<R> idxToRun = new ArrayList<>();
+            for (Object rObj : runs) {
+                Object ur = unwrap(rObj);
+                if (!(ur instanceof R r)) continue;
+                for (Object tObj : r.getContent()) {
+                    Object ut = unwrap(tObj);
+                    if (ut instanceof Text t) {
+                        String val = Optional.ofNullable(t.getValue()).orElse("");
+                        if (!val.isEmpty()) {
+                            String norm = val.replace('\u00A0',' ');
+                            joined.append(norm);
+                            for (int i=0;i<norm.length();i++) idxToRun.add(r);
+                        }
+                    }
+                }
+                joined.append(' ');
+                idxToRun.add((R) unwrap(rObj));
+            }
+
+            String hayExact = collapseSpaces(joined.toString().toLowerCase(Locale.ROOT));
+            String hayFold  = collapseSpaces(foldAccents(joined.toString()).toLowerCase(Locale.ROOT));
+            String needleE  = collapseSpaces(name.toLowerCase(Locale.ROOT));
+            String needleF  = collapseSpaces(foldAccents(name).toLowerCase(Locale.ROOT));
+
+            int end = lastIndexEnd(hayExact, needleE);
+            int nlen = (needleE != null ? needleE.length() : 0);
+            if (end < 0) { end = lastIndexEnd(hayFold, needleF); nlen = (needleF != null ? needleF.length() : 0); }
+            if (end < 0 || idxToRun.isEmpty()) continue;
+
+            int start = Math.max(0, end - nlen + 1);
+            startRun  = idxToRun.get(Math.min(start, idxToRun.size()-1));
+            targetPara = p;
+        }
+
+        if (targetPara == null || startRun == null) return false;
+
+        Drawing drawing = WML.createDrawing();
+        drawing.getAnchorOrInline().add(inline);
+        Br br = WML.createBr(); // xuống dòng sau ảnh
+
+        List<Object> rc = startRun.getContent();
+        rc.add(0, br);       // tên nằm ngay dưới ảnh
+        rc.add(0, drawing);  // ảnh trùng vị trí ký tự đầu
+
+        return true;
+    }
+
+    // ========================================================================
+    // APPROVAL LOG (1 trang duy nhất, replace mỗi lần)
+    // ========================================================================
+
+    /** Cập nhật (replace) đúng 1 trang "NHẬT KÝ KÝ DUYỆT" ở cuối DOCX */
+    private void updateApprovalLogPage(Long contractId, WordprocessingMLPackage pkg) {
+        try {
+            // Xoá block cũ + page-break cũ (nếu còn)
+            removeApprovalLogBlockWithLeadingPageBreak(pkg);
+
+            // Lấy dữ liệu approvals
+            List<ContractApproval> approvals = contractApprovalRepository.findAllForLog(contractId);
+            if (approvals == null || approvals.isEmpty()) return;
+
+            approvals.sort(
+                    Comparator
+                            .comparing((ContractApproval a) ->
+                                    Optional.ofNullable(a.getStepOrder()).orElse(Integer.MAX_VALUE))
+                            .thenComparing(a ->
+                                    Optional.ofNullable(a.getApprovedAt())
+                                            .orElse(Optional.ofNullable(a.getUpdatedAt()).orElse(LocalDateTime.MIN)))
+            );
+
+            // Dựng 1 SdtBlock (APPROVAL_LOG) – page break là PHẦN TỬ ĐẦU TIÊN bên trong block
+            SdtBlock sdt = WML.createSdtBlock();
+            SdtPr pr = WML.createSdtPr();
+            Tag tag = WML.createTag(); tag.setVal("APPROVAL_LOG");
+            pr.setTag(tag); sdt.setSdtPr(pr);
+            SdtContentBlock content = WML.createSdtContentBlock();
+            sdt.setSdtContent(content);
+
+            // Ngắt sang trang mới (bên trong block → replace sẽ xoá luôn)
+            content.getContent().add(pageBreakParagraph());
+
+            // Tiêu đề
+            content.getContent().add(titleParagraph("NHẬT KÝ KÝ DUYỆT VĂN BẢN", 14));
+            content.getContent().add(emptyLine());
+
+            // Bảng dữ liệu
+            Tbl tbl = buildApprovalTable(approvals);
+            content.getContent().add(tbl);
+
+            // Gắn block vào cuối tài liệu
+            pkg.getMainDocumentPart().addObject(sdt);
+        } catch (Exception e) {
+            log.warn("updateApprovalLogPage error: {}", e.getMessage());
+        }
+    }
+
+    /** Xoá SdtBlock tag=APPROVAL_LOG và cả paragraph page-break liền trước (nếu tồn tại từ bản cũ) */
+    private void removeApprovalLogBlockWithLeadingPageBreak(WordprocessingMLPackage pkg) {
+        var mdp = pkg.getMainDocumentPart();
+        List<Object> content = mdp.getContent();
+        for (int i = 0; i < content.size(); i++) {
+            Object u = unwrap(content.get(i));
+            if (u instanceof SdtBlock s) {
+                SdtPr pr = s.getSdtPr();
+                if (pr != null && pr.getTag() != null && "APPROVAL_LOG".equals(pr.getTag().getVal())) {
+                    // nếu phần tử ngay trước là paragraph chỉ chứa page-break thì xoá luôn
+                    if (i > 0 && isPageBreakParagraph(content.get(i - 1))) {
+                        content.remove(i - 1); // remove break
+                        content.remove(i - 1); // sau khi remove, block trượt về i-1
+                    } else {
+                        content.remove(i);
+                    }
+                    break; // chỉ có 1 block
+                }
+            }
+        }
+    }
+
+    /** Paragraph chỉ có page-break? */
+    private boolean isPageBreakParagraph(Object node) {
+        Object u = unwrap(node);
+        if (!(u instanceof P p)) return false;
+        for (Object rObj : p.getContent()) {
+            Object ur = unwrap(rObj);
+            if (ur instanceof R r) {
+                for (Object tObj : r.getContent()) {
+                    Object ut = unwrap(tObj);
+                    if (ut instanceof Br br) {
+                        return br.getType() == null || br.getType() == STBrType.PAGE;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Tạo bảng: STT | Người xử lý | Đơn vị | Thời gian | Ý kiến */
+    private Tbl buildApprovalTable(List<ContractApproval> approvals) {
+        Tbl tbl = WML.createTbl();
+
+        // ===== borders =====
+        TblPr pr = WML.createTblPr();
+        TblBorders borders = WML.createTblBorders();
+        CTBorder b = WML.createCTBorder();
+        b.setVal(STBorder.SINGLE);
+        b.setSz(BigInteger.valueOf(8));
+        b.setColor("BFBFBF");
+        borders.setTop(b); borders.setBottom(b); borders.setLeft(b); borders.setRight(b);
+        borders.setInsideH(b); borders.setInsideV(b);
+        pr.setTblBorders(borders);
+        tbl.setTblPr(pr);
+
+        // ===== header =====
+        Tr head = WML.createTr();
+        head.getContent().add(thCell("STT",        900));
+        head.getContent().add(thCell("Người xử lý",3800));
+        head.getContent().add(thCell("Đơn vị",     3200));
+        head.getContent().add(thCell("Thời gian",  2200));
+        head.getContent().add(thCell("Ý kiến",     2800));
+        tbl.getContent().add(head);
+
+        // ===== rows =====
+        int i = 1;
+        for (ContractApproval a : approvals) {
+            Tr tr = WML.createTr();
+
+            tr.getContent().add(tdCell(String.valueOf(i++), 900, true));
+
+            // Người xử lý: bắt approvedBy/signer + assigned/createdBy/updatedBy...
+            String actor = extractActorName(a);
+            tr.getContent().add(tdCell(actor, 3800, false));
+
+            // Đơn vị: department của approval/actor (nếu có)
+            String orgUnit = extractOrgUnit(a);
+            tr.getContent().add(tdCell(orgUnit, 3200, false));
+
+            // Thời gian: ưu tiên approvedAt -> updatedAt -> createdAt
+            LocalDateTime ts = Optional.ofNullable(getApprovedAt(a))
+                    .orElse(Optional.ofNullable(getUpdatedAt(a)).orElse(getCreatedAt(a)));
+            tr.getContent().add(tdCell(formatTs(ts), 2200, false));
+
+            String note = firstNonBlank(
+                    safe(() -> invokeString(a, "getDecisionNote")),
+                    safe(() -> invokeString(a, "getComment")),
+                    safe(() -> invokeString(a, "getNote")),
+                    ""
+            );
+            tr.getContent().add(tdCell(note, 2800, false));
+
+            tbl.getContent().add(tr);
+        }
+        return tbl;
+    }
+    private boolean notBlank(String s){ return s != null && !s.isBlank(); }
+    private String extractActorName(ContractApproval a) {
+        if (a == null) return "-";
+
+        // Ưu tiên: approver trực tiếp
+        try {
+            if (a.getApprover() != null) {
+                String n = deepName(a.getApprover());
+                if (notBlank(n)) return n;
+            }
+        } catch (Throwable ignore) {}
+
+        // Nếu entity có chuỗi sẵn trên chính Approval
+        String fromSelf = firstNonBlank(
+                safe(() -> invokeString(a, "getApproverName")),
+                safe(() -> invokeString(a, "getSignerName")),
+                safe(() -> invokeString(a, "getActorName"))
+        );
+        if (notBlank(fromSelf)) return fromSelf;
+
+        // Fallback reflection như cũ
+        Object o = scanObjectGetters(
+                a,
+                List.of("approv","sign","actor","user","employee","account",
+                        "handler","processor","review","creator","created",
+                        "updater","updated","owner","assign","assignee","assigned")
+        );
+        String deep = deepName(o);
+        return notBlank(deep) ? deep : "-";
+    }
+
+
+    private String extractOrgUnit(Object a) {
+        if (a == null) return "-";
+        // 1) String-getter departmentName/orgName/...
+        String v = scanStringGetters(
+                a,
+                List.of("departmentname","departmentName","deptname","orgname","organizationname","unitname","phongban","phongBan"),
+                List.of("department","dept","org","organization","unit","phong","ban")
+        );
+        if (notBlank(v)) return v;
+
+        // 2) Object-getter department/unit
+        Object dep = scanObjectGetters(a, List.of("department","dept","org","organization","unit"));
+        String deep = deepName(dep);
+        if (notBlank(deep)) return deep;
+
+        // 3) Đi từ actor -> department
+        Object actorObj = scanObjectGetters(a, List.of("approv","sign","actor","user","employee","account","assign","assignee","assigned","creator","created","updater","updated"));
+        if (actorObj != null) {
+            Object actorDep = scanObjectGetters(actorObj, List.of("department","dept","organization","unit"));
+            String viaActor = deepName(actorDep);
+            if (notBlank(viaActor)) return viaActor;
+        }
+        return "-";
+    }
+
+    private String scanStringGetters(Object root, List<String> valueKeys, List<String> roleKeys) {
+        try {
+            for (var m : root.getClass().getMethods()) {
+                if (!m.getName().startsWith("get") || m.getParameterCount()!=0 || m.getReturnType()!=String.class) continue;
+                String lower = m.getName().toLowerCase(Locale.ROOT);
+                boolean hitVal  = valueKeys.stream().anyMatch(lower::contains);
+                boolean hitRole = roleKeys.stream().anyMatch(lower::contains);
+                if (hitVal && hitRole) {
+                    String v = (String) m.invoke(root);
+                    if (notBlank(v)) return v;
+                }
+            }
+        } catch (Exception ignore) {}
+        return null;
+    }
+
+    private Object scanObjectGetters(Object root, List<String> roleKeys) {
+        try {
+            for (var m : root.getClass().getMethods()) {
+                if (!m.getName().startsWith("get") || m.getParameterCount()!=0) continue;
+                Class<?> rt = m.getReturnType();
+                if (rt.isPrimitive() || rt==String.class) continue;
+                String lower = m.getName().toLowerCase(Locale.ROOT);
+                if (roleKeys.stream().anyMatch(lower::contains)) {
+                    Object o = m.invoke(root);
+                    if (o != null) return o;
+                }
+            }
+        } catch (Exception ignore) {}
+        return null;
+    }
+
+
+    private String deepName(Object o) {
+        if (o == null) return null;
+        try {
+            // Các getter chuỗi phổ biến
+            for (String g : List.of(
+                    "getFullName","getFullname","getDisplayName","getName",
+                    "getUsername","getUserName","getEmail","getEmailAddress"
+            )) {
+                try {
+                    var m = o.getClass().getMethod(g);
+                    Object v = m.invoke(o);
+                    if (v instanceof String s && notBlank(s)) return s;
+                } catch (NoSuchMethodException ignore) {}
+            }
+
+            // Ghép họ tên
+            String fn = tryStr(o, "getFirstName", "getGivenName");
+            String ln = tryStr(o, "getLastName", "getFamilyName", "getSurname");
+            if (notBlank(fn) || notBlank(ln)) {
+                return (notBlank(fn)?fn:"") + (notBlank(fn)&&notBlank(ln)?" ":"") + (notBlank(ln)?ln:"");
+            }
+
+            // Đi sâu qua các wrapper quen thuộc
+            for (String g : List.of("getUser","getAccount","getEmployee","getPerson","getOwner")) {
+                try {
+                    var m = o.getClass().getMethod(g);
+                    String s = deepName(m.invoke(o));
+                    if (notBlank(s)) return s;
+                } catch (NoSuchMethodException ignore) {}
+            }
+
+            // Bất kỳ getter chứa "name"
+            for (var m : o.getClass().getMethods()) {
+                if (!m.getName().startsWith("get") || m.getParameterCount()!=0 || m.getReturnType()!=String.class) continue;
+                if (m.getName().toLowerCase(Locale.ROOT).contains("name")) {
+                    String v = (String) m.invoke(o);
+                    if (notBlank(v)) return v;
+                }
+            }
+
+            String ts = String.valueOf(o);
+            if (notBlank(ts) && !ts.matches(".+@\\p{XDigit}+")) return ts;
+        } catch (Exception ignore) {}
+        return null;
+    }
+    private String tryStr(Object o, String... getters) {
+        for (String g : getters) {
+            try {
+                var m = o.getClass().getMethod(g);
+                Object v = m.invoke(o);
+                if (v instanceof String s && notBlank(s)) return s;
+            } catch (Exception ignore) {}
+        }
+        return null;
+    }
+
+    private Tc thCell(String text, int width) {
+        Tc tc = tdCell(text, width, true);
+        // shading xám nhạt
+        TcPr p = tc.getTcPr(); if (p==null){ p=WML.createTcPr(); tc.setTcPr(p);}
+        CTShd shd = WML.createCTShd(); shd.setVal(STShd.CLEAR); shd.setFill("EDEDED");
+        p.setShd(shd);
+        return tc;
+    }
+    private Tc tdCell(String text, int width, boolean center) {
+        Tc tc = WML.createTc();
+        TcPr pr = WML.createTcPr();
+        TblWidth w = WML.createTblWidth();
+        w.setType("dxa"); w.setW(BigInteger.valueOf(width));
+        pr.setTcW(w); tc.setTcPr(pr);
+
+        P p = WML.createP();
+        if (center) {
+            PPr ppr = WML.createPPr(); Jc jc = WML.createJc(); jc.setVal(JcEnumeration.CENTER);
+            ppr.setJc(jc); p.setPPr(ppr);
+        }
+        R r = WML.createR(); Text t = WML.createText(); t.setValue(Optional.ofNullable(text).orElse(""));
+        r.getContent().add(t); p.getContent().add(r);
+        tc.getContent().add(p);
+        return tc;
+    }
+
+    private P titleParagraph(String text, int fontSizePt) {
+        P p = WML.createP();
+        PPr ppr = WML.createPPr(); Jc jc = WML.createJc(); jc.setVal(JcEnumeration.CENTER); ppr.setJc(jc); p.setPPr(ppr);
+        R r = WML.createR();
+        RPr rpr = WML.createRPr(); BooleanDefaultTrue b = new BooleanDefaultTrue(); b.setVal(true); rpr.setB(b);
+        HpsMeasure sz = new HpsMeasure(); sz.setVal(BigInteger.valueOf(fontSizePt*2L)); rpr.setSz(sz); rpr.setSzCs(sz);
+        r.setRPr(rpr);
+        Text t = WML.createText(); t.setValue(text);
+        r.getContent().add(t); p.getContent().add(r);
+        return p;
+    }
+    private P centerParagraph(String text, int fontSizePt) {
+        P p = WML.createP();
+        PPr ppr = WML.createPPr(); Jc jc = WML.createJc(); jc.setVal(JcEnumeration.CENTER); ppr.setJc(jc); p.setPPr(ppr);
+        R r = WML.createR(); if (fontSizePt>0){ RPr rpr=new RPr(); HpsMeasure sz=new HpsMeasure(); sz.setVal(BigInteger.valueOf(fontSizePt*2L)); rpr.setSz(sz); rpr.setSzCs(sz); r.setRPr(rpr); }
+        Text t = WML.createText(); t.setValue(text);
+        r.getContent().add(t); p.getContent().add(r);
+        return p;
+    }
+    private P emptyLine() { return centerParagraph(" ", 1); }
+    private P pageBreakParagraph() {
+        P p = WML.createP();
+        R r = WML.createR();
+        Br br = WML.createBr(); br.setType(STBrType.PAGE);
+        r.getContent().add(br);
+        p.getContent().add(r);
+        return p;
     }
 
     // ========================================================================
@@ -820,72 +1244,34 @@ public class ContractFileServiceImpl implements ContractFileService {
     private Path docxPathOf(Long id) { return contractDirOf(id).resolve(DOCX_NAME); }
     private Path pdfPathOf(Long id)  { return contractDirOf(id).resolve(PDF_NAME); }
 
-    private boolean insertImageAboveName(WordprocessingMLPackage pkg, String name,
-                                         byte[] imageBytes, float wPx, float hPx) throws Exception {
-        long cx = pxToEmu(wPx), cy = pxToEmu(hPx);
-        var imgPart = BinaryPartAbstractImage.createImagePart(pkg, imageBytes);
-        var inline  = imgPart.createImageInline("signature","signature",0,1,cx,cy,false);
+    // ========================================================================
+    // Small utils for Approval mapping/format
+    // ========================================================================
 
-        List<Object> blocks = pkg.getMainDocumentPart().getContent();
-        P targetPara = null; R startRun = null;
-
-        for (Object o : blocks) {
-            Object u = unwrap(o);
-            if (!(u instanceof P p)) continue;
-
-            @SuppressWarnings("unchecked")
-            List<Object> runs = p.getContent();
-
-            StringBuilder joined = new StringBuilder();
-            List<R> idxToRun = new ArrayList<>();
-            for (Object rObj : runs) {
-                Object ur = unwrap(rObj);
-                if (!(ur instanceof R r)) continue;
-                for (Object tObj : r.getContent()) {
-                    Object ut = unwrap(tObj);
-                    if (ut instanceof Text t) {
-                        String val = Optional.ofNullable(t.getValue()).orElse("");
-                        if (!val.isEmpty()) {
-                            String norm = val.replace('\u00A0',' ');
-                            joined.append(norm);
-                            for (int i=0;i<norm.length();i++) idxToRun.add(r);
-                        }
-                    }
-                }
-                // giữ mapping 1 ký tự -> 1 run để xác định startRun
-                joined.append(' ');
-                idxToRun.add((R) unwrap(rObj));
-            }
-
-            String hayExact = collapseSpaces(joined.toString().toLowerCase(Locale.ROOT));
-            String hayFold  = collapseSpaces(foldAccents(joined.toString()).toLowerCase(Locale.ROOT));
-            String needleE  = collapseSpaces(name.toLowerCase(Locale.ROOT));
-            String needleF  = collapseSpaces(foldAccents(name).toLowerCase(Locale.ROOT));
-
-            int end = lastIndexEnd(hayExact, needleE);
-            int nlen = (needleE != null ? needleE.length() : 0);
-            if (end < 0) { end = lastIndexEnd(hayFold, needleF); nlen = (needleF != null ? needleF.length() : 0); }
-            if (end < 0 || idxToRun.isEmpty()) continue;
-
-            int start = Math.max(0, end - nlen + 1);
-            startRun  = idxToRun.get(Math.min(start, idxToRun.size()-1));
-            targetPara = p;
-        }
-
-        if (targetPara == null || startRun == null) return false;
-
-        // CHÈN TRONG CHÍNH run CHỨA KÝ TỰ ĐẦU CỦA TÊN
-        Drawing drawing = WML.createDrawing();
-        drawing.getAnchorOrInline().add(inline);
-        Br br = WML.createBr(); // xuống dòng sau ảnh
-
-        List<Object> rc = startRun.getContent();
-        rc.add(0, br);       // tên nằm ngay dưới ảnh
-        rc.add(0, drawing);  // ảnh trùng đúng vị trí X của ký tự đầu tên
-
-        return true;
+    private String firstNonBlank(String... arr){
+        for (String s : arr){ if (s!=null && !s.isBlank()) return s; }
+        return null;
+    }
+    private String safe(Supplier<String> s){
+        try { return s.get(); } catch (Exception e){ return null; }
     }
 
+    private LocalDateTime invokeDate(ContractApproval a, String getter){
+        try { return (LocalDateTime) ContractApproval.class.getMethod(getter).invoke(a); }
+        catch (Exception ignore){ return null; }
+    }
+    private String invokeString(ContractApproval a, String getter){
+        try {
+            Object v = ContractApproval.class.getMethod(getter).invoke(a);
+            return v != null ? v.toString() : null;
+        } catch (Exception ignore){ return null; }
+    }
+    private LocalDateTime getApprovedAt(ContractApproval a){ return invokeDate(a, "getApprovedAt"); }
+    private LocalDateTime getUpdatedAt(ContractApproval a){ return invokeDate(a, "getUpdatedAt"); }
+    private LocalDateTime getCreatedAt(ContractApproval a){ return invokeDate(a, "getCreatedAt"); }
 
-
+    private String formatTs(LocalDateTime ts){
+        if (ts==null) return "";
+        return ts.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
+    }
 }

@@ -153,28 +153,45 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
                 .orElseThrow(() -> new RuntimeException("Employee not found: " + email));
         validateApprovalPermission(approval.getStep(), me);
 
-        // Chữ ký ảnh
+        // Ảnh chữ ký & tên in
         String signatureUrl = Optional.ofNullable(req.getSignatureImage())
                 .filter(s -> !s.isBlank())
                 .orElse(me.getSignatureImage());
         if (signatureUrl == null || signatureUrl.isBlank())
             throw new RuntimeException("Bạn chưa có chữ ký số. Vui lòng upload chữ ký trước.");
 
-        // Tên in để dò trong văn bản
         String printedName = Optional.ofNullable(me.getFullName())
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
                 .orElse(me.getAccount().getEmail());
 
+        // ========= 1) CẬP NHẬT DB TRƯỚC KHI RENDER =========
+        LocalDateTime now = LocalDateTime.now();
+        approval.setApprover(me);
+        if (approval.getDepartment() == null && me.getDepartment() != null) {
+            approval.setDepartment(me.getDepartment());
+        }
+        approval.setUpdatedAt(now);
+
+        if (action == ApprovalAction.SIGN_ONLY) {
+            // Hoàn tất step ngay ở bước ký
+            approval.setStatus(ApprovalStatus.APPROVED);
+            approval.setApprovedAt(now);
+            approval.setIsCurrent(false);
+            approval.setComment(req.getComment());
+        }
+        // GHI & FLUSH để trang nhật ký đọc thấy dữ liệu mới
+        contractApprovalRepository.saveAndFlush(approval);
+
+        // ========= 2) CHÈN CHỮ KÝ & CẬP NHẬT TRANG NHẬT KÝ =========
         String updatedPath;
         String snapshotKey;
-
         try {
-            // Ưu tiên ký theo tên in (DOCX-first ở ContractFileService)
+            // ưu tiên ký theo tên in
             updatedPath = contractFileService.embedSignatureByName(contract.getId(), signatureUrl, printedName);
             snapshotKey = "PRINTED_NAME:" + printedName;
         } catch (RuntimeException ex) {
-            // Fallback: ký theo placeholder của step
+            // fallback: ký theo placeholder của step
             String ph = approval.getSignaturePlaceholder();
             if (ph == null || ph.isBlank())
                 throw new RuntimeException("Không tìm thấy vị trí ký: không khớp tên in và step không có placeholder.");
@@ -187,20 +204,19 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
             contractRepository.save(contract);
         }
 
-        // Lưu snapshot
+        // ========= 3) LƯU SNAPSHOT CHỮ KÝ =========
         ContractSignature sig = new ContractSignature();
         sig.setContract(contract);
         sig.setSigner(me);
         sig.setApprovalStep(approval);
-        sig.setSignedAt(LocalDateTime.now());
+        sig.setSignedAt(now);
         sig.setSignatureImage(signatureUrl);
         sig.setPlaceholderKey(snapshotKey);
         sig.setType(SignatureType.EMPLOYEE);
         contractSignatureRepository.save(sig);
 
-        // Hoàn tất nếu SIGN_ONLY
+        // ========= 4) CHUYỂN BƯỚC (chỉ với SIGN_ONLY) =========
         if (action == ApprovalAction.SIGN_ONLY) {
-            completeApprovalStep(approval, me, req.getComment());
             if (Boolean.TRUE.equals(approval.getIsFinalStep())) {
                 contract.setStatus(ContractStatus.APPROVED);
                 contractRepository.save(contract);

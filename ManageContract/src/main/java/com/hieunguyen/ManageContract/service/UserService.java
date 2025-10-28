@@ -11,4 +11,5 @@ public interface UserService {
     AuthProfileResponse uploadSignatureBase64(String dataUrl) throws BadRequestException;
     AuthProfileResponse uploadSignature(MultipartFile signature) throws BadRequestException;
     AuthProfileResponse uploadAvatar(MultipartFile avatar) throws BadRequestException;
+    AuthProfileResponse updateUserByAdmin(Long userId, UserUpdateRequest request)throws BadRequestException;
 }

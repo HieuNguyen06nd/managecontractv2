@@ -101,6 +101,8 @@ export class UserComponent implements OnInit {
     this.searchTerms.pipe(debounceTime(300), distinctUntilChanged())
       .subscribe(() => this.filterUsers());
 
+    this.editForm.get('email')?.disable({ emitEvent: false });
+
     // valueChanges chỉ dùng khi user đổi thủ công (không áp khi patchValue)
     this.addForm.get('departmentId')?.valueChanges
       .pipe(distinctUntilChanged())
@@ -146,17 +148,31 @@ export class UserComponent implements OnInit {
   }
 
   /** Nạp positions theo department (có cache) + preselect nếu truyền vào */
-  private loadPositionsByDepartment(deptId: number | null, preselectPositionId?: number | null): void {
+  private loadPositionsByDepartment(
+    deptId: number | null,
+    preselectPositionId?: number | null,
+    preselectPositionName?: string | null
+  ): void {
     if (!deptId) { this.positions = []; return; }
 
     const key = Number(deptId);
+    const setPositionIfPossible = () => {
+      // Ưu tiên ID; nếu chưa có ID thì tìm theo tên
+      let idToSet = preselectPositionId ?? null;
+      if (idToSet == null && preselectPositionName) {
+        const hit = this.positions.find(p => (p.name || '').toLowerCase() === preselectPositionName!.toLowerCase());
+        idToSet = hit ? hit.id : null;
+      }
+      if (idToSet != null) {
+        this.editForm.get('positionId')?.setValue(idToSet, { emitEvent: false });
+        this.addForm.get('positionId')?.setValue(idToSet, { emitEvent: false });
+      }
+    };
+
     const cached = this.posCache.get(key);
     if (cached) {
       this.positions = cached;
-      if (preselectPositionId != null) {
-        this.editForm.get('positionId')?.setValue(preselectPositionId, { emitEvent: false });
-        this.addForm.get('positionId')?.setValue(preselectPositionId, { emitEvent: false });
-      }
+      setPositionIfPossible();
       return;
     }
 
@@ -167,15 +183,12 @@ export class UserComponent implements OnInit {
         }));
         this.posCache.set(key, list);
         this.positions = list;
-
-        if (preselectPositionId != null) {
-          this.editForm.get('positionId')?.setValue(preselectPositionId, { emitEvent: false });
-          this.addForm.get('positionId')?.setValue(preselectPositionId, { emitEvent: false });
-        }
+        setPositionIfPossible();
       },
       error: _ => { this.positions = []; }
     });
   }
+
 
   // ===== Search & Filter =====
   onSearch(event: Event): void {
@@ -214,51 +227,58 @@ export class UserComponent implements OnInit {
     this.positions = [];
     this.isAddModalOpen = true;
   }
-
-  openEditUserModal(user: AuthProfileResponse): void {
+  
+  openEditUserModal(user: any): void {
     this.currentUserId = user.id;
     this.currentUserName = user.fullName;
 
-    const depId = this.coerceNumOrNull((user as any).departmentId ?? (user as any).department?.id);
-    const posId = this.coerceNumOrNull((user as any).positionId   ?? (user as any).position?.id);
+    // Lấy ID nếu có; nếu không có thì lấy tên rồi map sang ID
+    let depId = this.coerceNumOrNull(this.pickFirst(user, [
+      'departmentId', 'department.id', 'employee.department.id'
+    ]));
+    const depName = this.displayDept(user); // đã cover mọi kiểu
+
+    const posIdRaw = this.coerceNumOrNull(this.pickFirst(user, [
+      'positionId', 'position.id', 'employee.position.id'
+    ]));
+    const posName = this.displayPos(user);
 
     const proceed = () => {
-      // 1) nạp position theo dept trước (để có options + preselect posId)
-      this.loadPositionsByDepartment(depId, posId ?? null);
+      // Nếu chưa có depId mà có tên -> tìm trong list phòng ban
+      if (!depId && depName && this.departments?.length) {
+        const hit = this.departments.find(d => (d.name || '').toLowerCase() === depName.toLowerCase());
+        depId = hit ? hit.id : null;
+      }
 
-      // 2) patch form nhưng KHÔNG phát sự kiện để tránh valueChanges reset
+      // Nạp positions theo dept và preselect theo ID hoặc theo TÊN (nếu BE trả tên)
+      this.loadPositionsByDepartment(depId, posIdRaw ?? null, posName ?? null);
+
+      // Patch form (email đã disable rồi)
       this.editForm.patchValue({
         id: user.id,
         fullName: user.fullName,
         email: user.email,
         phone: user.phone,
-        roleKeys: (user.roles || []).map(r => r.roleKey),
-        departmentId: depId,
-        positionId: posId,
+        roleKeys: (user.roles || []).map((r: any) => r.roleKey),
+        departmentId: depId ?? null,
+        positionId: posIdRaw ?? null,   // nếu null sẽ được set sau khi loadPositionsByDepartment
         status: user.status,
       }, { emitEvent: false });
 
       this.isEditModalOpen = true;
     };
 
-    // Chưa có danh sách phòng ban -> tải rồi mới proceed
+    // Nếu chưa có danh sách phòng ban, load trước rồi proceed
     if (!this.departmentsLoaded || this.departments.length === 0) {
       this.departmentService.getAllDepartments().subscribe({
-        next: r => {
-          this.departments = r.data || [];
-          this.departmentsLoaded = true;
-          proceed();
-        },
-        error: _ => {
-          this.toastr.error('Không tải được phòng ban', 'Lỗi');
-          // vẫn mở modal để người dùng thấy dữ liệu khác
-          proceed();
-        }
+        next: r => { this.departments = r.data || []; this.departmentsLoaded = true; proceed(); },
+        error: _ => { this.toastr.error('Không tải được phòng ban', 'Lỗi'); proceed(); }
       });
     } else {
       proceed();
     }
   }
+
 
   openDeleteUserModal(userId: number, fullName: string): void {
     this.currentUserId = userId;
@@ -369,21 +389,35 @@ export class UserComponent implements OnInit {
   }
 
   // ===== Helpers hiển thị =====
-  displayDept(user: AuthProfileResponse): string {
-    return (user as any).departmentName
-        ?? (user as any).department?.name
-        ?? '-';
+  displayDept(user: any): string {
+    return this.pickFirst<string>(user, [
+      'departmentName',        // nếu BE trả name phẳng
+      'department',            // <-- BE của bạn hiện đang là cái này
+      'department.name',
+      'employee.department.name',
+    ]) ?? '-';
   }
 
-  displayPos(user: AuthProfileResponse): string {
-    return (user as any).positionName
-        ?? (user as any).position?.name
-        ?? '-';
+  displayPos(user: any): string {
+    return this.pickFirst<string>(user, [
+      'positionName',
+      'position',              // <-- BE của bạn hiện đang là cái này
+      'position.name',
+      'employee.position.name',
+    ]) ?? '-';
   }
 
   private coerceNumOrNull(v: unknown): number | null {
     if (v === undefined || v === null || v === '') return null;
     const n = Number(v);
     return Number.isNaN(n) ? null : n;
+  }
+
+  private pickFirst<T = any>(obj: any, paths: string[]): T | undefined {
+    for (const p of paths) {
+      const v = p.split('.').reduce((acc, k) => (acc ? (acc as any)[k] : undefined), obj);
+      if (v !== undefined && v !== null && v !== '') return v as T;
+    }
+    return undefined;
   }
 }

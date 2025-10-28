@@ -116,10 +116,7 @@ export class EmployeeService {
 
 
   updateByAdmin(id: number, payload: AdminUpdateUserRequest): Observable<ResponseData<AuthProfileResponse>> {
-    return this.http.put<ResponseData<AuthProfileResponse>>(
-      `${this.baseUrl}/auth/users/${id}`,
-      payload
-    );
+    return this.http.put<ResponseData<AuthProfileResponse>>(`${this.baseUrl}/${id}`, payload);
   }
 
   /**
