@@ -104,19 +104,18 @@
             <input type="text" class="form-control" formControlName="fullName" placeholder="Nhập họ và tên">
           </div>
 
+          <!-- Email CHO PHÉP NHẬP -->
           <div class="form-group">
             <label class="form-label">Email <span style="color:red">*</span></label>
             <input
               type="email"
               class="form-control"
               formControlName="email"
-              [readonly]="true"
-              [disabled]="true"
-              title="Email không thể thay đổi"
+              placeholder="Nhập email"
+              autocomplete="off"
             />
-            <small class="form-text text-muted">Email không thể đổi.</small>
+            <small class="form-text text-muted">Email sẽ dùng để đăng nhập.</small>
           </div>
-
 
           <div class="form-group">
             <label class="form-label">Số điện thoại</label>
@@ -176,9 +175,11 @@
             <input type="text" class="form-control" formControlName="fullName">
           </div>
 
+          <!-- Email KHÓA từ TS (disable control) -->
           <div class="form-group">
             <label class="form-label">Email <span style="color:red">*</span></label>
-            <input type="email" class="form-control" formControlName="email">
+            <input type="email" class="form-control" formControlName="email" />
+            <small class="form-text text-muted">Email không thể thay đổi.</small>
           </div>
 
           <div class="form-group">

@@ -1,6 +1,8 @@
-import { Injectable } from '@angular/core';
+// src/app/core/services/auth.service.ts
+import { Injectable, Inject, PLATFORM_ID } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, BehaviorSubject } from 'rxjs';
+import { isPlatformBrowser } from '@angular/common';
 
 import {
   LoginRequest,
@@ -12,19 +14,37 @@ import {
 import { ResponseData } from '../models/response-data.model';
 import { environment } from '../../../environments/environment';
 
+export interface Principal {
+  sub?: string;
+  roles: string[];        // ['ADMIN', 'EMPLOYEE', ...]
+  permissions: string[];  // ['role.create', 'CREATE_ADMIN', ...]
+  exp?: number;
+  raw?: any;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private baseUrl = `${environment.apiUrl}/auth`;
 
-  constructor(private http: HttpClient) {}
+  // Phát principal cho toàn app nếu bạn muốn lắng nghe thay đổi
+  private principal$ = new BehaviorSubject<Principal | null>(null);
 
-  // ==== Login dùng chung cho cả password & OTP ====
+  constructor(
+    private http: HttpClient,
+    @Inject(PLATFORM_ID) private platformId: Object
+  ) {
+    // Khởi tạo từ localStorage (F5 vẫn còn)
+    if (isPlatformBrowser(this.platformId)) {
+      const token = localStorage.getItem('token');
+      if (token) this.applyToken(token, /*silent*/ true);
+    }
+  }
+
+  // ================== API gọi BE ==================
   login(req: LoginRequest): Observable<ResponseData<AuthResponse>> {
-    // BE /api/auth/login hỗ trợ cả mật khẩu và OTP (truyền field nào thì dùng field đó)
     return this.http.post<ResponseData<AuthResponse>>(`${this.baseUrl}/login`, req);
   }
 
-  // Gửi OTP
   sendOtp(emailOrPhone: string): Observable<ResponseData<any>> {
     return this.http.post<ResponseData<any>>(
       `${this.baseUrl}/send-otp?email=${encodeURIComponent(emailOrPhone)}`,
@@ -32,7 +52,6 @@ export class AuthService {
     );
   }
 
-  // Xác minh OTP (nếu cần dùng riêng)
   verifyOtp(email: string, otp: string): Observable<ResponseData<any>> {
     return this.http.post<ResponseData<any>>(
       `${this.baseUrl}/verify-otp?email=${encodeURIComponent(email)}&otp=${encodeURIComponent(otp)}`,
@@ -40,29 +59,19 @@ export class AuthService {
     );
   }
 
-  // Đặt lại mật khẩu bằng OTP
   resetPassword(data: { email: string; otp: string; newPassword: string; })
     : Observable<ResponseData<any>> {
-    return this.http.post<ResponseData<any>>(
-      `${this.baseUrl}/forgot-password/reset`,
-      data
-    );
+    return this.http.post<ResponseData<any>>(`${this.baseUrl}/forgot-password/reset`, data);
   }
 
-  // Đăng ký
   register(req: RegisterRequest): Observable<ResponseData<RegisterResponse>> {
-    return this.http.post<ResponseData<RegisterResponse>>(
-      `${this.baseUrl}/register`,
-      req
-    );
+    return this.http.post<ResponseData<RegisterResponse>>(`${this.baseUrl}/register`, req);
   }
 
-  // Tùy BE có /me hay chưa
   getProfile(): Observable<ResponseData<AuthProfileResponse>> {
     return this.http.get<ResponseData<AuthProfileResponse>>(`${this.baseUrl}/me`);
   }
 
-  // Đăng xuất BE (tùy dùng)
   logout(email: string): Observable<ResponseData<string>> {
     return this.http.post<ResponseData<string>>(
       `${this.baseUrl}/logout?email=${encodeURIComponent(email)}`,
@@ -70,7 +79,6 @@ export class AuthService {
     );
   }
 
-  // Đổi mật khẩu lần đầu
   firstChangePassword(newPassword: string, changePasswordToken: string)
     : Observable<ResponseData<AuthResponse>> {
     return this.http.post<ResponseData<AuthResponse>>(
@@ -80,9 +88,14 @@ export class AuthService {
     );
   }
 
-  // ========= SESSION HELPERS =========
+  // ================== SESSION HELPERS ==================
 
-  /** Lưu session từ response login (phù hợp LoginComponent) */
+  /**
+   * Gọi sau khi login thành công:
+   * - Lưu refreshToken/userId
+   * - Giải mã accessToken -> roles/permissions -> lưu localStorage
+   * - Phát principal ra BehaviorSubject
+   */
   setSessionFromResponse(res: ResponseData<AuthResponse>): void {
     const data = res?.data as any;
     if (!data) throw new Error('Phản hồi không hợp lệ');
@@ -95,64 +108,116 @@ export class AuthService {
       throw new Error('Thiếu accessToken/refreshToken');
     }
 
-    localStorage.setItem('token', accessToken);
-    localStorage.setItem('refreshToken', refreshToken);
-    if (userId != null) localStorage.setItem('userId', String(userId));
+    // refreshToken & userId
+    if (isPlatformBrowser(this.platformId)) {
+      localStorage.setItem('refreshToken', refreshToken);
+      if (userId != null) localStorage.setItem('userId', String(userId));
+    }
 
-    // Ưu tiên roles/authorities/permissions từ server trả về
-    const fromApiRoles = Array.isArray(data.roles) ? data.roles : null;            // có thể là [{roleKey: 'ADMIN'}, ...]
-    const fromApiAuthorities = Array.isArray(data.authorities) ? data.authorities : null; // ['APPROVE_CONTRACT', 'ROLE_ADMIN', ...]
-    const fromApiPermissions = Array.isArray(data.permissions) ? data.permissions : null; // ['CONTRACT_CREATE', ...]
+    // Giải mã & set principal + token
+    this.applyToken(accessToken);
+  }
 
-    // Fallback decode JWT để lấy thêm thông tin
-    const payload = this.safeDecodeJwt<any>(accessToken);
+  /**
+   * Giải mã token → rút roles/permissions theo đúng payload bạn cung cấp:
+   * {
+   *   roles: [{ roleId, roleKey, ..., permissions: [{ id, permissionKey, ... }] }],
+   *   sub, iat, exp
+   * }
+   */
+  applyToken(accessToken: string, silent = false): void {
+    const payload = this.safeDecodeJwt<any>(accessToken) || {};
 
-    // Roles: nếu BE không trả ra mảng object roles, suy ra từ authorities/roles trong JWT
-    const roles =
-      fromApiRoles
-      ?? this.toRoleObjects(
-           (payload?.roles as string[]) ||
-           (payload?.authorities as string[]) ||
-           []
-         );
+    // Lấy danh sách roleKey
+    const roles: string[] = Array.isArray(payload.roles)
+      ? payload.roles
+          .map((r: any) => r?.roleKey)
+          .filter((x: any) => typeof x === 'string')
+      : [];
 
-    const authorities =
-      fromApiAuthorities
-      ?? (payload?.authorities as string[])
-      ?? [];
+    // Flatten permissionKey từ từng role
+    const permFromRoles: string[] = Array.isArray(payload.roles)
+      ? payload.roles.flatMap((r: any) =>
+          Array.isArray(r?.permissions)
+            ? r.permissions.map((p: any) => p?.permissionKey).filter((x: any) => typeof x === 'string')
+            : []
+        )
+      : [];
 
-    const permissions =
-      fromApiPermissions
-      ?? (payload?.permissions as string[])
-      ?? this.extractPermissionsFromAuthorities(authorities);
+    // Nếu BE có nhét thêm `permissions` ở root → gộp vào luôn
+    const permRoot: string[] = Array.isArray(payload.permissions) ? payload.permissions : [];
 
-    localStorage.setItem('roles', JSON.stringify(roles));            // guard đang đọc 'roles'
-    localStorage.setItem('authorities', JSON.stringify(authorities));
-    localStorage.setItem('permissions', JSON.stringify(permissions));
+    // Gộp + unique, giữ nguyên chữ hoa/thường đúng như BE (bạn muốn “không map”)
+    const permissions = Array.from(new Set<string>([...permFromRoles, ...permRoot]));
 
-    // option: lưu vài thông tin hiển thị
-    if (payload?.sub) localStorage.setItem('userEmail', payload.sub);
-    if (payload?.name) localStorage.setItem('fullName', payload.name);
+    // Lưu localStorage (để guard cũ dùng) + lưu token
+    if (isPlatformBrowser(this.platformId)) {
+      localStorage.setItem('token', accessToken);
+      localStorage.setItem('roles', JSON.stringify(roles.map(r => ({ roleKey: r })))); // dạng [{roleKey:'ADMIN'}]
+      localStorage.setItem('permissions', JSON.stringify(permissions));
+      if (payload?.sub) localStorage.setItem('userEmail', payload.sub);
+      if (payload?.name) localStorage.setItem('fullName', payload.name);
+    }
+
+    // Phát principal cho toàn app
+    const principal: Principal = {
+      sub: payload?.sub,
+      roles,
+      permissions,
+      exp: payload?.exp,
+      raw: payload
+    };
+    this.principal$.next(principal);
+
+    if (!silent) {
+      // optional: console.log('Principal:', principal);
+    }
   }
 
   getToken(): string | null {
-    return localStorage.getItem('token');
+    return isPlatformBrowser(this.platformId) ? localStorage.getItem('token') : null;
   }
 
   clearSession(): void {
+    if (!isPlatformBrowser(this.platformId)) return;
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('userId');
     localStorage.removeItem('roles');
-    localStorage.removeItem('authorities');
     localStorage.removeItem('permissions');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('fullName');
+    this.principal$.next(null);
   }
 
-  // ========= PRIVATE UTILS =========
+  // ================== CHECK HELPERS (tuỳ dùng) ==================
+  principal() { return this.principal$.value; }
+  principalChanges() { return this.principal$.asObservable(); }
 
-  /** Decode JWT payload an toàn (base64url) */
+  hasPermission(key: string): boolean {
+    const perms = this.getPermissions();
+    return perms.has(key);
+  }
+  hasAnyPermission(keys: string[]): boolean {
+    const perms = this.getPermissions();
+    return keys.some(k => perms.has(k));
+  }
+  hasAllPermissions(keys: string[]): boolean {
+    const perms = this.getPermissions();
+    return keys.every(k => perms.has(k));
+  }
+
+  private getPermissions(): Set<string> {
+    if (!isPlatformBrowser(this.platformId)) return new Set();
+    try {
+      const arr = JSON.parse(localStorage.getItem('permissions') || '[]');
+      return new Set(arr as string[]);
+    } catch {
+      return new Set();
+    }
+  }
+
+  // ================== PRIVATE UTILS ==================
   private safeDecodeJwt<T = any>(jwt: string | undefined): T | null {
     if (!jwt) return null;
     const parts = jwt.split('.');
@@ -167,26 +232,5 @@ export class AuthService {
     } catch {
       return null;
     }
-  }
-
-  /** Từ mảng chuỗi authorities/roles → mảng object { roleKey: 'ADMIN' } cho phù hợp PermissionGuard */
-  private toRoleObjects(source: string[]): Array<{ roleKey: string }> {
-    // Ưu tiên các chuỗi bắt đầu "ROLE_"
-    const roleNames = source
-      .filter(s => typeof s === 'string')
-      .map(s => s.startsWith('ROLE_') ? s.substring(5) : s)
-      .filter(s => !!s);
-
-    // unique
-    const uniq = Array.from(new Set(roleNames));
-    return uniq.map(r => ({ roleKey: r }));
-  }
-
-  /** Nếu không có permissions riêng, lấy từ authorities loại bỏ ROLE_ */
-  private extractPermissionsFromAuthorities(authorities: string[]): string[] {
-    if (!Array.isArray(authorities)) return [];
-    const perms = authorities
-      .filter(a => typeof a === 'string' && !a.startsWith('ROLE_'));
-    return Array.from(new Set(perms));
   }
 }

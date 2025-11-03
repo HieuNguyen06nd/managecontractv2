@@ -1,4 +1,3 @@
-// src/app/home/user/user.component.ts
 import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormControl } from '@angular/forms';
 import { CommonModule } from '@angular/common';
@@ -10,12 +9,11 @@ import { EmployeeService, AdminCreateUserRequest } from '../../core/services/emp
 import { AuthProfileResponse, RoleResponse } from '../../core/models/auth.model';
 import {
   DepartmentService,
-  DepartmentResponse,                 
+  DepartmentResponse,
 } from '../../core/services/department.service';
 
 import {
   PositionService,
-  Status as PosStatus
 } from '../../core/services/position.service';
 import { PositionResponse } from '../../core/models/position.model';
 
@@ -77,7 +75,7 @@ export class UserComponent implements OnInit {
       fullName: ['', Validators.required],
       email: ['', [Validators.required, Validators.email]],
       phone: [''],
-      role: ['', Validators.required],
+      role: ['', Validators.required],       // chọn 1 role (RoleOption) hoặc roleKey string
       departmentId: [null],
       positionId: [null],
     });
@@ -85,7 +83,7 @@ export class UserComponent implements OnInit {
     this.editForm = this.fb.group({
       id: [null],
       fullName: ['', Validators.required],
-      email: ['', [Validators.required, Validators.email]],
+      email: ['', [Validators.required, Validators.email]], // sẽ disable ở TS
       phone: [''],
       roleKeys: new FormControl<string[]>([]),
       departmentId: [null],
@@ -101,6 +99,7 @@ export class UserComponent implements OnInit {
     this.searchTerms.pipe(debounceTime(300), distinctUntilChanged())
       .subscribe(() => this.filterUsers());
 
+    // KHÓA email ở form sửa (không cho chỉnh)
     this.editForm.get('email')?.disable({ emitEvent: false });
 
     // valueChanges chỉ dùng khi user đổi thủ công (không áp khi patchValue)
@@ -189,7 +188,6 @@ export class UserComponent implements OnInit {
     });
   }
 
-
   // ===== Search & Filter =====
   onSearch(event: Event): void {
     const term = (event.target as HTMLInputElement).value;
@@ -222,12 +220,21 @@ export class UserComponent implements OnInit {
   // ===== Modal handlers =====
   openAddUserModal(): void {
     this.addForm.reset({
-      fullName: '', email: '', phone: '', role: '', departmentId: null, positionId: null,
+      fullName: '',
+      email: '',
+      phone: '',
+      role: '',
+      departmentId: null,
+      positionId: null,
     });
+
+    // CHẮC CHẮN ô email được enable trong form Thêm
+    this.addForm.get('email')?.enable({ emitEvent: false });
+
     this.positions = [];
     this.isAddModalOpen = true;
   }
-  
+
   openEditUserModal(user: any): void {
     this.currentUserId = user.id;
     this.currentUserName = user.fullName;
@@ -253,7 +260,7 @@ export class UserComponent implements OnInit {
       // Nạp positions theo dept và preselect theo ID hoặc theo TÊN (nếu BE trả tên)
       this.loadPositionsByDepartment(depId, posIdRaw ?? null, posName ?? null);
 
-      // Patch form (email đã disable rồi)
+      // Patch form (email sẽ bị disable — không cho sửa)
       this.editForm.patchValue({
         id: user.id,
         fullName: user.fullName,
@@ -264,6 +271,9 @@ export class UserComponent implements OnInit {
         positionId: posIdRaw ?? null,   // nếu null sẽ được set sau khi loadPositionsByDepartment
         status: user.status,
       }, { emitEvent: false });
+
+      // đảm bảo email bị disable
+      this.editForm.get('email')?.disable({ emitEvent: false });
 
       this.isEditModalOpen = true;
     };
@@ -278,7 +288,6 @@ export class UserComponent implements OnInit {
       proceed();
     }
   }
-
 
   openDeleteUserModal(userId: number, fullName: string): void {
     this.currentUserId = userId;
@@ -318,7 +327,7 @@ export class UserComponent implements OnInit {
     this.addSubmitting = true;
 
     const f = this.addForm.value;
-    const roleKey = (f.role && (f.role.roleKey || f.role)) as string | undefined;
+    const roleKey = (f.role && (f.role as any).roleKey) ? (f.role as any).roleKey : (f.role as string | undefined);
 
     const payload: AdminCreateUserRequest = {
       email: f.email,
@@ -351,10 +360,12 @@ export class UserComponent implements OnInit {
       return;
     }
 
-    const f = this.editForm.value;
+    // lấy cả giá trị control bị disable (email)
+    const f = this.editForm.getRawValue();
+
     const payload = {
       fullName: f.fullName,
-      email: f.email,
+      email: f.email, // không cho chỉnh ở UI, nhưng vẫn gửi để BE có tham chiếu nếu cần
       phone: f.phone,
       roleKeys: (f.roleKeys || []) as string[],
       departmentId: f.departmentId ?? null,

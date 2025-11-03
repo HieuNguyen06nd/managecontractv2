@@ -1,6 +1,7 @@
 <div class="login-page">
   <div class="login-container">
     <div class="row g-0">
+
       <!-- LEFT -->
       <div class="col-md-5 login-left">
         <div class="app-logo">
@@ -39,48 +40,34 @@
       <!-- RIGHT -->
       <div class="col-md-7 login-right">
         <div class="login-card">
-          <h3 class="mb-4">Đăng nhập hệ thống</h3>
+          <h3 class="mb-4" *ngIf="view !== 'firstChange'">Đăng nhập hệ thống</h3>
+          <h3 class="mb-4" *ngIf="view === 'firstChange'">Đổi mật khẩu lần đầu</h3>
 
-          <!-- tabs -->
-          <div class="login-tabs">
+          <!-- Tabs chỉ hiển thị khi KHÔNG ở firstChange -->
+          <div class="login-tabs" *ngIf="view !== 'firstChange'">
             <button
               class="login-tab"
-              [class.active]="loginMode === 'password'"
+              [class.active]="view === 'password'"
               (click)="switchMode('password')"
-              type="button"
-            >
-              Đăng nhập bằng mật khẩu
-            </button>
+              type="button">Đăng nhập bằng mật khẩu</button>
+
             <button
               class="login-tab"
-              [class.active]="loginMode === 'otp'"
+              [class.active]="view === 'otp'"
               (click)="switchMode('otp')"
-              type="button"
-            >
-              Đăng nhập bằng OTP
-            </button>
+              type="button">Đăng nhập bằng OTP</button>
           </div>
 
           <!-- PASSWORD FORM -->
-          <div *ngIf="loginMode === 'password'">
+          <div *ngIf="view === 'password'">
             <div class="form-group">
               <label class="form-label">Email hoặc số điện thoại</label>
-              <input
-                type="text"
-                class="form-control"
-                [(ngModel)]="emailOrPhone"
-                placeholder="Nhập email hoặc số điện thoại"
-              />
+              <input type="text" class="form-control" [(ngModel)]="emailOrPhone" placeholder="Nhập email hoặc số điện thoại" />
             </div>
 
             <div class="form-group">
               <label class="form-label">Mật khẩu</label>
-              <input
-                type="password"
-                class="form-control"
-                [(ngModel)]="password"
-                placeholder="Nhập mật khẩu"
-              />
+              <input type="password" class="form-control" [(ngModel)]="password" placeholder="Nhập mật khẩu" />
             </div>
 
             <div class="forgot-password">
@@ -95,32 +82,21 @@
           </div>
 
           <!-- OTP FORM -->
-          <div *ngIf="loginMode === 'otp'">
+          <div *ngIf="view === 'otp'">
             <div class="form-group">
               <label class="form-label">Email hoặc số điện thoại</label>
-              <input
-                type="text"
-                class="form-control"
-                [(ngModel)]="otpEmail"
-                placeholder="Nhập email hoặc số điện thoại"
-              />
+              <input type="text" class="form-control" [(ngModel)]="otpEmail" placeholder="Nhập email hoặc số điện thoại" />
             </div>
 
-            <!-- Khi đã gửi OTP -->
             <ng-container *ngIf="otpSent; else sendOtpBlock">
               <div class="form-group">
                 <label class="form-label">Mã OTP</label>
-                <input
-                  type="text"
-                  class="form-control"
-                  [(ngModel)]="otpCode"
-                  placeholder="Nhập mã OTP"
-                />
+                <input type="text" class="form-control" [(ngModel)]="otpCode" placeholder="Nhập mã OTP" />
               </div>
 
               <div class="otp-actions">
-                <a (click)="sendOtp()" class="resend-otp">Gửi lại mã OTP</a>
-                <a (click)="switchMode('password')" class="resend-otp">Đăng nhập bằng mật khẩu</a>
+                <a class="resend-otp" (click)="sendOtp()">Gửi lại mã OTP</a>
+                <a class="resend-otp" (click)="switchMode('password')">Đăng nhập bằng mật khẩu</a>
               </div>
 
               <button class="btn btn-login" (click)="loginWithOtp()" [disabled]="loading">
@@ -130,7 +106,6 @@
               </button>
             </ng-container>
 
-            <!-- Trước khi gửi OTP -->
             <ng-template #sendOtpBlock>
               <button class="btn btn-login" (click)="sendOtp()" [disabled]="loading">
                 <span *ngIf="loading" class="spinner"></span>
@@ -139,6 +114,32 @@
               </button>
             </ng-template>
           </div>
+
+          <!-- FIRST CHANGE PASSWORD FORM -->
+          <div *ngIf="view === 'firstChange'">
+            <p class="mb-3">Tài khoản của bạn cần đổi mật khẩu để kích hoạt. Vui lòng nhập mật khẩu mới.</p>
+
+            <div class="form-group">
+              <label class="form-label">Mật khẩu mới</label>
+              <input type="password" class="form-control" [(ngModel)]="newPassword" placeholder="Nhập mật khẩu mới" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nhập lại mật khẩu mới</label>
+              <input type="password" class="form-control" [(ngModel)]="confirmPassword" placeholder="Nhập lại mật khẩu mới" />
+            </div>
+
+            <div class="otp-actions">
+              <a class="resend-otp" (click)="cancelFirstChange()">Quay lại đăng nhập</a>
+            </div>
+
+            <button class="btn btn-login" (click)="submitFirstChange()" [disabled]="loading">
+              <span *ngIf="loading" class="spinner"></span>
+              <i class="fas fa-unlock-alt" *ngIf="!loading"></i>
+              Xác nhận đổi mật khẩu
+            </button>
+          </div>
+
         </div>
       </div>
     </div>
