@@ -6,6 +6,7 @@ import com.hieunguyen.ManageContract.dto.approval.ApprovalFlowResponse;
 import com.hieunguyen.ManageContract.service.ApprovalFlowService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,6 +19,7 @@ public class ApprovalFlowController {
     private final ApprovalFlowService approvalFlowService;
 
     // Tạo flow
+    @PreAuthorize("hasAuthority('flow.create')")
     @PostMapping
     public ResponseData<ApprovalFlowResponse> createFlow(@Valid @RequestBody ApprovalFlowRequest request) {
         var res = approvalFlowService.createFlow(request);
@@ -25,6 +27,7 @@ public class ApprovalFlowController {
     }
 
     // Cập nhật flow
+    @PreAuthorize("hasAuthority('flow.update')")
     @PutMapping("/{flowId}")
     public ResponseData<ApprovalFlowResponse> updateFlow(
             @PathVariable Long flowId,
@@ -35,6 +38,7 @@ public class ApprovalFlowController {
     }
 
     // Lấy chi tiết flow
+    @PreAuthorize("hasAuthority('flow.read')")
     @GetMapping("/{flowId}")
     public ResponseData<ApprovalFlowResponse> getFlow(@PathVariable Long flowId) {
         var res = approvalFlowService.getFlow(flowId);
@@ -42,6 +46,7 @@ public class ApprovalFlowController {
     }
 
     // Liệt kê các flow của 1 template (dùng cho bước 3 để chọn flow)
+    @PreAuthorize("hasAuthority('flow.read')")
     @GetMapping("/by-template/{templateId}")
     public ResponseData<List<ApprovalFlowResponse>> listFlowsByTemplate(@PathVariable Long templateId) {
         var res = approvalFlowService.listFlowsByTemplate(templateId);
@@ -49,6 +54,7 @@ public class ApprovalFlowController {
     }
 
     // Đặt flow mặc định cho template
+    @PreAuthorize("hasAuthority('flow.set_default')")
     @PostMapping("/by-template/{templateId}/{flowId}/set-default")
     public ResponseData<Void> setDefaultFlow(@PathVariable Long templateId, @PathVariable Long flowId) {
         approvalFlowService.setDefaultFlow(templateId, flowId);
@@ -56,6 +62,7 @@ public class ApprovalFlowController {
     }
 
     // (Tuỳ chọn) Xoá flow
+    @PreAuthorize("hasAuthority('flow.delete')")
     @DeleteMapping("/{flowId}")
     public ResponseData<Void> deleteFlow(@PathVariable Long flowId) {
         approvalFlowService.deleteFlow(flowId);

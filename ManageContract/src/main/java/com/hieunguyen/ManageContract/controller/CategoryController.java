@@ -9,7 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,7 +22,9 @@ public class CategoryController {
 
     private final CategoryService categoryService;
 
+    // ===== READ =====
     @GetMapping
+    @PreAuthorize("hasAuthority('category.read') or hasRole('ADMIN')")
     @Operation(summary = "Lấy tất cả danh mục")
     public ResponseData<List<CategoryResponse>> getAllCategories() {
         List<CategoryResponse> categories = categoryService.getAllCategories();
@@ -30,6 +32,7 @@ public class CategoryController {
     }
 
     @GetMapping("/active")
+    @PreAuthorize("hasAuthority('category.read') or hasRole('ADMIN')")
     @Operation(summary = "Lấy danh sách danh mục active")
     public ResponseData<List<CategoryResponse>> getActiveCategories() {
         List<CategoryResponse> categories = categoryService.getActiveCategories();
@@ -37,6 +40,7 @@ public class CategoryController {
     }
 
     @GetMapping("/search")
+    @PreAuthorize("hasAuthority('category.read') or hasRole('ADMIN')")
     @Operation(summary = "Tìm kiếm danh mục")
     public ResponseData<List<CategoryResponse>> searchCategories(
             @RequestParam(required = false) String keyword) {
@@ -45,6 +49,7 @@ public class CategoryController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('category.read') or hasRole('ADMIN')")
     @Operation(summary = "Lấy danh mục theo ID")
     public ResponseData<CategoryResponse> getCategoryById(@PathVariable Long id) {
         CategoryResponse category = categoryService.getCategoryById(id);
@@ -52,20 +57,25 @@ public class CategoryController {
     }
 
     @GetMapping("/code/{code}")
+    @PreAuthorize("hasAuthority('category.read') or hasRole('ADMIN')")
     @Operation(summary = "Lấy danh mục theo code")
     public ResponseData<CategoryResponse> getCategoryByCode(@PathVariable String code) {
         CategoryResponse category = categoryService.getCategoryByCode(code);
         return new ResponseData<>(200, "Lấy category thành công", category);
     }
 
+    // ===== CREATE =====
     @PostMapping
+    @PreAuthorize("hasAuthority('category.create') or hasRole('ADMIN')")
     @Operation(summary = "Tạo danh mục mới")
     public ResponseData<CategoryResponse> createCategory(@Valid @RequestBody CategoryCreateRequest request) {
         CategoryResponse category = categoryService.createCategory(request);
         return new ResponseData<>(200, "Tạo category thành công", category);
     }
 
+    // ===== UPDATE =====
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('category.update') or hasRole('ADMIN')")
     @Operation(summary = "Cập nhật danh mục")
     public ResponseData<CategoryResponse> updateCategory(@PathVariable Long id,
                                                          @Valid @RequestBody CategoryUpdateRequest request) {
@@ -73,14 +83,18 @@ public class CategoryController {
         return new ResponseData<>(200, "Cập nhật category thành công", category);
     }
 
+    // ===== DELETE (soft) =====
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('category.delete') or hasRole('ADMIN')")
     @Operation(summary = "Xóa danh mục (soft delete)")
     public ResponseData<Void> deleteCategory(@PathVariable Long id) {
         categoryService.deleteCategory(id);
         return new ResponseData<>(200, "Xóa category thành công", null);
     }
 
+    // ===== ACTIVATE / DEACTIVATE (coi như update) =====
     @PatchMapping("/{id}/activate")
+    @PreAuthorize("hasAuthority('category.update') or hasRole('ADMIN')")
     @Operation(summary = "Kích hoạt danh mục")
     public ResponseData<CategoryResponse> activateCategory(@PathVariable Long id) {
         CategoryResponse category = categoryService.activateCategory(id);
@@ -88,6 +102,7 @@ public class CategoryController {
     }
 
     @PatchMapping("/{id}/deactivate")
+    @PreAuthorize("hasAuthority('category.update') or hasRole('ADMIN')")
     @Operation(summary = "Vô hiệu hóa danh mục")
     public ResponseData<CategoryResponse> deactivateCategory(@PathVariable Long id) {
         CategoryResponse category = categoryService.deactivateCategory(id);
