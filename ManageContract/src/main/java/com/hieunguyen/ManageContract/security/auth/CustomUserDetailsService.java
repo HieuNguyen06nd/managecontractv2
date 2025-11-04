@@ -23,4 +23,10 @@ public class CustomUserDetailsService implements UserDetailsService {
 
         return new CustomUserDetails(account);
     }
+    public CustomUserDetails loadUserByAccountId(Long accountId) {
+        var account = authAccountRepository.findById(accountId)
+                .orElseThrow(() -> new UsernameNotFoundException("Account not found: " + accountId));
+        // Từ account lấy email rồi reuse luồng loadUserByUsername
+        return (CustomUserDetails) loadUserByUsername(account.getEmail());
+    }
 }

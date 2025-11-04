@@ -23,4 +23,7 @@ public interface UserRoleRepository extends JpaRepository<UserRole, Long> {
 
     // Xoá tất cả quyền của 1 account (nếu cần reset role)
     void deleteAllByAccount(AuthAccount account);
+
+    boolean existsByAccountAndRole(AuthAccount account, Role role);
+
 }

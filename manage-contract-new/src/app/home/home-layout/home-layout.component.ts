@@ -3,11 +3,13 @@ import { HeaderComponent } from '../header/header.component';
 import { RouterOutlet } from '@angular/router';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { FooterComponent } from '../footer/footer.component';
+import { RouterModule } from '@angular/router';
+
 
 
 @Component({
   selector: 'app-home-layout',
-  imports: [HeaderComponent, SidebarComponent, FooterComponent, RouterOutlet],
+  imports: [HeaderComponent, SidebarComponent, FooterComponent, RouterOutlet, RouterModule],
   templateUrl: './home-layout.component.html',
   styleUrl: './home-layout.component.scss'
 })

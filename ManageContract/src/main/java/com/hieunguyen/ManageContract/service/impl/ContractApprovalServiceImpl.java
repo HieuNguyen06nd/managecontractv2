@@ -6,6 +6,7 @@ import com.hieunguyen.ManageContract.dto.approval.StepApprovalRequest;
 import com.hieunguyen.ManageContract.dto.contract.ContractResponse;
 import com.hieunguyen.ManageContract.dto.contractSign.SignStepRequest;
 import com.hieunguyen.ManageContract.entity.*;
+import com.hieunguyen.ManageContract.event.ContractApprovalEvent;
 import com.hieunguyen.ManageContract.mapper.ContractMapper;
 import com.hieunguyen.ManageContract.repository.*;
 import com.hieunguyen.ManageContract.security.jwt.SecurityUtil;
@@ -14,12 +15,12 @@ import com.hieunguyen.ManageContract.service.ContractFileService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -35,6 +36,9 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
     private final ContractSignatureRepository contractSignatureRepository;
     private final ContractFileService contractFileService;
     private final SecurityUtil securityUtils;
+
+    // Thêm publisher để bắn domain event (listener gửi mail sẽ nghe AFTER_COMMIT)
+    private final ApplicationEventPublisher events;
 
     // ---------------------------------------------------------------------
     // Submit for approval
@@ -173,12 +177,14 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         }
         approval.setUpdatedAt(now);
 
+        boolean justApprovedBySignOnly = false;
         if (action == ApprovalAction.SIGN_ONLY) {
             // Hoàn tất step ngay ở bước ký
             approval.setStatus(ApprovalStatus.APPROVED);
             approval.setApprovedAt(now);
             approval.setIsCurrent(false);
             approval.setComment(req.getComment());
+            justApprovedBySignOnly = true;
         }
         // GHI & FLUSH để trang nhật ký đọc thấy dữ liệu mới
         contractApprovalRepository.saveAndFlush(approval);
@@ -215,14 +221,20 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         sig.setType(SignatureType.EMPLOYEE);
         contractSignatureRepository.save(sig);
 
-        // ========= 4) CHUYỂN BƯỚC (chỉ với SIGN_ONLY) =========
+        // ========= 4) CHUYỂN BƯỚC & BẮN EVENT (chỉ với SIGN_ONLY) =========
         if (action == ApprovalAction.SIGN_ONLY) {
             if (Boolean.TRUE.equals(approval.getIsFinalStep())) {
                 contract.setStatus(ContractStatus.APPROVED);
                 contractRepository.save(contract);
+                //  Bắn event APPROVED (listener sẽ gửi mail sau commit)
+                events.publishEvent(new ContractApprovalEvent(approval.getId(), contract.getId(), ApprovalStatus.APPROVED));
                 return ContractMapper.toResponse(contract);
             }
             moveToNextStep(contract, approval.getStepOrder());
+            if (justApprovedBySignOnly) {
+                //  Bắn event APPROVED cho bước ký vừa hoàn tất
+                events.publishEvent(new ContractApprovalEvent(approval.getId(), contract.getId(), ApprovalStatus.APPROVED));
+            }
         }
 
         return ContractMapper.toResponse(contract);
@@ -266,9 +278,12 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         if (!approved) {
             contract.setStatus(ContractStatus.REJECTED);
             contractRepository.save(contract);
+            // ✅ Bắn event REJECTED
+            events.publishEvent(new ContractApprovalEvent(approval.getId(), contract.getId(), ApprovalStatus.REJECTED));
             return ContractMapper.toResponse(contract);
         }
 
+        // APPROVED nhánh dưới:
         ApprovalAction action = approval.getStep().getAction();
         if (action == ApprovalAction.APPROVE_ONLY || action == ApprovalAction.SIGN_THEN_APPROVE) {
             String approveText = String.format(
@@ -283,8 +298,13 @@ public class ContractApprovalServiceImpl implements ContractApprovalService {
         if (Boolean.TRUE.equals(approval.getIsFinalStep())) {
             contract.setStatus(ContractStatus.APPROVED);
             contractRepository.save(contract);
+            // ✅ Bắn event APPROVED (hợp đồng hoàn tất)
+            events.publishEvent(new ContractApprovalEvent(approval.getId(), contract.getId(), ApprovalStatus.APPROVED));
             return ContractMapper.toResponse(contract);
         }
+
+        // ✅ Bắn event APPROVED cho bước vừa duyệt xong (không phải final)
+        events.publishEvent(new ContractApprovalEvent(approval.getId(), contract.getId(), ApprovalStatus.APPROVED));
 
         moveToNextStep(contract, approval.getStepOrder());
         return ContractMapper.toResponse(contract);

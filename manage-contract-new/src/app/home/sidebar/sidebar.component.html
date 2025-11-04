@@ -1,45 +1,64 @@
-<!-- Sidebar -->
 <aside class="sidebar">
-    <ul class="sidebar-menu">
-        <li class="menu-item" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
-            <i class="fas fa-home"></i>
-            <a class="menu-text" routerLink="/">Trang chủ</a>
-        </li>
-        <li class="menu-item" routerLinkActive="active">
-            <i class="fas fa-clipboard-list"></i>
-            <a routerLink="/contract/sign">Phê duyệt/Ký hợp đồng</a>
-        </li>
-        <li class="menu-item" routerLinkActive="active">
-            <i class="fas fa-file-alt"></i>
-            <a routerLink="/contract/list">Quản lý hợp đồng</a>
-        </li>
-        <li class="menu-item" routerLinkActive="active">
-            <i class="fas fa-clipboard-list"></i>
-            <a routerLink="/contract/templates/list">Mẫu hợp đồng</a>
-        </li>
-        <li class="menu-item" routerLinkActive="active">
-            <i class="fas fa-project-diagram"></i>
-            <a routerLink="/contract/flow">Quy trình phê duyệt</a>
-        </li>
-        <li class="menu-item" routerLinkActive="active">
-            <i class="fas fa-users"></i>
-            <a routerLink="/department-position">Quản lý Phòng ban và Vị trí</a>
-        </li>
-        <li class="menu-item" routerLinkActive="active">
-            <i class="fas fa-users"></i>
-            <a routerLink="/contract/users">Người dùng</a>
-        </li>
-        <li class="menu-item" routerLinkActive="active">
-            <i class="fas fa-users"></i>
-            <a routerLink="/role">Role - Permission</a>
-        </li>
-        <li class="menu-item">
-            <i class="fas fa-cog"></i>
-            <span class="menu-text">Cài đặt</span>
-        </li>
-        <li class="menu-item">
-            <i class="fas fa-sign-out-alt"></i>
-            <span class="menu-text">Đăng xuất</span>
-        </li>
-    </ul>
+  <ul class="sidebar-menu">
+    <ng-container *ngFor="let item of items; trackBy: trackByKey">
+
+      <!-- GROUP (có children) -->
+      <li *ngIf="item.children?.length && visible(item)" class="menu-group">
+        <button class="group-btn" type="button" (click)="toggleGroup(item)">
+          <div class="left">
+            <i *ngIf="item.icon" class="{{ item.icon }}"></i>
+            <span class="text">{{ item.label }}</span>
+          </div>
+          <i class="fas caret" [ngClass]="{ 'fa-chevron-down': isOpen(item), 'fa-chevron-right': !isOpen(item) }"></i>
+        </button>
+
+        <ul class="submenu" *ngIf="isOpen(item)">
+          <!-- Đặt BOTH routerLinkActive và routerLinkActiveOptions trên LI -->
+          <li
+            *ngFor="let child of item.children; trackBy: trackByKey"
+            class="submenu-item"
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: child.exact !== false }"
+          >
+            <a
+              *ngIf="child.link && child.link !== '__logout__'; else childNoLink"
+              class="submenu-link"
+              [routerLink]="child.link"
+            >
+              <i class="fas fa-angle-right bullet"></i>
+              <span>{{ child.label }}</span>
+            </a>
+
+            <ng-template #childNoLink>
+              <button class="submenu-link btn-as-link" (click)="onClickLeaf(child)">
+                <i class="fas fa-angle-right bullet"></i>
+                <span>{{ child.label }}</span>
+              </button>
+            </ng-template>
+          </li>
+        </ul>
+      </li>
+
+      <!-- LEAF (không có children) -->
+      <li
+        *ngIf="!item.children?.length && visible(item)"
+        class="menu-leaf"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: item.exact !== false }"
+      >
+        <a *ngIf="item.link && item.link !== '__logout__'; else leafNoLink" class="leaf-link" [routerLink]="item.link">
+          <i *ngIf="item.icon" class="{{ item.icon }}"></i>
+          <span class="text">{{ item.label }}</span>
+        </a>
+
+        <ng-template #leafNoLink>
+          <button class="leaf-link btn-as-link" (click)="onClickLeaf(item)">
+            <i *ngIf="item.icon" class="{{ item.icon }}"></i>
+            <span class="text">{{ item.label }}</span>
+          </button>
+        </ng-template>
+      </li>
+
+    </ng-container>
+  </ul>
 </aside>

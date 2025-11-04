@@ -14,14 +14,8 @@
             background-color: #f8f9fa;
             color: #333;
         }
-          .main-content {
-            margin-left: 250px;
-            margin-top: 70px;
-            padding: 20px;
-            background-color: #f5f7fa;
-            min-height: calc(100vh - 70px);
-        }
-                .navbar {
+        
+        .navbar {
             background-color: var(--secondary-color);
         }
         
@@ -165,92 +159,3 @@
             min-width: 150px;
             display: inline-block;
         }
-/* Thêm CSS cho các modal */
-.modal-content {
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  background-color: #ffffff;
-}
-
-.modal-header {
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #dee2e6;
-  padding: 15px 20px;
-}
-
-.modal-title {
-  font-size: 1.25rem;
-  font-weight: 500;
-  color: #333;
-}
-
-.modal-body {
-  padding: 20px;
-  font-size: 1rem;
-  color: #333;
-}
-
-.modal-footer {
-  background-color: #f8f9fa;
-  padding: 10px 20px;
-  text-align: right;
-}
-
-.btn-close {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  color: #007bff;
-  cursor: pointer;
-}
-
-.btn-close:hover {
-  color: #0056b3;
-}
-
-button.btn {
-  padding: 8px 15px;
-  font-size: 1rem;
-  border-radius: 4px;
-}
-
-.btn-outline-danger {
-  border-color: #f5c6cb;
-  color: #dd172b;
-}
-
-.btn-outline-danger:hover {
-  background-color: #f1b0b7;
-}
-
-.btn-outline-secondary {
-  background-color: #f8f9fa;
-  border-color: #dee2e6;
-  color: #6c757d;
-}
-
-.btn-outline-secondary:hover {
-  background-color: #e2e6ea;
-}
-
-.modal-backdrop.show {
-  background-color: rgba(0, 0, 0, 0.5);
-}
-
-/* Hover effect cho các nút xóa, hủy */
-.btn-outline-danger:hover, .btn-outline-warning:hover {
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-}
-
-.modal-dialog {
-  max-width: auto;
-  margin: 30px auto;
-}
-
-.modal-body p {
-  font-size: 1rem;
-  color: #6c757d;
-  margin-bottom: 20px;
-  text-align: center;
-}

@@ -20,82 +20,141 @@ export const HOME_ROUTES: Routes = [
   {
     path: '',
     component: HomeLayoutComponent,
-    canActivate: [AuthGuard], // tất cả route con yêu cầu login
+    canActivate: [AuthGuard],
     children: [
       { path: '', component: DasboadComponent },
 
-      { 
-        path: 'contract/templates',
-        component: ContractTemplateComponent,
-        canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' } // chỉ ADMIN mới vào
-      },
-      { 
-        path: 'contract/flow',
-        component: ContractFlowComponent,
-        canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' } // chỉ MANAGER
-      },
-      { 
-        path: 'contract/create',
-        component: ContractComponent,
-        canActivate: [PermissionGuard],
-      data: { role: 'ADMIN' } 
-      },
-      { 
-        path: 'contract/sign',
-        component: ContactSignComponent,
-        canActivate: [PermissionGuard],
-         data: { role: 'ADMIN' } 
-      },
-      { 
-        path: 'contract/positions',
-        component: PositionComponent,
-        canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' }
-      },
-      { 
-        path: 'contract/departments',
-        component: DepartmentComponent,
-        canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' }
-      },
-      { 
-        path: 'contract/users',
-        component: UserComponent,
-        canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' } 
-      },
-
-      { 
-        path: 'contract/templates/list',
-        component: ContactListTemplateComponent,
-        canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' }
-      },
-      { 
-        path: 'role',
-        component: RolePermissionComponent,
-        canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' }
-      },
-      { 
-        path: 'profile',
-        component: ProfileComponent,
-        canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' }
-      },
-      { 
+      // Danh sách hợp đồng
+      {
         path: 'contract/list',
         component: ContractListComponent,
         canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' }
+        data: {
+          roles: ['ADMIN'],
+          permissions: [
+            'CONTRACT_VIEW_ALL', 'CONTRACT_VIEW_DEPT', 'CONTRACT_VIEW_OWN',
+            'contract.view.all', 'contract.view.dept', 'contract.view.own'
+          ],
+          match: 'any'
+        }
       },
-            { 
+
+      // Mẫu hợp đồng
+      {
+        path: 'contract/templates',
+        component: ContractTemplateComponent,
+        canActivate: [PermissionGuard],
+        data: {
+          roles: ['ADMIN'],
+          permissions: ['TEMPLATE_VIEW', 'template.view'],
+          match: 'any'
+        }
+      },
+      {
+        path: 'contract/templates/list',
+        component: ContactListTemplateComponent,
+        canActivate: [PermissionGuard],
+        data: {
+          roles: ['ADMIN'],
+          permissions: ['TEMPLATE_VIEW', 'template.view'],
+          match: 'any'
+        }
+      },
+
+      // Quy trình
+      {
+        path: 'contract/flow',
+        component: ContractFlowComponent,
+        canActivate: [PermissionGuard],
+        data: {
+          roles: ['ADMIN'],
+          permissions: ['FLOW_VIEW', 'FLOW_CREATE', 'FLOW_UPDATE', 'flow.view', 'flow.manage'],
+          match: 'any'
+        }
+      },
+
+      // Tạo hợp đồng
+      {
+        path: 'contract/create',
+        component: ContractComponent,
+        canActivate: [PermissionGuard],
+        data: {
+          roles: ['ADMIN'],
+          permissions: ['CONTRACT_CREATE', 'contract.create'],
+          match: 'any'
+        }
+      },
+
+      // Ký / phê duyệt
+      {
+        path: 'contract/sign',
+        component: ContactSignComponent,
+        canActivate: [PermissionGuard],
+        data: {
+          roles: ['ADMIN'],
+          permissions: ['APPROVAL_STEP_SIGN', 'APPROVAL_STEP_APPROVE', 'approval.step.sign', 'approval.step.approve'],
+          match: 'any'
+        }
+      },
+
+      // Vị trí / Phòng ban
+      {
+        path: 'contract/positions',
+        component: PositionComponent,
+        canActivate: [PermissionGuard],
+        data: {
+          roles: ['ADMIN'],
+          permissions: ['POSITION_MANAGE', 'position.manage'],
+          match: 'any'
+        }
+      },
+      {
+        path: 'contract/departments',
+        component: DepartmentComponent,
+        canActivate: [PermissionGuard],
+        data: {
+          roles: ['ADMIN'],
+          permissions: ['DEPARTMENT_MANAGE', 'department.manage'],
+          match: 'any'
+        }
+      },
+
+      // Người dùng
+      {
+        path: 'contract/users',
+        component: UserComponent,
+        canActivate: [PermissionGuard],
+        data: {
+          roles: ['ADMIN'],
+          permissions: ['USER_MANAGE', 'user.manage'],
+          match: 'any'
+        }
+      },
+
+      // Vai trò & phân quyền (nếu chưa seed ROLE_* thì để ADMIN là đủ)
+      {
+        path: 'roles-perms',
+        component: RolePermissionComponent,
+        canActivate: [PermissionGuard],
+        data: {
+          roles: ['ADMIN'],
+          match: 'any'
+        }
+      },
+
+      // Hồ sơ
+      { path: 'profile', component: ProfileComponent },
+
+      // Gộp màn hình phòng ban & vị trí
+      {
         path: 'department-position',
         component: DeparmentPositionComponent,
         canActivate: [PermissionGuard],
-        data: { role: 'ADMIN' }
+        data: {
+          roles: ['ADMIN'],
+          permissions: ['DEPARTMENT_MANAGE', 'POSITION_MANAGE', 'department.manage', 'position.manage'],
+          match: 'any'
+        }
       },
 
       { path: '**', redirectTo: '' }

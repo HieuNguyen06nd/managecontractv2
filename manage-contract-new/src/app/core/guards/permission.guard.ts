@@ -12,106 +12,14 @@ import { ToastrService } from 'ngx-toastr';
 export class PermissionGuard implements CanActivate {
   constructor(private router: Router, private toastr: ToastrService) {}
 
-  canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): boolean | UrlTree {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      this.toastr.info('Vui lòng đăng nhập để tiếp tục');
-      return this.router.createUrlTree(['/auth/login'], { queryParams: { returnUrl: state.url } });
-    }
-
-    const payload = this.safeDecodeJwt<any>(token);
-    if (!payload || this.isExpired(payload?.exp)) {
-      // xoá session nhẹ nhàng
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      this.toastr.info('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      return this.router.createUrlTree(['/auth/login'], { queryParams: { returnUrl: state.url } });
-    }
-
-    // 1) Lấy roles/permissions đã chuẩn hoá sẵn khi login
-    let roles: Array<{ roleKey: string }> =
-      this.safeParse<Array<{ roleKey: string }>>(localStorage.getItem('roles')) || [];
-
-    let permissions: string[] =
-      this.safeParse<string[]>(localStorage.getItem('permissions')) || [];
-
-    // 2) Nếu chưa có, rút từ token
-    if (!roles.length && Array.isArray(payload?.roles)) {
-      roles = payload.roles
-        .map((r: any) => ({ roleKey: r.roleKey || r.role_key || r.key || r.name }))
-        .filter((r: any) => !!r.roleKey);
-    }
-    if (!permissions.length) {
-      if (Array.isArray(payload?.permissions)) {
-        // support permissions ở top-level
-        permissions = payload.permissions.map((p: any) =>
-          (p?.permissionKey || p?.key || p)?.toString().toLowerCase()
-        ).filter(Boolean);
-      } else if (Array.isArray(payload?.roles)) {
-        // lấy từ roles[].permissions[]
-        permissions = this.flattenPermissionsFromRoles(payload.roles);
-      } else if (Array.isArray(payload?.authorities)) {
-        // loại ROLE_
-        permissions = payload.authorities
-          .filter((a: string) => typeof a === 'string' && !a.startsWith('ROLE_'))
-          .map((a: string) => a.toLowerCase());
-      }
-    }
-
-    // Chuẩn hoá so sánh
-    const roleSet = new Set(roles.map(r => String(r.roleKey || '').toUpperCase()));
-    const permSet = new Set(permissions.map(p => String(p).toLowerCase()));
-
-    // Yêu cầu từ route.data
-    const requiredRole: string | undefined = route.data['role'];
-    const requiredRoles: string[] | undefined = route.data['roles'];
-    const requiredPermission: string | undefined = route.data['permission'];
-    const requiredPermissions: string[] | undefined = route.data['permissions'];
-    const match: 'any' | 'all' = route.data['match'] || 'any';
-
-    let allowed = true;
-
-    // Role check
-    if (requiredRole) {
-      allowed = roleSet.has(requiredRole.toUpperCase());
-    } else if (requiredRoles?.length) {
-      const req = requiredRoles.map(r => r.toUpperCase());
-      allowed = match === 'all' ? req.every(r => roleSet.has(r)) : req.some(r => roleSet.has(r));
-    }
-
-    // Permission check
-    if (allowed && (requiredPermission || (requiredPermissions?.length))) {
-      if (requiredPermission) {
-        allowed = permSet.has(requiredPermission.toLowerCase());
-      } else if (requiredPermissions?.length) {
-        const req = requiredPermissions.map(p => p.toLowerCase());
-        allowed = match === 'all' ? req.every(p => permSet.has(p)) : req.some(p => permSet.has(p));
-      }
-    }
-
-    if (!allowed) {
-      const msg = requiredPermissions?.length || requiredPermission
-        ? `Bạn không có quyền truy cập. Cần quyền: ${
-            requiredPermission || requiredPermissions?.join(', ')
-          }`
-        : `Bạn không có quyền truy cập. Cần vai trò: ${
-            requiredRole || requiredRoles?.join(', ')
-          }`;
-      this.toastr.warning(msg, 'Không có quyền');
-
-      return this.router.createUrlTree(['/unauthorized'], {
-        queryParams: {
-          from: state.url,
-          needRole: requiredRole || (requiredRoles ? requiredRoles.join(',') : undefined),
-          needPerm: requiredPermission || (requiredPermissions ? requiredPermissions.join(',') : undefined),
-        }
-      });
-    }
-
-    return true;
+  // không dùng replaceAll để tránh lỗi target ES thấp
+  private toUpperSnake(k: string) {
+    return String(k || '').trim().replace(/[.\-]/g, '_').toUpperCase();
+  }
+  private toLowerDot(k: string) {
+    return String(k || '').trim().replace(/[_\-]/g, '.').toLowerCase();
   }
 
-  // ===== helpers =====
   private safeDecodeJwt<T = any>(jwt: string | undefined): T | null {
     if (!jwt) return null;
     const parts = jwt.split('.');
@@ -119,11 +27,8 @@ export class PermissionGuard implements CanActivate {
     try {
       const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
         .padEnd(parts[1].length + (4 - (parts[1].length % 4)) % 4, '=');
-      const json = atob(b64);
-      return JSON.parse(json) as T;
-    } catch {
-      return null;
-    }
+      return JSON.parse(atob(b64)) as T;
+    } catch { return null; }
   }
 
   private isExpired(exp?: number): boolean {
@@ -137,16 +42,127 @@ export class PermissionGuard implements CanActivate {
     try { return JSON.parse(raw) as T; } catch { return null; }
   }
 
-  private flattenPermissionsFromRoles(roles: any[]): string[] {
-    const set = new Set<string>();
-    roles.forEach((r: any) => {
-      if (Array.isArray(r.permissions)) {
-        r.permissions.forEach((p: any) => {
-          const key = (p?.permissionKey || p?.key || p)?.toString().toLowerCase();
-          if (key) set.add(key);
-        });
+  private buildPermSets(src: any[]): { upper: Set<string>; lower: Set<string> } {
+    const upper = new Set<string>();
+    src.forEach((p) => {
+      const raw = typeof p === 'string'
+        ? p
+        : (p?.permissionKey ?? p?.permission_key ?? p?.key ?? p?.code ?? '');
+      const up = this.toUpperSnake(raw);
+      if (up) upper.add(up);
+    });
+    const lower = new Set<string>(Array.from(upper).map(u => this.toLowerDot(u)));
+    return { upper, lower };
+  }
+
+  private hasPerm(req: string, upper: Set<string>, lower: Set<string>): boolean {
+    const up = this.toUpperSnake(req);
+    const low = this.toLowerDot(req);
+    return upper.has(up) || lower.has(low);
+  }
+
+  canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): boolean | UrlTree {
+    // 0) đăng nhập
+    const token = localStorage.getItem('token');
+    if (!token) {
+      this.toastr.info('Vui lòng đăng nhập để tiếp tục');
+      return this.router.createUrlTree(['/auth/login'], { queryParams: { returnUrl: state.url } });
+    }
+    const payload = this.safeDecodeJwt<any>(token);
+    if (!payload || this.isExpired(payload?.exp)) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      this.toastr.info('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return this.router.createUrlTree(['/auth/login'], { queryParams: { returnUrl: state.url } });
+    }
+
+    // 1) lấy roles/permissions
+    let roles: Array<{ roleKey: string }> =
+      this.safeParse<Array<{ roleKey: string }>>(localStorage.getItem('roles')) || [];
+
+    let rawPerms: any[] =
+      this.safeParse<any[]>(localStorage.getItem('permissions')) || [];
+
+    if (!roles.length && Array.isArray(payload?.roles)) {
+      roles = payload.roles
+        .map((r: any) => ({ roleKey: r?.roleKey ?? r?.role_key ?? r?.key ?? r?.name }))
+        .filter((r: any) => !!r.roleKey);
+    }
+
+    if (!rawPerms.length) {
+      if (Array.isArray(payload?.permissions)) {
+        rawPerms = payload.permissions;
+      } else if (Array.isArray(payload?.roles)) {
+        const set = new Set<any>();
+        payload.roles.forEach((r: any) => (r?.permissions || []).forEach((p: any) => set.add(p)));
+        rawPerms = Array.from(set);
+      } else if (Array.isArray(payload?.authorities)) {
+        rawPerms = payload.authorities
+          .filter((a: string) => typeof a === 'string' && !a.startsWith('ROLE_'));
+      }
+    }
+
+    const roleSet = new Set<string>();
+    roles.forEach((r) => {
+      const k = String(r.roleKey || '').toUpperCase();
+      if (k) {
+        roleSet.add(k); // ADMIN
+        if (!k.startsWith('ROLE_')) roleSet.add('ROLE_' + k); // ROLE_ADMIN
       }
     });
-    return Array.from(set);
+
+    const { upper: permUpper, lower: permLower } = this.buildPermSets(rawPerms);
+
+    // 2) ADMIN bypass
+    if (roleSet.has('ADMIN') || roleSet.has('ROLE_ADMIN')) return true;
+
+    // 3) route data
+    const requiredRole: string | undefined = route.data?.['role'];
+    const requiredRoles: string[] | undefined = route.data?.['roles'];
+    const requiredPermission: string | undefined = route.data?.['permission'];
+    const requiredPermissions: string[] | undefined = route.data?.['permissions'];
+
+    const matchStr: any = route.data?.['match'];
+    const match: 'any' | 'all' =
+      typeof matchStr === 'string' ? (matchStr.toLowerCase() as any) : 'any';
+
+    const needsRole = !!requiredRole || !!(requiredRoles?.length);
+    const needsPerm = !!requiredPermission || !!(requiredPermissions?.length);
+
+    let okRole = true;
+    if (needsRole) {
+      const reqRoles = (requiredRole ? [requiredRole] : requiredRoles!)
+        .map(r => String(r).toUpperCase());
+      okRole = match === 'all'
+        ? reqRoles.every(r => roleSet.has(r) || roleSet.has('ROLE_' + r))
+        : reqRoles.some(r => roleSet.has(r) || roleSet.has('ROLE_' + r));
+    }
+
+    let okPerm = true;
+    if (needsPerm) {
+      const reqPerms = (requiredPermission ? [requiredPermission] : requiredPermissions!) as string[];
+      okPerm = match === 'all'
+        ? reqPerms.every(p => this.hasPerm(p, permUpper, permLower))
+        : reqPerms.some(p => this.hasPerm(p, permUpper, permLower));
+    }
+
+    const allowed = match === 'all' ? (okRole && okPerm) : (okRole || okPerm);
+
+    if (!allowed) {
+      const needPermMsg = requiredPermission || requiredPermissions?.join(', ');
+      const needRoleMsg = requiredRole || requiredRoles?.join(', ');
+      this.toastr.warning(
+        needsPerm
+          ? `Bạn không có quyền truy cập. Cần quyền: ${needPermMsg}`
+          : `Bạn không có quyền truy cập. Cần vai trò: ${needRoleMsg}`,
+        'Không có quyền'
+      );
+
+      return this.router.createUrlTree(['/unauthorized'], {
+        queryParams: { from: state.url, needRole: needRoleMsg, needPerm: needPermMsg },
+      });
+    }
+
+    return true;
   }
 }
