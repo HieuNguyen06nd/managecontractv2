@@ -89,7 +89,7 @@ export class ContactListTemplateComponent implements OnInit {
   }
 
   goToCreateTemplatePage(): void {
-    this.router.navigate(['/contract/templates']);
+    this.router.navigate(['/contract/templates/create']);
   }
 
   updateTemplateStatus(template: ContractTemplateResponse): void {

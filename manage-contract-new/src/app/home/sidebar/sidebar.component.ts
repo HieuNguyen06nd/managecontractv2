@@ -112,9 +112,16 @@ export class SidebarComponent {
         {
           key: 'tpl-list',
           label: 'Danh sách mẫu',
-          link: '/contract/templates',
+          link: '/contract/templates/list',
           icon: 'fas fa-th-list',
           permissions: ['TEMPLATE_VIEW', 'template.view'],
+        },
+        {
+          key: 'tpl-list',
+          label: 'Tạo mẫu hợp dồng',
+          link: '/contract/templates/create',
+          icon: 'fas fa-th-list',
+          permissions: ['TEMPLATE_CREATE', 'template.create'],
         },
       ],
     },
@@ -138,8 +145,9 @@ export class SidebarComponent {
     // Tổ chức
     {
       key: 'org',
-      label: 'Tổ chức',
-      icon: 'fas fa-sitemap',
+      label: 'Cài đặt',
+      icon: 'fas fa-cog',
+      roles: ['ADMIN'],
       children: [
         {
           key: 'dept-pos',
@@ -159,7 +167,7 @@ export class SidebarComponent {
         {
           key: 'roles-perms',
           label: 'Vai trò & Quyền',
-          link: '/contract/roles-perms',
+          link: '/roles-perms',
           icon: 'fas fa-user-shield',
           permissions: ['ROLE_MANAGE', 'PERMISSION_MANAGE', 'role.manage', 'permission.manage'],
           roles: ['ADMIN'],
@@ -167,8 +175,6 @@ export class SidebarComponent {
       ],
     },
 
-    // Cài đặt / Đăng xuất
-    { key: 'settings', label: 'Cài đặt', icon: 'fas fa-cog', link: '/settings', roles: ['ADMIN'] },
     { key: 'logout', label: 'Đăng xuất', icon: 'fas fa-sign-out-alt', link: '__logout__' },
   ];
 

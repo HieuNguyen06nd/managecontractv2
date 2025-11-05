@@ -24,7 +24,7 @@ public class CategoryController {
 
     // ===== READ =====
     @GetMapping
-    @PreAuthorize("hasAuthority('category.read') or hasRole('ADMIN')")
+//    @PreAuthorize("hasAuthority('category.read') or hasRole('ADMIN')")
     @Operation(summary = "Lấy tất cả danh mục")
     public ResponseData<List<CategoryResponse>> getAllCategories() {
         List<CategoryResponse> categories = categoryService.getAllCategories();

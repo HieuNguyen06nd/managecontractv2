@@ -24,7 +24,7 @@ public class RoleController {
     private final RolePermissionService rolePermissionService;
 
     @PostMapping
-    @PreAuthorize("hasAuthority('role.create')")
+    @PreAuthorize("hasAuthority('ROLE_CREATE')")
     @Operation(summary = "Tạo nhóm quyền người dùng")
     public ResponseData<RoleResponse> create(@io.swagger.v3.oas.annotations.parameters.RequestBody(
             description = "Body chứa thông tin user",

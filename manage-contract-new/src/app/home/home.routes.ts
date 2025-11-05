@@ -41,7 +41,7 @@ export const HOME_ROUTES: Routes = [
 
       // Mẫu hợp đồng
       {
-        path: 'contract/templates',
+        path: 'contract/templates/create',
         component: ContractTemplateComponent,
         canActivate: [PermissionGuard],
         data: {
