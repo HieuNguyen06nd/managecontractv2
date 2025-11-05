@@ -188,13 +188,4 @@ textarea.form-control{min-height:90px;resize:vertical}
   .department-info{flex-direction:column;gap:4px}
 }
 
-/* ====== Optional: Dark mode ====== */
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg:#0b1220; --card:#101827; --text:#e5e7eb; --muted:#94a3b8; --border:#233146;
-    --ring: rgba(59,130,246,.25);
-    --shadow: 0 10px 22px rgba(0,0,0,.35);
-  }
-  .department-header{background:#0f172a}
-  .position-item{background:#0f172a}
-}
+
